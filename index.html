@@ -39,17 +39,18 @@
 
         /* Main View Elements */
         .location-bar { background-color: var(--panel-bg); padding: 12px 16px; border-bottom: 1px solid #444; display: flex; align-items: center; font-weight: 600; color: var(--text-light); }
-        .bus-list { list-style: none; overflow-y: auto; flex-grow: 1; }
+        .location-icon { margin-right: 8px; font-size: 1.2rem; }
+        .bus-list { list-style: none; overflow-y: auto; flex-grow: 1; padding-bottom: 20px; }
         .bus-item { background: var(--bg-gray); border-bottom: 1px solid #333; padding: 16px; display: flex; align-items: center; cursor: pointer; transition: background 0.2s; }
         .bus-item:active { background: #2a2a2a; }
         .route-number { width: 60px; font-size: 1.5rem; font-weight: 800; color: var(--text-light); }
         .route-details { flex-grow: 1; display: flex; flex-direction: column; padding-right: 12px; }
         .destination { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
         .stop-name { font-size: 0.8rem; color: var(--text-muted); }
-        .eta-time { font-size: 1.5rem; font-weight: 700; color: var(--brand-red); display: flex; align-items: baseline; }
+        .eta-time { font-size: 1.5rem; font-weight: 700; color: var(--brand-red); display: flex; align-items: baseline; justify-content: flex-end; min-width: 65px; }
+        .eta-empty { color: var(--text-muted); font-size: 1.2rem; font-weight: 500; }
 
         /* Map Container (Detail View) */
-        /* Note: Filter turns standard OSM into dark mode without needing an API key */
         #map { height: 30vh; width: 100%; border-bottom: 2px solid #444; flex-shrink: 0; filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
 
         /* Timeline Container (Detail View) */
@@ -57,23 +58,19 @@
         .timeline-item { display: flex; flex-direction: column; position: relative; padding: 0 16px 0 40px; cursor: pointer; transition: background 0.2s; }
         .timeline-item:hover { background: #2a2a2a; }
         
-        /* The Line & Dot */
         .timeline-item::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--timeline-gray); }
         .timeline-item.first::before { top: 24px; }
         .timeline-item.last::before { bottom: auto; height: 24px; }
         .timeline-dot { position: absolute; left: 19px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg-gray); border: 2px solid var(--timeline-gray); z-index: 2; transition: all 0.3s ease; }
         .timeline-item.active .timeline-dot { border-color: var(--brand-red); background: var(--brand-red); box-shadow: 0 0 8px rgba(227, 24, 55, 0.6); }
         
-        /* Stop Information */
         .stop-header { min-height: 52px; display: flex; align-items: center; border-bottom: 1px solid #333; }
         .stop-index { font-weight: 600; font-size: 1rem; color: var(--text-light); }
         .stop-status { margin-left: auto; font-size: 0.9rem; color: var(--brand-red); font-weight: bold; }
         
-        /* Expandable Details */
         .stop-details { display: none; padding: 12px 0 20px 0; border-bottom: 1px solid #333; animation: fadeIn 0.3s ease; }
         .timeline-item.active .stop-details { display: block; }
         
-        /* Badges & ETA Tables */
         .badges-container { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
         .smart-badge { display: inline-flex; align-items: center; font-size: 0.75rem; font-weight: 600; padding: 4px 10px; border-radius: 12px; }
         .badge-capacity { background-color: rgba(59, 130, 246, 0.2); color: var(--capacity-blue); border: 1px solid rgba(59, 130, 246, 0.4); }
@@ -99,9 +96,13 @@
             <div class="header-title">TransitPulse HK</div>
         </header>
         <div class="location-bar">
-            📍 Nearest Stop: Lo Uk Tsuen
+            <span class="location-icon">📍</span> Nearest Stop: Lo Uk Tsuen
         </div>
-        <ul class="bus-list" id="main-bus-list">
+        <!-- Loader to simulate API call -->
+        <div id="loading-indicator" style="text-align: center; padding: 20px; color: var(--text-muted);">
+            Connecting to NLB API...
+        </div>
+        <ul class="bus-list" id="main-bus-list" style="display: none;">
             <!-- Rendered via JS -->
         </ul>
     </div>
@@ -110,7 +111,7 @@
     <div id="view-detail" class="view">
         <header>
             <div class="back-btn" onclick="goBack()">‹</div>
-            <div class="header-title" id="detail-title">3M To Mui Wo Ferry Pier</div>
+            <div class="header-title" id="detail-title">Route Details</div>
         </header>
         
         <div id="map"></div>
@@ -127,19 +128,29 @@
 <script>
     // --- 1. DATA CONFIGURATION ---
     
-    // Main View Mock Data
-    const mainViewBuses = [
-        { id: '3m_muiwo', route: '3M', to: 'Mui Wo Ferry Pier', rawEta: 7 },
-        { id: '3m_tungchung', route: '3M', to: 'Tung Chung Station Bus Terminus', rawEta: 1 },
-        { id: '1_taio', route: '1', to: 'Tai O', rawEta: 9 },
-        { id: '4_tongfuk', route: '4', to: 'Tong Fuk', rawEta: 25 }
+    // Complete Dataset matching the KMB App screenshots exactly.
+    // null represents the (!) or (-) state where no live ETA is currently broadcast.
+    const nearestStopBuses = [
+        { route: '3M', to: 'Mui Wo Ferry Pier - NLB', rawEta: null },
+        { route: '3M', to: 'Tung Chung Station Bus Terminus', rawEta: 6 },
+        { route: '1', to: 'Tai O - NLB', rawEta: 29 },
+        { route: '1', to: 'Mui Wo Ferry Pier - NLB', rawEta: 1 },
+        { route: '4', to: 'Tong Fuk - NLB', rawEta: null },
+        { route: '2', to: 'Mui Wo Ferry Pier - NLB', rawEta: 72 },
+        { route: '4', to: 'Mui Wo Ferry Pier - NLB', rawEta: null },
+        { route: '2', to: 'Ngong Ping - NLB', rawEta: 23 },
+        { route: 'N35', to: 'Mui Wo Ferry Pier - NLB', rawEta: null },
+        { route: 'A35', to: 'Mui Wo Ferry Pier - NLB', rawEta: null },
+        { route: 'N1', to: 'Tai O - NLB', rawEta: null },
+        { route: 'N35', to: 'HZMB Hong Kong Port - NLB', rawEta: null },
+        { route: 'A35', to: 'HZMB Hong Kong Port - NLB', rawEta: null }
     ];
 
-    // Expanded Stops Data (19 to 25)
+    // Expanded Stops Data for the 3M Route View
     const stopsData = [
         { id: 'stop19', index: 19, name: 'San Shek Wan 3 1/4 Milestone', lat: 22.2415, lng: 113.9650, rawEtas: [4, 29, 54], dwellProfile: 'normal', speedAhead: 'fast' },
-        { id: 'stop20', index: 20, name: 'Lo Uk Tsuen', lat: 22.2422, lng: 113.9740, rawEtas: [7, 30, 55], dwellProfile: 'high', speedAhead: 'slow' },
-        { id: 'stop21', index: 21, name: 'Sun Wai Tsuen', lat: 22.2418, lng: 113.9785, rawEtas: [6, 31, 56], dwellProfile: 'normal', speedAhead: 'normal' },
+        { id: 'stop20', index: 20, name: 'Lo Uk Tsuen', lat: 22.2422, lng: 113.9740, rawEtas: [6, 30, 55], dwellProfile: 'high', speedAhead: 'slow' },
+        { id: 'stop21', index: 21, name: 'Sun Wai Tsuen', lat: 22.2418, lng: 113.9785, rawEtas: [7, 31, 56], dwellProfile: 'normal', speedAhead: 'normal' },
         { id: 'stop22', index: 22, name: 'Lo Wai Tsuen', lat: 22.2410, lng: 113.9820, rawEtas: [8, 33, 58], dwellProfile: 'normal', speedAhead: 'normal' },
         { id: 'stop23', index: 23, name: 'Pui O Petrol Station', lat: 22.2405, lng: 113.9850, rawEtas: [10, 35, 60], dwellProfile: 'normal', speedAhead: 'normal' },
         { id: 'stop24', index: 24, name: 'Swire Staff Holiday House', lat: 22.2400, lng: 113.9880, rawEtas: [11, 36, 61], dwellProfile: 'normal', speedAhead: 'normal' },
@@ -169,29 +180,44 @@
         return buses;
     }
 
-    // --- 3. UI RENDERING (MAIN VIEW) ---
-    function renderMainList() {
-        const listEl = document.getElementById('main-bus-list');
-        listEl.innerHTML = '';
+    // --- 3. API FETCH WRAPPER & MAIN LIST RENDERING ---
+    async function fetchMainList() {
+        // Simulate a real API call delay to data.gov.hk
+        setTimeout(() => {
+            document.getElementById('loading-indicator').style.display = 'none';
+            const listEl = document.getElementById('main-bus-list');
+            listEl.style.display = 'block';
+            listEl.innerHTML = '';
 
-        mainViewBuses.forEach(bus => {
-            const li = document.createElement('li');
-            li.className = 'bus-item';
-            li.onclick = () => openDetail(`${bus.route} To ${bus.to}`);
-            
-            li.innerHTML = `
-                <div class="route-number">${bus.route}</div>
-                <div class="route-details">
-                    <div class="destination">To ${bus.to}</div>
-                    <div class="stop-name">Lo Uk Tsuen</div>
-                </div>
-                <div class="eta-time">${bus.rawEta}<span style="font-size:0.8rem; margin-left:4px; font-weight:400;">min</span></div>
-            `;
-            listEl.appendChild(li);
-        });
+            nearestStopBuses.forEach(bus => {
+                const li = document.createElement('li');
+                li.className = 'bus-item';
+                
+                // Only make rows clickable if we want to show the detail view
+                li.onclick = () => openDetail(`${bus.route} To ${bus.to}`);
+                
+                // Handle the KMB (!) or (-) states
+                let etaDisplayHTML = '';
+                if (bus.rawEta !== null) {
+                    etaDisplayHTML = `${bus.rawEta}<span style="font-size:0.8rem; margin-left:4px; font-weight:400;">min</span>`;
+                } else {
+                    etaDisplayHTML = `<span class="eta-empty">--</span>`; // Replaces the (!) warning icon
+                }
+                
+                li.innerHTML = `
+                    <div class="route-number">${bus.route}</div>
+                    <div class="route-details">
+                        <div class="destination">To ${bus.to.replace(' - NLB', '')}</div>
+                        <div class="stop-name">Lo Uk Tsuen</div>
+                    </div>
+                    <div class="eta-time">${etaDisplayHTML}</div>
+                `;
+                listEl.appendChild(li);
+            });
+        }, 400); // 400ms simulated network delay
     }
 
-    // --- 4. UI RENDERING (DETAIL VIEW) ---
+    // --- 4. DETAIL VIEW RENDERING (TIMELINE) ---
     function renderTimeline() {
         const container = document.getElementById('timeline-list');
         container.innerHTML = '';
@@ -250,13 +276,12 @@
 
     // --- 5. MAP INTERACTION ---
     function initMap() {
-        if (map) return; // Prevent re-initialization
+        if (map) return; 
         
         const activeStop = stopsData.find(s => s.id === activeStopId);
         map = L.map('map', { zoomControl: false }).setView([activeStop.lat, activeStop.lng], 16);
         
-        // STANDARD OpenStreetMap Tiles (No API Key Required) 
-        // The dark mode look is achieved via CSS filter on the #map container
+        // OpenStreetMap base tiles (Free, No API Key)
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors',
             maxZoom: 19
@@ -284,7 +309,7 @@
         marker.bindPopup(`<b>${newStop.name}</b>`).openPopup();
     }
 
-    // --- 6. SPA NAVIGATION (Replaces Alert) ---
+    // --- 6. SPA NAVIGATION ---
     function openDetail(title) {
         document.getElementById('detail-title').innerText = title;
         
@@ -292,8 +317,7 @@
         document.getElementById('view-main').style.transform = 'translateX(-30%)';
         document.getElementById('view-detail').style.transform = 'translateX(0)';
         
-        // Leaflet maps can glitch if initialized while hidden. 
-        // Invalidate size after the CSS transition finishes.
+        // Initialize Map after transition completes
         setTimeout(() => {
             initMap();
             map.invalidateSize(); 
@@ -301,13 +325,14 @@
     }
 
     function goBack() {
+        // Slide views back
         document.getElementById('view-main').style.transform = 'translateX(0)';
         document.getElementById('view-detail').style.transform = 'translateX(100%)';
     }
 
     // Boot App
     window.onload = () => {
-        renderMainList();
+        fetchMainList();
         renderTimeline();
     };
 </script>
