@@ -89,15 +89,18 @@
     justify-content: space-between;
   }
 
-  .route-left { display: flex; align-items: center; gap: 14px; }
-  .route-no { font-size: 1.8rem; font-weight: 900; width: 60px; letter-spacing: -0.5px; }
+  .route-left { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; padding-right: 10px; }
+  .route-no { font-size: 1.8rem; font-weight: 900; width: 60px; letter-spacing: -0.5px; flex-shrink: 0; }
 
-  .route-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-  .route-dest { font-size: 0.95rem; font-weight: 600; }
+  .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  
+  .dest-wrap { display: flex; align-items: center; flex-wrap: wrap; column-gap: 10px; row-gap: 4px; }
+  .route-dest { font-size: 0.95rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+  
   .route-status { font-size: 0.75rem; color: var(--text-secondary); }
 
-  .eta-container { display: flex; gap: 12px; align-items: center; }
-  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 60px; }
+  .eta-container { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 50px; }
   .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; }
 
   .official-eta {
@@ -116,46 +119,26 @@
 
   .smart-eta.adjusted { color: var(--accent-blue); }
 
-  /* Occupancy Gauge Styling */
-  .occupancy-section {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: rgba(255,255,255,0.03);
-    padding: 6px 10px;
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.05);
-  }
-
-  .occupancy-label-wrap {
+  /* Compact Occupancy Gauge Styling inline with Destination */
+  .compact-occupancy {
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-
-  .occupancy-title {
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    letter-spacing: 0.5px;
-  }
-
-  .occupancy-bar-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    background: rgba(255,255,255,0.05);
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.03);
   }
 
   .bar-segments {
     display: flex;
-    gap: 3px;
+    gap: 2px;
   }
 
   .segment {
-    width: 6px;
-    height: 12px;
-    border-radius: 1.5px;
+    width: 4px;
+    height: 10px;
+    border-radius: 1px;
     background-color: #2c2c2e;
   }
 
@@ -164,10 +147,10 @@
   .segment.active-red { background-color: var(--accent-red); }
 
   .occupancy-pct-text {
-    font-size: 0.8rem;
-    font-weight: 800;
+    font-size: 0.7rem;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
-    min-width: 36px;
+    min-width: 28px;
     text-align: right;
   }
 
@@ -287,7 +270,16 @@
                 <div class="route-left">
                   <div class="route-no">${route.routeNo}</div>
                   <div class="route-info">
-                    <div class="route-dest">To ${destName}</div>
+                    <div class="dest-wrap">
+                      <div class="route-dest">To ${destName}</div>
+                      <!-- Compact Occupancy inline -->
+                      <div class="compact-occupancy" id="occ-sec-${route.routeId}" style="display:none;">
+                        <div class="bar-segments" id="bars-${route.routeId}">
+                          ${Array(10).fill('<div class="segment"></div>').join('')}
+                        </div>
+                        <span class="occupancy-pct-text" id="pct-${route.routeId}">--%</span>
+                      </div>
+                    </div>
                     <div class="route-status" id="status-${route.routeId}">Loading telemetry...</div>
                   </div>
                 </div>
@@ -302,20 +294,6 @@
                   </div>
                 </div>
               </div>
-
-              <!-- 10-Bar Occupancy Section -->
-              <div class="occupancy-section" id="occ-sec-${route.routeId}" style="display:none;">
-                <div class="occupancy-label-wrap">
-                  <span class="occupancy-title">Est. Occupancy</span>
-                </div>
-                <div class="occupancy-bar-container">
-                  <div class="bar-segments" id="bars-${route.routeId}">
-                    ${Array(10).fill('<div class="segment"></div>').join('')}
-                  </div>
-                  <span class="occupancy-pct-text" id="pct-${route.routeId}">--%</span>
-                </div>
-              </div>
-
               <div class="inference-row" id="tags-${route.routeId}"></div>
             </div>
           `);
