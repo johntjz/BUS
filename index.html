@@ -12,175 +12,222 @@
             --text-light: #757575;
             --walk-green: #0E9F6E;
             --sprint-orange: #D03801;
+            --timeline-gray: #D1D5DB;
         }
         
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        
         body { background-color: var(--bg-gray); -webkit-font-smoothing: antialiased; }
         
-        /* Header */
-        header { background-color: var(--brand-red); color: white; padding: 20px 16px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .title { font-size: 1.2rem; font-weight: 700; }
-        .status { font-size: 0.85rem; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px; }
-        
-        /* Location Bar */
-        .location-bar { background-color: white; padding: 12px 16px; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; font-weight: 600; color: var(--text-dark); }
-        .location-bar svg { width: 18px; height: 18px; margin-right: 8px; fill: var(--brand-red); }
+        /* App Container & Views */
+        #app-container { width: 100vw; height: 100vh; overflow-x: hidden; position: relative; }
+        .view { width: 100%; min-height: 100%; position: absolute; top: 0; left: 0; transition: transform 0.3s ease; background: var(--bg-gray); }
+        #view-detail { transform: translateX(100%); z-index: 10; display: flex; flex-direction: column; height: 100vh;}
+        .view.active { transform: translateX(0); }
 
-        /* Bus List */
+        /* Header */
+        header { background-color: var(--brand-red); color: white; padding: 16px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: space-between; }
+        .header-title { font-size: 1.1rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; }
+        .back-btn { font-size: 1.5rem; margin-right: 12px; cursor: pointer; padding: 0 8px; display: none; }
+        
+        /* Main View Elements */
+        .location-bar { background-color: white; padding: 12px 16px; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; font-weight: 600; color: var(--text-dark); }
         .bus-list { list-style: none; padding-bottom: 80px; }
-        .bus-item { background: white; margin-bottom: 1px; padding: 16px; display: flex; align-items: center; }
-        
+        .bus-item { background: white; margin-bottom: 1px; padding: 16px; display: flex; align-items: center; cursor: pointer; }
+        .bus-item:active { background: #f9fafb; }
         .route-number { width: 60px; font-size: 1.5rem; font-weight: 800; color: var(--text-dark); }
-        
         .route-details { flex-grow: 1; display: flex; flex-direction: column; padding-right: 12px; }
-        .destination { font-size: 1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 4px; }
+        .destination { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
         .stop-name { font-size: 0.8rem; color: var(--text-light); }
+        .eta-time { font-size: 1.5rem; font-weight: 700; display: flex; align-items: baseline; justify-content: flex-end; }
         
-        .eta-container { text-align: right; min-width: 80px; }
-        .eta-time { font-size: 1.5rem; font-weight: 700; color: var(--brand-red); display: flex; align-items: baseline; justify-content: flex-end; }
-        .eta-unit { font-size: 0.8rem; font-weight: 400; margin-left: 2px; }
+        /* Detail View Elements */
+        .map-placeholder { background: #E5E7EB url('https://via.placeholder.com/600x300?text=Map+View+(Google/Mapbox+API)') center/cover; height: 250px; width: 100%; border-bottom: 1px solid #D1D5DB; }
+        .timeline-container { background: white; flex-grow: 1; overflow-y: auto; padding: 20px 0; }
         
-        /* The TransitPulse Smart Badges */
-        .smart-badge { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 4px 8px; border-radius: 12px; margin-top: 4px; }
+        .timeline-item { display: flex; position: relative; padding: 12px 16px 12px 40px; min-height: 80px; }
+        .timeline-item::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--timeline-gray); }
+        .timeline-item:first-child::before { top: 24px; background: var(--brand-red); }
+        .timeline-item:last-child::before { bottom: auto; height: 24px; }
+        
+        .timeline-dot { position: absolute; left: 19px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: white; border: 2px solid var(--timeline-gray); z-index: 2; }
+        .timeline-item.active .timeline-dot { border-color: var(--brand-red); background: var(--brand-red); }
+        
+        .stop-info { width: 100%; border-bottom: 1px solid #F3F4F6; padding-bottom: 12px; }
+        .stop-index { font-weight: 600; font-size: 1rem; color: var(--text-dark); }
+        
+        /* Algo Badges & UI */
+        .smart-badge { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 4px 8px; border-radius: 12px; margin-top: 4px; margin-right: 4px; }
         .badge-walk { background-color: #DEF7EC; color: var(--walk-green); }
-        .badge-wait { background-color: #FDE8E8; color: var(--sprint-orange); }
-        .badge-normal { color: var(--text-light); font-weight: 400; }
+        .badge-wait { background-color: #FEF3C7; color: #92400E; }
+        .badge-capacity { background-color: #E1EFFE; color: #1E40AF; }
         
-        /* Loading & Error States */
-        #loading, #error { padding: 40px 20px; text-align: center; color: var(--text-light); }
-        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid var(--brand-red); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 0 auto 16px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .eta-block { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+        .eta-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem; }
+        .eta-corrected { color: var(--brand-red); font-weight: 700; font-size: 1.1rem; }
+        .eta-raw { text-decoration: line-through; color: var(--text-light); font-size: 0.8rem; }
     </style>
 </head>
 <body>
 
-    <header>
-        <div class="header-top">
-            <div class="title">TransitPulse HK</div>
-            <div class="status" id="gps-status">Locating...</div>
+<div id="app-container">
+    <!-- VIEW 1: Main Bus List -->
+    <div id="view-main" class="view active">
+        <header>
+            <div class="header-title">TransitPulse HK</div>
+        </header>
+        <div class="location-bar">
+            <span>📍 Lo Uk Tsuen</span>
         </div>
-    </header>
-
-    <div class="location-bar" id="location-bar" style="display: none;">
-        <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-        <span id="current-stop">Nearest Stop</span>
+        <ul class="bus-list" id="bus-list"></ul>
     </div>
 
-    <div id="loading">
-        <div class="spinner"></div>
-        Acquiring GPS and scanning local stops...
+    <!-- VIEW 2: Route Detail (Timeline & Map) -->
+    <div id="view-detail" class="view">
+        <header>
+            <div class="back-btn" id="btn-back">‹</div>
+            <div class="header-title" id="detail-title">3M To Mui Wo Ferry Pier - NLB</div>
+        </header>
+        <div class="map-placeholder"></div>
+        <div class="timeline-container" id="timeline-list">
+            <!-- Rendered via JS -->
+        </div>
     </div>
+</div>
+
+<script>
+    // --- DATA & ALGO LOGIC ---
     
-    <div id="error" style="display: none;"></div>
+    const mockMainList = [
+        { id: '3m_muiwo', route: '3M', to: 'Mui Wo Ferry Pier', rawEta: 7, isVolatile: true },
+        { id: '3m_tungchung', route: '3M', to: 'Tung Chung Station', rawEta: 1, isVolatile: true },
+        { id: '1_taio', route: '1', to: 'Tai O', rawEta: 9, isVolatile: false }
+    ];
 
-    <ul class="bus-list" id="bus-list">
-        <!-- Rendered via JS -->
-    </ul>
+    // Mocking the downstream stops from image_def6bd.jpg
+    const mockRouteDetails = {
+        '3m_muiwo': [
+            { index: 20, name: 'Lo Uk Tsuen', rawEta: 7, dwellTimeInferred: 'high' },
+            { index: 21, name: 'Sun Wai Tsuen', rawEta: null },
+            { index: 22, name: 'Lo Wai Tsuen', rawEta: null },
+            { index: 23, name: 'Pui O Petrol Station', rawEta: null },
+            { index: 24, name: 'Swire Staff Holiday House', rawEta: null },
+            { index: 25, name: 'Nam Shan Camp Site', rawEta: null }
+        ]
+    };
 
-    <script>
-        // 1. MOCK DATA (Simulating KMB/NLB API Response for Lo Uk Tsuen)
-        const mockRawData = [
-            { route: '3M', to: 'Mui Wo Ferry Pier', stop: 'Lo Uk Tsuen', rawEtaMins: 10 },
-            { route: '3M', to: 'Tung Chung Station', stop: 'Lo Uk Tsuen', rawEtaMins: 1 }, // Will trigger anti-sprint algo
-            { route: '1', to: 'Tai O', stop: 'Lo Uk Tsuen', rawEtaMins: 9 },
-            { route: '1', to: 'Mui Wo Ferry Pier', stop: 'Lo Uk Tsuen', rawEtaMins: 13 },
-            { route: '4', to: 'Tong Fuk', stop: 'Lo Uk Tsuen', rawEtaMins: -1 } // -1 indicates scheduled/dash
-        ];
+    // TransitPulse Inference Engine
+    function inferRouteData(stopData, isCurrentStop) {
+        let inferred = { ...stopData, correctedEta: stopData.rawEta, capacityMsg: null, delayMsg: null };
 
-        // 2. THE TRANSITPULSE ALGORITHM ENGINE
-        // This is where your IP lives. It intercepts raw operator data before rendering.
-        function applyTransitPulseAlgo(bus) {
-            let processed = { ...bus };
+        if (isCurrentStop) {
+            // 1. Capacity Inference: If upstream dwell time was unusually high, infer high capacity.
+            if (stopData.dwellTimeInferred === 'high') {
+                inferred.capacityMsg = "💺 ~85% Full (Based on boarding dwell)";
+            }
             
-            // Logic A: The "Ghost Bus / Dash" Fix
-            if (bus.rawEtaMins < 0) {
-                processed.displayEta = "-";
-                processed.badgeClass = "badge-normal";
-                processed.badgeText = "Scheduled / Unknown";
-                return processed;
+            // 2. ETA Volatility Correction
+            if (stopData.rawEta <= 2) {
+                inferred.correctedEta = 4;
+                inferred.delayMsg = "🚶‍♂️ Held at upstream light";
+            } else if (stopData.rawEta === 7) {
+                // Example: Correcting a 7-minute read based on mesh speed
+                inferred.correctedEta = 9; 
+                inferred.delayMsg = "Traffic slowdown detected ahead";
             }
-
-            // Logic B: The "1-Minute Sprint Trap" Fix
-            if (bus.rawEtaMins <= 2) {
-                // In a real app, you check historical velocity here. 
-                // For MVP, we simulate detecting a corrupted approach lock.
-                processed.displayEta = "4"; // Algo overrides the fake 1 min with realistic 4 min
-                processed.badgeClass = "badge-walk";
-                processed.badgeText = "🚶‍♂️ Walk Pace OK (Held upstream)";
-                processed.isCorrected = true;
-                return processed;
-            }
-
-            // Logic C: Normal Operation
-            processed.displayEta = bus.rawEtaMins.toString();
-            processed.badgeClass = "badge-normal";
-            processed.badgeText = "Normal Traffic";
-            return processed;
         }
+        return inferred;
+    }
 
-        // 3. UI RENDERING
-        function renderBusList(data) {
-            const listEl = document.getElementById('bus-list');
-            listEl.innerHTML = ''; // Clear
+    // --- UI RENDERING ---
 
-            data.forEach(bus => {
-                // Pass raw data through your engine
-                const algoBus = applyTransitPulseAlgo(bus);
+    function renderMainList() {
+        const listEl = document.getElementById('bus-list');
+        listEl.innerHTML = '';
+
+        mockMainList.forEach(bus => {
+            const li = document.createElement('li');
+            li.className = 'bus-item';
+            li.onclick = () => openDetail(bus.id, `${bus.route} To ${bus.to}`);
+            
+            li.innerHTML = `
+                <div class="route-number">${bus.route}</div>
+                <div class="route-details">
+                    <div class="destination">To ${bus.to}</div>
+                    <div class="stop-name">Lo Uk Tsuen</div>
+                </div>
+                <div class="eta-time" style="color: var(--brand-red);">${bus.rawEta}<span style="font-size:0.8rem; margin-left:2px;">min</span></div>
+            `;
+            listEl.appendChild(li);
+        });
+    }
+
+    function renderDetailTimeline(routeId) {
+        const container = document.getElementById('timeline-list');
+        container.innerHTML = '';
+        const stops = mockRouteDetails[routeId] || mockRouteDetails['3m_muiwo'];
+
+        stops.forEach((stop, i) => {
+            const isCurrent = i === 0;
+            const algoData = inferRouteData(stop, isCurrent);
+            
+            let badgesHTML = '';
+            let etaHTML = '';
+
+            if (isCurrent) {
+                if (algoData.capacityMsg) badgesHTML += `<div class="smart-badge badge-capacity">${algoData.capacityMsg}</div>`;
+                if (algoData.delayMsg) badgesHTML += `<div class="smart-badge badge-wait">${algoData.delayMsg}</div>`;
                 
-                // Color formatting for ETA
-                const etaColor = algoBus.displayEta === "-" ? "var(--text-light)" : "var(--brand-red)";
-                const originalStrike = algoBus.isCorrected ? `<span style="text-decoration: line-through; font-size: 0.8rem; color: #9ca3af; margin-right: 4px;">${bus.rawEtaMins}</span>` : '';
-
-                const li = document.createElement('li');
-                li.className = 'bus-item';
-                li.innerHTML = `
-                    <div class="route-number">${algoBus.route}</div>
-                    <div class="route-details">
-                        <div class="destination">To ${algoBus.to}</div>
-                        <div class="stop-name">${algoBus.stop}</div>
-                        <div class="smart-badge ${algoBus.badgeClass}">${algoBus.badgeText}</div>
-                    </div>
-                    <div class="eta-container">
-                        <div class="eta-time" style="color: ${etaColor};">${originalStrike}${algoBus.displayEta}<span class="eta-unit">min</span></div>
+                etaHTML = `
+                    <div class="eta-block">
+                        <div class="eta-row">
+                            <span>Inferred True ETA:</span>
+                            <span class="eta-corrected">${algoData.correctedEta} min</span>
+                        </div>
+                        <div class="eta-row">
+                            <span>Official App Data:</span>
+                            <span class="eta-raw">${stop.rawEta} min</span>
+                        </div>
                     </div>
                 `;
-                listEl.appendChild(li);
-            });
-        }
-
-        // 4. GEOLOCATION INITIALIZATION
-        function initApp() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        // Success
-                        document.getElementById('gps-status').innerText = "Live";
-                        document.getElementById('loading').style.display = "none";
-                        document.getElementById('location-bar').style.display = "flex";
-                        
-                        // In reality: Fetch stop by lat/lon. Here, we mock Lo Uk Tsuen.
-                        document.getElementById('current-stop').innerText = "Lo Uk Tsuen";
-                        
-                        renderBusList(mockRawData);
-                    },
-                    (error) => {
-                        // Handle failure
-                        document.getElementById('gps-status').innerText = "GPS Error";
-                        document.getElementById('loading').style.display = "none";
-                        document.getElementById('error').style.display = "block";
-                        document.getElementById('error').innerText = "Could not access location. Please enable GPS.";
-                    },
-                    { enableHighAccuracy: true, timeout: 5000 }
-                );
-            } else {
-                document.getElementById('loading').innerText = "Geolocation not supported by browser.";
             }
-        }
 
-        // Boot
-        initApp();
-    </script>
+            const item = document.createElement('div');
+            item.className = `timeline-item ${isCurrent ? 'active' : ''}`;
+            item.innerHTML = `
+                <div class="timeline-dot"></div>
+                <div class="stop-info">
+                    <div class="stop-index">${stop.index}. ${stop.name}</div>
+                    ${badgesHTML}
+                    ${etaHTML}
+                </div>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    // --- NAVIGATION LOGIC ---
+    
+    const viewMain = document.getElementById('view-main');
+    const viewDetail = document.getElementById('view-detail');
+    const btnBack = document.getElementById('btn-back');
+
+    function openDetail(routeId, title) {
+        document.getElementById('detail-title').innerText = title;
+        renderDetailTimeline(routeId);
+        
+        viewMain.style.transform = 'translateX(-30%)';
+        viewDetail.style.transform = 'translateX(0)';
+        btnBack.style.display = 'block';
+    }
+
+    btnBack.onclick = () => {
+        viewMain.style.transform = 'translateX(0)';
+        viewDetail.style.transform = 'translateX(100%)';
+        setTimeout(() => { btnBack.style.display = 'none'; }, 300);
+    };
+
+    // Boot
+    renderMainList();
+</script>
 </body>
 </html>
