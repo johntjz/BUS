@@ -60,14 +60,45 @@
   }
 
   .stop-header {
-    padding: 14px 20px;
+    padding: 12px 20px;
     border-bottom: 1px solid var(--card-border);
-    font-size: 0.95rem;
-    font-weight: 600;
     display: flex;
     justify-content: space-between;
     align-items: center;
     background-color: var(--bg-color);
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .stop-selector-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 240px;
+  }
+
+  .stop-select {
+    background: #2c2c2e;
+    color: #fff;
+    border: 1px solid #3a3a3c;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    outline: none;
+    max-width: 200px;
+  }
+
+  .stop-input {
+    background: #2c2c2e;
+    color: #fff;
+    border: 1px solid #3a3a3c;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    outline: none;
+    width: 110px;
   }
 
   .refresh-timer { font-size: 0.8rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
@@ -179,23 +210,78 @@
 </div>
 
 <div class="stop-header">
-  <span>📍 Lo Uk Tsuen</span>
+  <div class="stop-selector-wrap">
+    <span>📍</span>
+    <select id="stopSelect" class="stop-select" onchange="handleStopSelect(this.value)">
+      <option value="Lo Uk Tsuen">Lo Uk Tsuen (老屋村)</option>
+      <option value="Mui Wo Ferry Pier">Mui Wo Ferry Pier (梅窩碼頭)</option>
+      <option value="Tung Chung">Tung Chung Town Centre (東涌)</option>
+      <option value="Tat Tung Road">Tung Chung Tat Tung Rd (達東路)</option>
+      <option value="Tai O">Tai O (大澳)</option>
+      <option value="Ngong Ping">Ngong Ping (昂坪)</option>
+      <option value="Shek Pik">Shek Pik (石壁)</option>
+      <option value="Tong Fuk">Tong Fuk (塘福)</option>
+      <option value="Pui O San Wai">Pui O San Wai (貝澳新圍)</option>
+      <option value="Airport">Airport GTC (機場)</option>
+    </select>
+    <input type="text" id="customStopInput" class="stop-input" placeholder="Custom stop..." onchange="handleCustomStop(this.value)">
+  </div>
   <span class="refresh-timer" id="refreshTimer">Syncing...</span>
 </div>
 
 <div id="routeList">
-  <div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Initializing telemetry...</div>
+  <div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Initializing network telemetry...</div>
 </div>
 
 <script>
   const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
-  const TARGET_STOP_NAME = 'Lo Uk Tsuen';
-  const TARGET_ROUTES = ['3M', '1', '4', '2', '11', 'A35', 'N35', 'N1']; 
   const REFRESH_INTERVAL = 30;
   
+  let currentStopName = localStorage.getItem('selectedNLBStop') || 'Lo Uk Tsuen';
   let countdown = REFRESH_INTERVAL;
   let timerInterval;
   const busStateMap = {};
+
+  // Preset stop selector UI match
+  document.addEventListener('DOMContentLoaded', () => {
+    const selectEl = document.getElementById('stopSelect');
+    const customEl = document.getElementById('customStopInput');
+    
+    let matched = false;
+    for (let option of selectEl.options) {
+      if (option.value.toLowerCase() === currentStopName.toLowerCase()) {
+        selectEl.value = option.value;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      customEl.value = currentStopName;
+    }
+  });
+
+  function handleStopSelect(val) {
+    document.getElementById('customStopInput').value = '';
+    changeStop(val);
+  }
+
+  function handleCustomStop(val) {
+    if (val.trim()) {
+      changeStop(val.trim());
+    }
+  }
+
+  function changeStop(newStop) {
+    currentStopName = newStop;
+    localStorage.setItem('selectedNLBStop', currentStopName);
+    
+    // Clear route cards & state
+    document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Syncing stop telemetry...</div>';
+    for (let key in busStateMap) delete busStateMap[key];
+    
+    countdown = REFRESH_INTERVAL;
+    updateNetworkTelemetry();
+  }
 
   function calculateDistanceKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -251,54 +337,13 @@
   async function updateNetworkTelemetry() {
     try {
       const routeData = await fetchJSON('/route.php?action=list');
-      const relevantRoutes = routeData.routes.filter(r => TARGET_ROUTES.includes(r.routeNo));
+      const allRoutes = routeData.routes;
       
-      const listEl = document.getElementById('routeList');
+      const promises = allRoutes.map(route => processRouteSmartETA(route));
+      await Promise.all(promises);
+
       const loadingEl = document.getElementById('loadingText');
       if (loadingEl) loadingEl.remove();
-
-      for (const route of relevantRoutes) {
-        const destName = route.routeName_e.split('>').pop().trim();
-        const cardId = `route-${route.routeId}`;
-        
-        if (!document.getElementById(cardId)) {
-          listEl.insertAdjacentHTML('beforeend', `
-            <div class="route-card" id="${cardId}" data-smart-mins="9999">
-              <div class="card-main">
-                <div class="route-left">
-                  <div class="route-no">${route.routeNo}</div>
-                  <div class="route-info">
-                    <div class="dest-wrap">
-                      <div class="route-dest">To ${destName}</div>
-                      <div class="compact-occupancy" id="occ-sec-${route.routeId}" style="display:none;">
-                        <div class="bar-segments" id="bars-${route.routeId}">
-                          ${Array(10).fill('<div class="segment"></div>').join('')}
-                        </div>
-                        <span class="occupancy-pct-text" id="pct-${route.routeId}">--%</span>
-                      </div>
-                    </div>
-                    <div class="route-status" id="status-${route.routeId}">Loading telemetry...</div>
-                  </div>
-                </div>
-                <div class="eta-container">
-                  <div class="eta-box">
-                    <span class="eta-label">Official</span>
-                    <span class="official-eta" id="off-${route.routeId}">--</span>
-                  </div>
-                  <div class="eta-box">
-                    <span class="eta-label">Smart</span>
-                    <span class="smart-eta" id="smart-${route.routeId}">--</span>
-                  </div>
-                </div>
-              </div>
-              <div class="inference-row" id="tags-${route.routeId}"></div>
-            </div>
-          `);
-        }
-      }
-
-      const promises = relevantRoutes.map(route => processRouteSmartETA(route));
-      await Promise.all(promises);
 
       sortCards();
 
@@ -309,16 +354,66 @@
 
   async function processRouteSmartETA(route) {
     const routeId = route.routeId;
-    const cardEl = document.getElementById(`route-${routeId}`);
     
     try {
       const stopData = await fetchJSON(`/stop.php?action=list&routeId=${routeId}`);
-      const stops = stopData.stops;
-      const targetIndex = stops.findIndex(s => s.stopName_e.toLowerCase().includes(TARGET_STOP_NAME.toLowerCase()));
+      const stops = stopData.stops || [];
+      
+      // Case-insensitive flexible stop search for any NLB location
+      const targetIndex = stops.findIndex(s => 
+        (s.stopName_e && s.stopName_e.toLowerCase().includes(currentStopName.toLowerCase())) ||
+        (s.stopName_c && s.stopName_c.includes(currentStopName))
+      );
+
+      const cardId = `route-${routeId}`;
+      let cardEl = document.getElementById(cardId);
 
       if (targetIndex === -1) {
         if (cardEl) cardEl.remove();
         return;
+      }
+
+      const destName = route.routeName_e.split('>').pop().trim();
+
+      // Dynamically add card if route serves this stop
+      if (!cardEl) {
+        const listEl = document.getElementById('routeList');
+        const loadingEl = document.getElementById('loadingText');
+        if (loadingEl) loadingEl.remove();
+
+        listEl.insertAdjacentHTML('beforeend', `
+          <div class="route-card" id="${cardId}" data-smart-mins="9999">
+            <div class="card-main">
+              <div class="route-left">
+                <div class="route-no">${route.routeNo}</div>
+                <div class="route-info">
+                  <div class="dest-wrap">
+                    <div class="route-dest">To ${destName}</div>
+                    <div class="compact-occupancy" id="occ-sec-${routeId}" style="display:none;">
+                      <div class="bar-segments" id="bars-${routeId}">
+                        ${Array(10).fill('<div class="segment"></div>').join('')}
+                      </div>
+                      <span class="occupancy-pct-text" id="pct-${routeId}">--%</span>
+                    </div>
+                  </div>
+                  <div class="route-status" id="status-${routeId}">Loading telemetry...</div>
+                </div>
+              </div>
+              <div class="eta-container">
+                <div class="eta-box">
+                  <span class="eta-label">Official</span>
+                  <span class="official-eta" id="off-${routeId}">--</span>
+                </div>
+                <div class="eta-box">
+                  <span class="eta-label">Smart</span>
+                  <span class="smart-eta" id="smart-${routeId}">--</span>
+                </div>
+              </div>
+            </div>
+            <div class="inference-row" id="tags-${routeId}"></div>
+          </div>
+        `);
+        cardEl = document.getElementById(cardId);
       }
 
       const statusEl = document.getElementById(`status-${routeId}`);
@@ -332,12 +427,12 @@
       const targetStop = stops[targetIndex];
       const upstreamStop = targetIndex > 0 ? stops[targetIndex - 1] : null;
 
-      const targetReq = fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${targetStop.stopId}&language=en`);
-      const upstreamReq = upstreamStop 
-        ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${upstreamStop.stopId}&language=en`)
-        : Promise.resolve(null);
-
-      const [targetEtaRes, upstreamEtaRes] = await Promise.all([targetReq, upstreamReq]);
+      const [targetEtaRes, upstreamEtaRes] = await Promise.all([
+        fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${targetStop.stopId}&language=en`),
+        upstreamStop 
+          ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${upstreamStop.stopId}&language=en`)
+          : Promise.resolve(null)
+      ]);
 
       if (!targetEtaRes.estimatedArrivals || targetEtaRes.estimatedArrivals.length === 0) {
         setEmptyState(cardEl, offEl, smartEl, statusEl, tagsEl, occSecEl);
@@ -345,55 +440,33 @@
       }
 
       const now = Date.now();
-      let activeBus = null;
-      let activeBusIndex = 0;
-      let currentRemainingMs = 0;
-      let currentServerTime = null;
-
-      // Filter out buses that have passed based on client ticking
-      for (let i = 0; i < targetEtaRes.estimatedArrivals.length; i++) {
-        const rawBus = targetEtaRes.estimatedArrivals[i];
-        const serverTime = new Date(rawBus.generateTime.replace(/-/g, '/'));
-        const arrivalTime = new Date(rawBus.estimatedArrivalTime.replace(/-/g, '/'));
-        
-        let elapsedSinceGenerate = now - serverTime.getTime();
-        if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) {
-          elapsedSinceGenerate = 0; 
-        }
-
-        const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
-        
-        // Anti-Lag Fix: If bus is >40 seconds past due, assume it departed and shift to next.
-        if (remainingMs > -40000) {
-          activeBus = rawBus;
-          activeBusIndex = i;
-          currentRemainingMs = remainingMs;
-          currentServerTime = serverTime;
-          break;
-        }
+      
+      // FIX 1: Strictly track index 0 (immediate arriving bus) to prevent jumping to Bus #2
+      const activeBus = targetEtaRes.estimatedArrivals[0];
+      const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
+      const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
+      const busArrivalTimeId = activeBus.estimatedArrivalTime;
+      
+      let elapsedSinceGenerate = now - serverTime.getTime();
+      if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) {
+        elapsedSinceGenerate = 0; 
       }
 
-      if (!activeBus) {
-        setEmptyState(cardEl, offEl, smartEl, statusEl, tagsEl, occSecEl);
-        return;
-      }
-
-      const rawEtaMins = Math.max(0, Math.floor(currentRemainingMs / 60000));
+      const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
+      const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
       
       let smartMins = rawEtaMins;
       let reasonTags = [];
-      const destName = route.routeName_e.split('>').pop().trim();
       const destNameLower = destName.toLowerCase();
 
-      // Mui Wo specific delay observation (Sewage Plant Traffic Light)
+      // Mui Wo specific delay observation (Sewage Plant Traffic Signal / Dwell)
       if (destNameLower.includes('mui wo') && rawEtaMins <= 3 && rawEtaMins > 0) {
          smartMins = Math.max(smartMins, rawEtaMins + 1);
          reasonTags.push(`<span class="tag orange">Traffic Signal</span>`);
       }
 
-      // Pass the remaining un-departed array slice to occupancy calculator
-      const activeArrivals = targetEtaRes.estimatedArrivals.slice(activeBusIndex);
-      const { pct, activeBars } = calculateOccupancy(destName, activeArrivals);
+      // Occupancy Gauge
+      const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals);
       
       let colorClass = 'active-green';
       if (pct > 75) colorClass = 'active-red';
@@ -410,9 +483,9 @@
 
       const busKey = routeId;
       const prevState = busStateMap[busKey];
-      const isNewBus = prevState && (rawEtaMins - prevState.rawEtaMins > 10);
+      const isSameBus = prevState && prevState.busArrivalTimeId === busArrivalTimeId;
 
-      // Upstream Processing
+      // Processing & Anti-Jump Logic
       if (rawEtaMins > 0) {
         if (upstreamStop && upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
           const upBus = upstreamEtaRes.estimatedArrivals[0];
@@ -432,7 +505,7 @@
           }
         }
 
-        if (prevState && !isNewBus) {
+        if (isSameBus) {
           const elapsedMins = (now - prevState.timestamp) / 60000;
           const expectedSmart = prevState.smartMins - elapsedMins;
           
@@ -450,11 +523,20 @@
               reasonTags.push(`<span class="tag yellow">Traffic Delay</span>`);
             }
           }
+        } else if (prevState && prevState.smartMins <= 1 && rawEtaMins > 5) {
+          // FIX 2: Grace period when active bus departs and API switches to next bus (e.g., 13 mins away)
+          // Holds "Due" for 25s while bus is physically passing the stop
+          const timeSincePreviousDue = (now - prevState.timestamp) / 1000;
+          if (timeSincePreviousDue < 25) {
+            smartMins = 0;
+            reasonTags.push(`<span class="tag green">At Stop</span>`);
+          }
         }
-        busStateMap[busKey] = { timestamp: now, rawEtaMins, smartMins };
+
+        busStateMap[busKey] = { timestamp: now, rawEtaMins, smartMins, busArrivalTimeId };
       } else {
         smartMins = 0;
-        if (!isNewBus) busStateMap[busKey] = { timestamp: now, rawEtaMins: 0, smartMins: 0 };
+        busStateMap[busKey] = { timestamp: now, rawEtaMins: 0, smartMins: 0, busArrivalTimeId };
       }
 
       // DOM Updates
@@ -469,19 +551,17 @@
         smartEl.className = smartMins > rawEtaMins ? 'smart-eta adjusted' : 'smart-eta';
       }
 
-      const gpsTag = activeBus.noGPS === 1 
-        ? `<span class="tag yellow">Scheduled</span>` 
-        : `<span class="tag green">Live GPS</span>`;
-      
-      tagsEl.innerHTML = `${gpsTag} ${reasonTags.join(' ')}`;
+      // FIX 3: Removed redundant "Live GPS" tag per request
+      tagsEl.innerHTML = reasonTags.join(' ');
       
       const localTimeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-      const serverTimeString = currentServerTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      const serverTimeString = serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
       statusEl.innerText = `Sync: ${localTimeString} | API: ${serverTimeString}`;
 
     } catch (err) {
       const statusEl = document.getElementById(`status-${routeId}`);
       if (statusEl) statusEl.innerText = 'Telemetry sync failed';
+      const cardEl = document.getElementById(`route-${routeId}`);
       if (cardEl) cardEl.dataset.smartMins = 9999;
     }
   }
