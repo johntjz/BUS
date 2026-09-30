@@ -16,6 +16,7 @@
     --accent-blue: #0a84ff;
     --accent-yellow: #ffd60a;
     --accent-orange: #ff9f0a;
+    --accent-purple: #bf5af2;
   }
   
   body {
@@ -130,6 +131,7 @@
   .tag.green { color: var(--accent-green); border-color: rgba(48, 209, 88, 0.3); }
   .tag.orange { color: var(--accent-orange); border-color: rgba(255, 159, 10, 0.3); }
   .tag.yellow { color: var(--accent-yellow); border-color: rgba(255, 214, 10, 0.3); }
+  .tag.purple { color: var(--accent-purple); border-color: rgba(191, 90, 242, 0.3); }
 </style>
 </head>
 <body>
@@ -151,7 +153,6 @@
 <script>
   const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
   const TARGET_STOP_NAME = 'Lo Uk Tsuen';
-  // Included N1, N35, and A35 per requirements
   const TARGET_ROUTES = ['3M', '1', '4', '2', '11', 'A35', 'N35', 'N1']; 
   const REFRESH_INTERVAL = 30;
   
@@ -167,6 +168,15 @@
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
               Math.sin(dLon/2) * Math.sin(dLon/2);
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // Time-of-day heuristic fallback if no 2nd bus is scheduled
+  function getFallbackOccupancy(routeNo, destName) {
+    const h = new Date().getHours();
+    const dest = destName.toLowerCase();
+    if (h >= 7 && h <= 9 && (dest.includes('tung chung') || dest.includes('mui wo'))) return 'orange';
+    if (h >= 17 && h <= 19 && !dest.includes('tung chung')) return 'orange';
+    return 'green';
   }
 
   async function fetchJSON(endpoint) {
@@ -233,10 +243,8 @@
     try {
       const stopData = await fetchJSON(`/stop.php?action=list&routeId=${routeId}`);
       const stops = stopData.stops;
-      
       const targetIndex = stops.findIndex(s => s.stopName_e.toLowerCase().includes(TARGET_STOP_NAME.toLowerCase()));
 
-      // DYNAMIC CLEANUP: If the bus route variant does not stop here, destroy the DOM element entirely
       if (targetIndex === -1) {
         if (cardEl) cardEl.remove();
         return;
@@ -274,6 +282,30 @@
       let smartMins = rawEtaMins;
       let reasonTags = [];
 
+      // 1. Occupancy Inference (Headway Compression Math)
+      if (targetEtaRes.estimatedArrivals.length > 1) {
+        const bus2 = targetEtaRes.estimatedArrivals[1];
+        const arrTime2 = new Date(bus2.estimatedArrivalTime.replace(/-/g, '/'));
+        const rawEtaMins2 = Math.max(0, Math.floor((arrTime2 - serverTime) / 60000));
+        
+        const headwayGap = rawEtaMins2 - rawEtaMins;
+        
+        if (headwayGap <= 12) {
+          reasonTags.push(`<span class="tag purple">High Load (Bunching)</span>`);
+        } else if (headwayGap >= 25) {
+          reasonTags.push(`<span class="tag orange">High Load (Wide Gap)</span>`);
+        } else {
+          reasonTags.push(`<span class="tag green">Normal Load</span>`);
+        }
+      } else {
+        // Fallback heuristic if no 2nd bus is listed
+        const destName = route.routeName_e.split('>').pop().trim();
+        const fbColor = getFallbackOccupancy(route.routeNo, destName);
+        const fbText = fbColor === 'orange' ? 'Likely Standing' : 'Probable Seats';
+        reasonTags.push(`<span class="tag ${fbColor}">${fbText} (Time Est.)</span>`);
+      }
+
+      // 2. Spatial & Delay Logic
       if (rawEtaMins <= 2) {
         smartMins = rawEtaMins;
       } else {
@@ -299,7 +331,6 @@
           }
         }
 
-        // Delay Calculation Logic
         if (prevState) {
           const elapsedMins = (now - prevState.timestamp) / 60000;
           const rawDecay = prevState.rawEtaMins - rawEtaMins;
@@ -307,13 +338,13 @@
 
           if (decayRate < 0.3 && rawEtaMins > 3) {
             smartMins = Math.min(rawEtaMins + 3, smartMins + 2);
-            reasonTags.push(`<span class="tag orange">Minor Delay</span>`);
+            reasonTags.push(`<span class="tag yellow">Minor Delay</span>`);
           }
         }
-
         busStateMap[busKey] = { timestamp: now, rawEtaMins, smartMins };
       }
 
+      // 3. UI Updates
       cardEl.dataset.smartMins = smartMins;
       offEl.innerText = rawEtaMins === 0 ? 'Due' : `${rawEtaMins}m`;
 
