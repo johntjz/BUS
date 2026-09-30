@@ -340,35 +340,60 @@
       const [targetEtaRes, upstreamEtaRes] = await Promise.all([targetReq, upstreamReq]);
 
       if (!targetEtaRes.estimatedArrivals || targetEtaRes.estimatedArrivals.length === 0) {
-        cardEl.dataset.smartMins = 9999;
-        offEl.innerText = '--';
-        smartEl.innerText = '--';
-        statusEl.innerText = 'No upcoming departures';
-        tagsEl.innerHTML = '';
-        if (occSecEl) occSecEl.style.display = 'none';
+        setEmptyState(cardEl, offEl, smartEl, statusEl, tagsEl, occSecEl);
         return;
       }
 
-      const rawBus = targetEtaRes.estimatedArrivals[0];
       const now = Date.now();
-      const serverTime = new Date(rawBus.generateTime.replace(/-/g, '/'));
-      const arrivalTime = new Date(rawBus.estimatedArrivalTime.replace(/-/g, '/'));
-      
-      // Client-side ticking interpolation to prevent "stuck at 1 minute" if API caches payload
-      let elapsedSinceGenerate = now - serverTime.getTime();
-      if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) {
-        elapsedSinceGenerate = 0; // Guard against heavy device clock desync
+      let activeBus = null;
+      let activeBusIndex = 0;
+      let currentRemainingMs = 0;
+      let currentServerTime = null;
+
+      // Filter out buses that have passed based on client ticking
+      for (let i = 0; i < targetEtaRes.estimatedArrivals.length; i++) {
+        const rawBus = targetEtaRes.estimatedArrivals[i];
+        const serverTime = new Date(rawBus.generateTime.replace(/-/g, '/'));
+        const arrivalTime = new Date(rawBus.estimatedArrivalTime.replace(/-/g, '/'));
+        
+        let elapsedSinceGenerate = now - serverTime.getTime();
+        if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) {
+          elapsedSinceGenerate = 0; 
+        }
+
+        const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
+        
+        // Anti-Lag Fix: If bus is >40 seconds past due, assume it departed and shift to next.
+        if (remainingMs > -40000) {
+          activeBus = rawBus;
+          activeBusIndex = i;
+          currentRemainingMs = remainingMs;
+          currentServerTime = serverTime;
+          break;
+        }
       }
 
-      const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
-      const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
+      if (!activeBus) {
+        setEmptyState(cardEl, offEl, smartEl, statusEl, tagsEl, occSecEl);
+        return;
+      }
+
+      const rawEtaMins = Math.max(0, Math.floor(currentRemainingMs / 60000));
       
       let smartMins = rawEtaMins;
       let reasonTags = [];
-
-      // Occupancy Display
       const destName = route.routeName_e.split('>').pop().trim();
-      const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals);
+      const destNameLower = destName.toLowerCase();
+
+      // Mui Wo specific delay observation (Sewage Plant Traffic Light)
+      if (destNameLower.includes('mui wo') && rawEtaMins <= 3 && rawEtaMins > 0) {
+         smartMins = Math.max(smartMins, rawEtaMins + 1);
+         reasonTags.push(`<span class="tag orange">Traffic Signal</span>`);
+      }
+
+      // Pass the remaining un-departed array slice to occupancy calculator
+      const activeArrivals = targetEtaRes.estimatedArrivals.slice(activeBusIndex);
+      const { pct, activeBars } = calculateOccupancy(destName, activeArrivals);
       
       let colorClass = 'active-green';
       if (pct > 75) colorClass = 'active-red';
@@ -383,7 +408,6 @@
       pctEl.style.color = pct > 75 ? 'var(--accent-red)' : (pct > 45 ? 'var(--accent-orange)' : 'var(--accent-green)');
       occSecEl.style.display = 'flex';
 
-      // Advanced State Tracking (using routeId to persist across API ETA modifications)
       const busKey = routeId;
       const prevState = busStateMap[busKey];
       const isNewBus = prevState && (rawEtaMins - prevState.rawEtaMins > 10);
@@ -410,21 +434,19 @@
 
         if (prevState && !isNewBus) {
           const elapsedMins = (now - prevState.timestamp) / 60000;
-          
-          // Anti-Jump Smoothing (prevents sudden plummets e.g. 4m down to 1m instantly)
           const expectedSmart = prevState.smartMins - elapsedMins;
-          if (smartMins < expectedSmart - 1) { 
+          
+          if (smartMins < expectedSmart - 1 && !reasonTags.join('').includes('Traffic Signal')) { 
             smartMins = Math.ceil(expectedSmart - 0.5);
             reasonTags.push(`<span class="tag purple">Signal Smoothed</span>`);
           }
 
-          // Slow Decay / Delay Detection
           const rawDecay = prevState.rawEtaMins - rawEtaMins;
           const decayRate = elapsedMins > 0 ? (rawDecay / elapsedMins) : 1;
           
           if (decayRate < 0.2 && rawEtaMins > 2) {
             smartMins = Math.max(smartMins, Math.min(rawEtaMins + 2, prevState.smartMins));
-            if (!reasonTags.join('').includes('Smoothed')) {
+            if (!reasonTags.join('').includes('Smoothed') && !reasonTags.join('').includes('Traffic Signal')) {
               reasonTags.push(`<span class="tag yellow">Traffic Delay</span>`);
             }
           }
@@ -447,14 +469,14 @@
         smartEl.className = smartMins > rawEtaMins ? 'smart-eta adjusted' : 'smart-eta';
       }
 
-      const gpsTag = rawBus.noGPS === 1 
+      const gpsTag = activeBus.noGPS === 1 
         ? `<span class="tag yellow">Scheduled</span>` 
         : `<span class="tag green">Live GPS</span>`;
       
       tagsEl.innerHTML = `${gpsTag} ${reasonTags.join(' ')}`;
       
       const localTimeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-      const serverTimeString = serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      const serverTimeString = currentServerTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
       statusEl.innerText = `Sync: ${localTimeString} | API: ${serverTimeString}`;
 
     } catch (err) {
@@ -462,6 +484,15 @@
       if (statusEl) statusEl.innerText = 'Telemetry sync failed';
       if (cardEl) cardEl.dataset.smartMins = 9999;
     }
+  }
+  
+  function setEmptyState(cardEl, offEl, smartEl, statusEl, tagsEl, occSecEl) {
+    if(cardEl) cardEl.dataset.smartMins = 9999;
+    if(offEl) offEl.innerText = '--';
+    if(smartEl) smartEl.innerText = '--';
+    if(statusEl) statusEl.innerText = 'No upcoming departures';
+    if(tagsEl) tagsEl.innerHTML = '';
+    if(occSecEl) occSecEl.style.display = 'none';
   }
 
   function sortCards() {
