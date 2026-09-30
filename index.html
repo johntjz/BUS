@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TransitPulse HK - Smart ETA</title>
+    <style>
+        :root {
+            --brand-red: #E31837;
+            --bg-gray: #F4F5F7;
+            --text-dark: #1A1A1A;
+            --text-light: #757575;
+            --walk-green: #0E9F6E;
+            --sprint-orange: #D03801;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        
+        body { background-color: var(--bg-gray); -webkit-font-smoothing: antialiased; }
+        
+        /* Header */
+        header { background-color: var(--brand-red); color: white; padding: 20px 16px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .title { font-size: 1.2rem; font-weight: 700; }
+        .status { font-size: 0.85rem; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 4px; }
+        
+        /* Location Bar */
+        .location-bar { background-color: white; padding: 12px 16px; border-bottom: 1px solid #E5E7EB; display: flex; align-items: center; font-weight: 600; color: var(--text-dark); }
+        .location-bar svg { width: 18px; height: 18px; margin-right: 8px; fill: var(--brand-red); }
+
+        /* Bus List */
+        .bus-list { list-style: none; padding-bottom: 80px; }
+        .bus-item { background: white; margin-bottom: 1px; padding: 16px; display: flex; align-items: center; }
+        
+        .route-number { width: 60px; font-size: 1.5rem; font-weight: 800; color: var(--text-dark); }
+        
+        .route-details { flex-grow: 1; display: flex; flex-direction: column; padding-right: 12px; }
+        .destination { font-size: 1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 4px; }
+        .stop-name { font-size: 0.8rem; color: var(--text-light); }
+        
+        .eta-container { text-align: right; min-width: 80px; }
+        .eta-time { font-size: 1.5rem; font-weight: 700; color: var(--brand-red); display: flex; align-items: baseline; justify-content: flex-end; }
+        .eta-unit { font-size: 0.8rem; font-weight: 400; margin-left: 2px; }
+        
+        /* The TransitPulse Smart Badges */
+        .smart-badge { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 4px 8px; border-radius: 12px; margin-top: 4px; }
+        .badge-walk { background-color: #DEF7EC; color: var(--walk-green); }
+        .badge-wait { background-color: #FDE8E8; color: var(--sprint-orange); }
+        .badge-normal { color: var(--text-light); font-weight: 400; }
+        
+        /* Loading & Error States */
+        #loading, #error { padding: 40px 20px; text-align: center; color: var(--text-light); }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid var(--brand-red); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 0 auto 16px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-top">
+            <div class="title">TransitPulse HK</div>
+            <div class="status" id="gps-status">Locating...</div>
+        </div>
+    </header>
+
+    <div class="location-bar" id="location-bar" style="display: none;">
+        <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        <span id="current-stop">Nearest Stop</span>
+    </div>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        Acquiring GPS and scanning local stops...
+    </div>
+    
+    <div id="error" style="display: none;"></div>
+
+    <ul class="bus-list" id="bus-list">
+        <!-- Rendered via JS -->
+    </ul>
+
+    <script>
+        // 1. MOCK DATA (Simulating KMB/NLB API Response for Lo Uk Tsuen)
+        const mockRawData = [
+            { route: '3M', to: 'Mui Wo Ferry Pier', stop: 'Lo Uk Tsuen', rawEtaMins: 10 },
+            { route: '3M', to: 'Tung Chung Station', stop: 'Lo Uk Tsuen', rawEtaMins: 1 }, // Will trigger anti-sprint algo
+            { route: '1', to: 'Tai O', stop: 'Lo Uk Tsuen', rawEtaMins: 9 },
+            { route: '1', to: 'Mui Wo Ferry Pier', stop: 'Lo Uk Tsuen', rawEtaMins: 13 },
+            { route: '4', to: 'Tong Fuk', stop: 'Lo Uk Tsuen', rawEtaMins: -1 } // -1 indicates scheduled/dash
+        ];
+
+        // 2. THE TRANSITPULSE ALGORITHM ENGINE
+        // This is where your IP lives. It intercepts raw operator data before rendering.
+        function applyTransitPulseAlgo(bus) {
+            let processed = { ...bus };
+            
+            // Logic A: The "Ghost Bus / Dash" Fix
+            if (bus.rawEtaMins < 0) {
+                processed.displayEta = "-";
+                processed.badgeClass = "badge-normal";
+                processed.badgeText = "Scheduled / Unknown";
+                return processed;
+            }
+
+            // Logic B: The "1-Minute Sprint Trap" Fix
+            if (bus.rawEtaMins <= 2) {
+                // In a real app, you check historical velocity here. 
+                // For MVP, we simulate detecting a corrupted approach lock.
+                processed.displayEta = "4"; // Algo overrides the fake 1 min with realistic 4 min
+                processed.badgeClass = "badge-walk";
+                processed.badgeText = "🚶‍♂️ Walk Pace OK (Held upstream)";
+                processed.isCorrected = true;
+                return processed;
+            }
+
+            // Logic C: Normal Operation
+            processed.displayEta = bus.rawEtaMins.toString();
+            processed.badgeClass = "badge-normal";
+            processed.badgeText = "Normal Traffic";
+            return processed;
+        }
+
+        // 3. UI RENDERING
+        function renderBusList(data) {
+            const listEl = document.getElementById('bus-list');
+            listEl.innerHTML = ''; // Clear
+
+            data.forEach(bus => {
+                // Pass raw data through your engine
+                const algoBus = applyTransitPulseAlgo(bus);
+                
+                // Color formatting for ETA
+                const etaColor = algoBus.displayEta === "-" ? "var(--text-light)" : "var(--brand-red)";
+                const originalStrike = algoBus.isCorrected ? `<span style="text-decoration: line-through; font-size: 0.8rem; color: #9ca3af; margin-right: 4px;">${bus.rawEtaMins}</span>` : '';
+
+                const li = document.createElement('li');
+                li.className = 'bus-item';
+                li.innerHTML = `
+                    <div class="route-number">${algoBus.route}</div>
+                    <div class="route-details">
+                        <div class="destination">To ${algoBus.to}</div>
+                        <div class="stop-name">${algoBus.stop}</div>
+                        <div class="smart-badge ${algoBus.badgeClass}">${algoBus.badgeText}</div>
+                    </div>
+                    <div class="eta-container">
+                        <div class="eta-time" style="color: ${etaColor};">${originalStrike}${algoBus.displayEta}<span class="eta-unit">min</span></div>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+
+        // 4. GEOLOCATION INITIALIZATION
+        function initApp() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        // Success
+                        document.getElementById('gps-status').innerText = "Live";
+                        document.getElementById('loading').style.display = "none";
+                        document.getElementById('location-bar').style.display = "flex";
+                        
+                        // In reality: Fetch stop by lat/lon. Here, we mock Lo Uk Tsuen.
+                        document.getElementById('current-stop').innerText = "Lo Uk Tsuen";
+                        
+                        renderBusList(mockRawData);
+                    },
+                    (error) => {
+                        // Handle failure
+                        document.getElementById('gps-status').innerText = "GPS Error";
+                        document.getElementById('loading').style.display = "none";
+                        document.getElementById('error').style.display = "block";
+                        document.getElementById('error').innerText = "Could not access location. Please enable GPS.";
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            } else {
+                document.getElementById('loading').innerText = "Geolocation not supported by browser.";
+            }
+        }
+
+        // Boot
+        initApp();
+    </script>
+</body>
+</html>
