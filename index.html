@@ -97,7 +97,7 @@
   .dest-wrap { display: flex; align-items: center; flex-wrap: wrap; column-gap: 10px; row-gap: 4px; }
   .route-dest { font-size: 0.95rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
   
-  .route-status { font-size: 0.75rem; color: var(--text-secondary); }
+  .route-status { font-size: 0.75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
   .eta-container { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
   .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 50px; }
@@ -119,7 +119,6 @@
 
   .smart-eta.adjusted { color: var(--accent-blue); }
 
-  /* Compact Occupancy Gauge Styling inline with Destination */
   .compact-occupancy {
     display: flex;
     align-items: center;
@@ -213,7 +212,6 @@
     const hour = now.getHours();
     const dest = destName.toLowerCase();
 
-    // Time-of-day baseline load
     let baseLoad = 35; 
     if (hour >= 7 && hour <= 9) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 40;
@@ -232,7 +230,7 @@
       const gap = t2 - t1;
 
       if (gap <= 10) {
-        multiplier = 1.95; // High dwell delay from heavy boardings
+        multiplier = 1.95;
       } else {
         multiplier = Math.max(0.4, Math.min(2.1, gap / 15.0));
       }
@@ -272,7 +270,6 @@
                   <div class="route-info">
                     <div class="dest-wrap">
                       <div class="route-dest">To ${destName}</div>
-                      <!-- Compact Occupancy inline -->
                       <div class="compact-occupancy" id="occ-sec-${route.routeId}" style="display:none;">
                         <div class="bar-segments" id="bars-${route.routeId}">
                           ${Array(10).fill('<div class="segment"></div>').join('')}
@@ -353,14 +350,23 @@
       }
 
       const rawBus = targetEtaRes.estimatedArrivals[0];
-      const arrivalTime = new Date(rawBus.estimatedArrivalTime.replace(/-/g, '/'));
+      const now = Date.now();
       const serverTime = new Date(rawBus.generateTime.replace(/-/g, '/'));
-      const rawEtaMins = Math.max(0, Math.floor((arrivalTime - serverTime) / 60000));
+      const arrivalTime = new Date(rawBus.estimatedArrivalTime.replace(/-/g, '/'));
+      
+      // Client-side ticking interpolation to prevent "stuck at 1 minute" if API caches payload
+      let elapsedSinceGenerate = now - serverTime.getTime();
+      if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) {
+        elapsedSinceGenerate = 0; // Guard against heavy device clock desync
+      }
 
+      const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
+      const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
+      
       let smartMins = rawEtaMins;
       let reasonTags = [];
 
-      // Render 10-Bar Occupancy Visual
+      // Occupancy Display
       const destName = route.routeName_e.split('>').pop().trim();
       const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals);
       
@@ -370,26 +376,20 @@
 
       let barHtml = '';
       for (let i = 1; i <= 10; i++) {
-        if (i <= activeBars) {
-          barHtml += `<div class="segment ${colorClass}"></div>`;
-        } else {
-          barHtml += `<div class="segment"></div>`;
-        }
+        barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
       }
-
       barsEl.innerHTML = barHtml;
       pctEl.innerText = `${pct}%`;
       pctEl.style.color = pct > 75 ? 'var(--accent-red)' : (pct > 45 ? 'var(--accent-orange)' : 'var(--accent-green)');
       occSecEl.style.display = 'flex';
 
-      // Spatial & Delay Computation
-      if (rawEtaMins <= 2) {
-        smartMins = rawEtaMins;
-      } else {
-        const busKey = `${routeId}_${rawBus.estimatedArrivalTime}`;
-        const now = Date.now();
-        const prevState = busStateMap[busKey];
+      // Advanced State Tracking (using routeId to persist across API ETA modifications)
+      const busKey = routeId;
+      const prevState = busStateMap[busKey];
+      const isNewBus = prevState && (rawEtaMins - prevState.rawEtaMins > 10);
 
+      // Upstream Processing
+      if (rawEtaMins > 0) {
         if (upstreamStop && upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
           const upBus = upstreamEtaRes.estimatedArrivals[0];
           const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
@@ -408,17 +408,31 @@
           }
         }
 
-        if (prevState) {
+        if (prevState && !isNewBus) {
           const elapsedMins = (now - prevState.timestamp) / 60000;
+          
+          // Anti-Jump Smoothing (prevents sudden plummets e.g. 4m down to 1m instantly)
+          const expectedSmart = prevState.smartMins - elapsedMins;
+          if (smartMins < expectedSmart - 1) { 
+            smartMins = Math.ceil(expectedSmart - 0.5);
+            reasonTags.push(`<span class="tag purple">Signal Smoothed</span>`);
+          }
+
+          // Slow Decay / Delay Detection
           const rawDecay = prevState.rawEtaMins - rawEtaMins;
           const decayRate = elapsedMins > 0 ? (rawDecay / elapsedMins) : 1;
-
-          if (decayRate < 0.3 && rawEtaMins > 3) {
-            smartMins = Math.min(rawEtaMins + 3, smartMins + 2);
-            reasonTags.push(`<span class="tag yellow">Minor Delay</span>`);
+          
+          if (decayRate < 0.2 && rawEtaMins > 2) {
+            smartMins = Math.max(smartMins, Math.min(rawEtaMins + 2, prevState.smartMins));
+            if (!reasonTags.join('').includes('Smoothed')) {
+              reasonTags.push(`<span class="tag yellow">Traffic Delay</span>`);
+            }
           }
         }
         busStateMap[busKey] = { timestamp: now, rawEtaMins, smartMins };
+      } else {
+        smartMins = 0;
+        if (!isNewBus) busStateMap[busKey] = { timestamp: now, rawEtaMins: 0, smartMins: 0 };
       }
 
       // DOM Updates
@@ -438,7 +452,10 @@
         : `<span class="tag green">Live GPS</span>`;
       
       tagsEl.innerHTML = `${gpsTag} ${reasonTags.join(' ')}`;
-      statusEl.innerText = `Updated ${serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      
+      const localTimeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      const serverTimeString = serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      statusEl.innerText = `Sync: ${localTimeString} | API: ${serverTimeString}`;
 
     } catch (err) {
       const statusEl = document.getElementById(`status-${routeId}`);
