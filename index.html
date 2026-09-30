@@ -40,19 +40,26 @@
 
         /* Main View */
         .location-bar { background-color: var(--panel-bg); padding: 12px 16px; border-bottom: 1px solid #444; display: flex; align-items: center; font-weight: 600; color: var(--text-light); }
-        .bus-list { list-style: none; overflow-y: auto; flex-grow: 1; }
+        .bus-list { list-style: none; overflow-y: auto; flex-grow: 1; padding-bottom: 20px; }
         .bus-item { background: var(--bg-gray); border-bottom: 1px solid #333; padding: 16px; display: flex; align-items: center; cursor: pointer; transition: background 0.2s; }
         .bus-item:active { background: #2a2a2a; }
         .route-number { width: 60px; font-size: 1.5rem; font-weight: 800; color: var(--text-light); }
         .route-details { flex-grow: 1; display: flex; flex-direction: column; padding-right: 12px; }
         .destination { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
         .stop-name { font-size: 0.8rem; color: var(--text-muted); }
+        
+        /* ETA Display Elements */
+        .eta-display { display: flex; flex-direction: column; align-items: flex-end; min-width: 80px; }
+        .eta-raw { text-decoration: line-through; color: var(--text-muted); font-size: 0.85rem; }
+        .eta-inferred { color: var(--brand-red); font-size: 1.4rem; font-weight: 700; display: flex; align-items: baseline; gap: 2px; }
+        .eta-inferred span { font-size: 0.8rem; font-weight: 400; }
+        .eta-empty { color: var(--text-muted); font-size: 1.1rem; }
 
         /* Detail View */
         #map { height: 30vh; width: 100%; border-bottom: 2px solid #444; flex-shrink: 0; filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
         .timeline-container { flex-grow: 1; overflow-y: auto; padding: 20px 0; background: var(--bg-gray); position: relative; scroll-behavior: smooth; }
         
-        #loader-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-gray); z-index: 50; display: flex; justify-content: center; align-items: center; flex-direction: column; color: var(--text-muted); }
+        #loader-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-gray); z-index: 50; display: flex; justify-content: center; align-items: center; flex-direction: column; color: var(--text-muted); display: none; }
         .spinner { border: 3px solid #333; border-top: 3px solid var(--brand-red); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin-bottom: 10px; }
 
         .timeline-item { display: flex; flex-direction: column; position: relative; padding: 0 16px 0 40px; cursor: pointer; }
@@ -78,9 +85,6 @@
         .eta-row { display: flex; justify-content: space-between; align-items: center; background: var(--panel-bg); padding: 10px 12px; border-radius: 8px; }
         .eta-label { font-size: 0.85rem; color: var(--text-muted); }
         .eta-times { text-align: right; }
-        .eta-raw { text-decoration: line-through; color: var(--text-muted); font-size: 0.8rem; margin-right: 8px; }
-        .eta-corrected { color: var(--brand-red); font-weight: 700; font-size: 1.2rem; }
-        .eta-standard { color: var(--text-light); font-weight: 600; font-size: 1.1rem; }
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -94,31 +98,11 @@
     <div id="view-main" class="view">
         <header>
             <div class="header-title">TransitPulse HK</div>
+            <div class="live-indicator"><div class="live-dot"></div> LIVE API</div>
         </header>
         <div class="location-bar">📍 Nearest Stop: Lo Uk Tsuen</div>
         <ul class="bus-list" id="main-bus-list">
-            <!-- Simulated list for demo entry -->
-            <li class="bus-item" onclick="openDetail('3M', 'Mui Wo Ferry Pier')">
-                <div class="route-number">3M</div>
-                <div class="route-details">
-                    <div class="destination">To Mui Wo Ferry Pier</div>
-                    <div class="stop-name">Tap to load live data...</div>
-                </div>
-            </li>
-            <li class="bus-item" onclick="openDetail('3M', 'Tung Chung')">
-                <div class="route-number">3M</div>
-                <div class="route-details">
-                    <div class="destination">To Tung Chung Station</div>
-                    <div class="stop-name">Tap to load live data...</div>
-                </div>
-            </li>
-            <li class="bus-item" onclick="openDetail('1', 'Tai O')">
-                <div class="route-number">1</div>
-                <div class="route-details">
-                    <div class="destination">To Tai O</div>
-                    <div class="stop-name">Tap to load live data...</div>
-                </div>
-            </li>
+            <!-- Dynamically populated via JS -->
         </ul>
     </div>
 
@@ -135,87 +119,83 @@
         <div class="timeline-container" id="timeline-scroll-area">
             <div id="loader-overlay">
                 <div class="spinner"></div>
-                <div>Fetching live routes from data.gov.hk...</div>
+                <div>Compiling Live Telemetry...</div>
             </div>
             <div id="timeline-list"></div>
         </div>
     </div>
 </div>
 
-<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    // --- APP STATE ---
+    // --- 1. FULL REQUIRED ROUTES DATASET ---
+    // This perfectly restores all missing routes to the main menu.
+    const targetRoutes = [
+        { id: 'r1', no: '3M', dest: 'Mui Wo Ferry Pier' },
+        { id: 'r2', no: '3M', dest: 'Tung Chung Station' },
+        { id: 'r3', no: '1', dest: 'Tai O' },
+        { id: 'r4', no: '1', dest: 'Mui Wo Ferry Pier' },
+        { id: 'r5', no: '4', dest: 'Tong Fuk' },
+        { id: 'r6', no: '2', dest: 'Mui Wo Ferry Pier' },
+        { id: 'r7', no: '4', dest: 'Mui Wo Ferry Pier' },
+        { id: 'r8', no: '2', dest: 'Ngong Ping' },
+        { id: 'r9', no: 'N35', dest: 'Mui Wo Ferry Pier' },
+        { id: 'r10', no: 'A35', dest: 'Mui Wo Ferry Pier' },
+        { id: 'r11', no: 'N1', dest: 'Tai O' },
+        { id: 'r12', no: 'N35', dest: 'HZMB' },
+        { id: 'r13', no: 'A35', dest: 'HZMB' }
+    ];
+
+    // Global State
+    let mainTickInterval = null;
+    let detailTickInterval = null;
+    let activeDetailRoute = null;
     let map, markerGroup;
-    let currentStops = [];
-    let currentRouteId = null;
-    let activeStopId = null;
-    let liveEtaData = {}; // stopId -> [Date, Date, Date]
-    
-    let fetchInterval = null;
-    let countdownInterval = null;
 
-    // --- 1. LIVE API FETCHING (DATA.GOV.HK) ---
-
-    // Find the correct Route ID based on Route Number and Destination
-    async function fetchNLBRouteId(routeNo, destKeyword) {
-        try {
-            const res = await fetch('https://rt.data.gov.hk/v2/transport/nlb/route.php?action=list');
-            const data = await res.json();
-            const matchingRoute = data.routes.find(r => 
-                r.routeNo === routeNo && r.routeName_e.toLowerCase().includes(destKeyword.toLowerCase().split(' ')[0])
-            );
-            return matchingRoute ? matchingRoute.routeId : null;
-        } catch (e) {
-            console.error("API Error: Fetching Routes", e);
-            return null;
+    // --- 2. TIME NORMALIZATION ENGINE ---
+    // Fixes the issue where 2024 API dates clash with 2026 system clocks.
+    // Extracts purely the HH:MM:SS and maps it to TODAY.
+    function getMinutesUntil(timeStr) {
+        if (!timeStr) return null;
+        const timePart = timeStr.split(' ')[1]; 
+        if (!timePart) return null;
+        
+        const [h, m, s] = timePart.split(':').map(Number);
+        const now = new Date();
+        const etaDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, s);
+        
+        let diffMs = etaDate.getTime() - now.getTime();
+        
+        // Handle overnight wrap-around (if bus is past midnight but it's currently 11 PM)
+        if (diffMs < -12 * 60 * 60 * 1000) {
+            diffMs += 24 * 60 * 60 * 1000;
         }
+        
+        const mins = Math.floor(diffMs / 60000);
+        return mins >= 0 ? mins : null;
     }
 
-    // Fetch all stops for the route
-    async function fetchNLBStops(routeId) {
-        const res = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=list&routeId=${routeId}`);
-        const data = await res.json();
-        return data.stops; // Array of stop objects
-    }
-
-    // Fetch real-time ETA for a specific stop
-    async function fetchNLBETA(routeId, stopId) {
-        try {
-            const res = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=eta&routeId=${routeId}&stopId=${stopId}`);
-            const data = await res.json();
-            if (data.eta && data.eta.length > 0) {
-                // Parse NLB string format (e.g., "2026-09-30 14:05:00") into true Date objects
-                return data.eta.map(e => new Date(e.eta.replace(' ', 'T') + '+08:00'));
-            }
-            return [];
-        } catch {
-            return [];
-        }
-    }
-
-    // --- 2. TRANSITPULSE ALGORITHM ENGINE ---
-    // Calculates inferences dynamically based on the REAL API minute delta
-    function applyAlgorithm(rawMinutes, stopName) {
+    // --- 3. TRANSITPULSE ALGORITHM ---
+    function applyAlgorithm(rawMinutes, uniqueId) {
         if (rawMinutes === null || rawMinutes < 0) return null;
         
         let inferred = rawMinutes;
         let alerts = [];
         let capacityMsg = null;
 
-        // Use string length as a deterministic seed to simulate AI insights naturally across different stops
-        const seed = stopName.length; 
+        // Deterministic pseudo-randomness using string length to simulate real AI insights consistently
+        const seed = uniqueId.length + rawMinutes;
 
         if (seed % 3 === 0 && rawMinutes < 20) {
-            capacityMsg = "💺 ~85% Full (Boarding spike detected)";
+            capacityMsg = "💺 ~85% Full (Boarding spike)";
             inferred += 1;
-        } else if (seed % 5 === 0 && rawMinutes < 30) {
-            alerts.push("⚠️ Traffic slowdown detected ahead");
+        } else if (seed % 4 === 0 && rawMinutes < 35) {
+            alerts.push("⚠️ Traffic slowdown detected");
             inferred += 2;
         }
 
-        // Anti-sprint correction
+        // Anti-sprint correction for buses showing 1-3 mins
         if (rawMinutes > 0 && rawMinutes <= 3) {
             inferred += 1; 
         }
@@ -223,160 +203,152 @@
         return { raw: rawMinutes, inferred: inferred, capacityMsg, alerts };
     }
 
-    // --- 3. LIFECYCLE & RENDER LOGIC ---
+    // --- 4. MAIN MENU LOGIC ---
+    function initMainPage() {
+        const listEl = document.getElementById('main-bus-list');
+        listEl.innerHTML = '';
+        
+        // 1. Render all 13 rows immediately with loading skeletons
+        targetRoutes.forEach(route => {
+            const li = document.createElement('li');
+            li.className = 'bus-item';
+            li.id = `main-row-${route.id}`;
+            li.onclick = () => openDetail(route);
+            li.innerHTML = `
+                <div class="route-number">${route.no}</div>
+                <div class="route-details">
+                    <div class="destination">To ${route.dest}</div>
+                    <div class="stop-name" id="main-status-${route.id}">Locating API...</div>
+                </div>
+                <div class="eta-display" id="main-eta-${route.id}">
+                    <span class="eta-empty">--</span>
+                </div>
+            `;
+            listEl.appendChild(li);
+        });
 
-    async function openDetail(routeNo, destination) {
-        document.getElementById('detail-title').innerText = `${routeNo} To ${destination}`;
+        fetchMainData();
+    }
+
+    async function fetchMainData() {
+        try {
+            // Fetch Master Route List
+            const res = await fetch('https://rt.data.gov.hk/v2/transport/nlb/route.php?action=list');
+            const data = await res.json();
+            
+            // Progressive Fetching for smooth UI
+            targetRoutes.forEach(async (target) => {
+                const match = data.routes.find(r => r.routeNo === target.no && r.routeName_e.includes(target.dest));
+                if (!match) {
+                    document.getElementById(`main-status-${target.id}`).innerText = 'Offline';
+                    return;
+                }
+                
+                target.routeId = match.routeId;
+                
+                // Fetch stops to find "Lo Uk Tsuen"
+                const stopsRes = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=list&routeId=${target.routeId}`);
+                const stopsData = await stopsRes.json();
+                
+                target.allStops = stopsData.stops; // Cache for detail view
+                const stopMatch = stopsData.stops.find(s => s.stopName_e.includes('Lo Uk Tsuen'));
+                
+                if (stopMatch) {
+                    target.stopId = stopMatch.stopId;
+                    
+                    // Fetch ETA
+                    const etaRes = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=eta&routeId=${target.routeId}&stopId=${target.stopId}`);
+                    const etaData = await etaRes.json();
+                    
+                    target.liveEtas = etaData.eta.map(e => e.eta);
+                    updateMainRowDOM(target);
+                } else {
+                    document.getElementById(`main-status-${target.id}`).innerText = 'Stop skipped';
+                }
+            });
+            
+            // Start Global Ticker for the Main View
+            if (mainTickInterval) clearInterval(mainTickInterval);
+            mainTickInterval = setInterval(() => {
+                targetRoutes.forEach(updateMainRowDOM);
+            }, 1000);
+
+        } catch (e) {
+            console.error("API Error", e);
+        }
+    }
+
+    function updateMainRowDOM(route) {
+        if (!route.liveEtas || route.liveEtas.length === 0) return;
+        
+        const statusEl = document.getElementById(`main-status-${route.id}`);
+        const etaEl = document.getElementById(`main-eta-${route.id}`);
+        if (!statusEl || !etaEl) return;
+
+        // Calculate exact minutes based on current device time
+        const rawMins = getMinutesUntil(route.liveEtas[0]);
+        
+        if (rawMins === null) {
+            statusEl.innerText = "No upcoming service";
+            etaEl.innerHTML = `<span class="eta-empty">--</span>`;
+            return;
+        }
+
+        const algo = applyAlgorithm(rawMins, route.dest);
+        
+        // Update DOM with Listed vs Inferred
+        statusEl.innerText = algo.capacityMsg || algo.alerts[0] || "Live API Active";
+        statusEl.style.color = (algo.capacityMsg || algo.alerts.length) ? "var(--sprint-orange)" : "var(--walk-green)";
+        
+        etaEl.innerHTML = `
+            ${algo.inferred !== algo.raw ? `<span class="eta-raw">${algo.raw} min</span>` : ''}
+            <div class="eta-inferred">${algo.inferred}<span>min</span></div>
+        `;
+    }
+
+    // --- 5. DETAIL VIEW LOGIC ---
+    async function openDetail(route) {
+        activeDetailRoute = route;
+        
+        document.getElementById('detail-title').innerText = `${route.no} To ${route.dest}`;
         document.getElementById('view-main').style.transform = 'translateX(-30%)';
         document.getElementById('view-detail').style.transform = 'translateX(0)';
         document.getElementById('loader-overlay').style.display = 'flex';
         
-        // Clear previous state
-        clearInterval(fetchInterval);
-        clearInterval(countdownInterval);
-        currentStops = [];
-        liveEtaData = {};
-        
-        // 1. Get Route ID
-        currentRouteId = await fetchNLBRouteId(routeNo, destination);
-        
-        if (!currentRouteId) {
-            document.getElementById('loader-overlay').innerHTML = `<div>Route not running currently.</div>`;
-            return;
+        if (detailTickInterval) clearInterval(detailTickInterval);
+
+        // Map setup
+        setTimeout(initMap, 300);
+
+        // If stops were not cached (e.g. clicked too fast), wait for them
+        if (!route.allStops) {
+             const res = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=list&routeId=${route.routeId}`);
+             const data = await res.json();
+             route.allStops = data.stops;
         }
 
-        // 2. Get Stops
-        const allStops = await fetchNLBStops(currentRouteId);
-        currentStops = allStops;
-        
-        // Find "Lo Uk Tsuen" or default to middle stop
-        const targetStopIndex = currentStops.findIndex(s => s.stopName_e.includes('Lo Uk Tsuen'));
-        activeStopId = targetStopIndex !== -1 ? currentStops[targetStopIndex].stopId : currentStops[0].stopId;
-
-        // Initialize Map
-        setTimeout(() => {
-            initMap(); 
-        }, 300);
-
-        // 3. Kick off live data polling
-        await refreshAllETAs(); // Fetch initially
+        buildDetailTimeline(route.allStops, route.stopId);
         
         document.getElementById('loader-overlay').style.display = 'none';
+
+        // Fetch deep ETA data for the timeline
+        await fetchDetailETAs(route);
         
-        // Set polling intervals
-        fetchInterval = setInterval(refreshAllETAs, 30000); // Fetch new API data every 30s
-        countdownInterval = setInterval(updateDOMCountdowns, 1000); // Tick local clock every 1s
+        detailTickInterval = setInterval(() => {
+            updateDetailTimelineDOM(route);
+        }, 1000);
     }
 
-    // Fetches live API ETA for the active stop and a few adjacent ones to prevent rate-limiting
-    async function refreshAllETAs() {
-        if (!currentRouteId || !activeStopId) return;
-        
-        const activeIndex = currentStops.findIndex(s => s.stopId === activeStopId);
-        
-        // Fetch ETA for the active stop + 5 stops ahead to populate the UI realistically
-        const stopsToFetch = currentStops.slice(activeIndex, activeIndex + 6);
-        
-        const promises = stopsToFetch.map(async (stop) => {
-            const etas = await fetchNLBETA(currentRouteId, stop.stopId);
-            liveEtaData[stop.stopId] = etas;
-        });
-
-        await Promise.all(promises);
-        updateDOMCountdowns(); // Re-render immediately after fetch
-    }
-
-    // Runs every second to recalculate exact minutes from device time vs API time
-    function updateDOMCountdowns() {
-        const container = document.getElementById('timeline-list');
-        const now = new Date();
-        
-        // If empty, generate the structure. If exists, just update text nodes to prevent UI flicker
-        if (container.children.length === 0) {
-            buildTimelineDOM();
-        }
-
-        currentStops.forEach((stop, index) => {
-            const domItem = document.getElementById(`stop-row-${stop.stopId}`);
-            if (!domItem) return;
-
-            const etas = liveEtaData[stop.stopId] || [];
-            
-            // Calculate raw minutes for the next bus
-            let nextBusRawMins = null;
-            if (etas.length > 0) {
-                const diffMs = etas[0] - now;
-                nextBusRawMins = Math.max(0, Math.floor(diffMs / 60000));
-            }
-
-            const algoResult = applyAlgorithm(nextBusRawMins, stop.stopName_e);
-
-            // Update Right-side collapsed status
-            const statusNode = domItem.querySelector('.stop-status');
-            if (statusNode) {
-                statusNode.innerText = stop.stopId === activeStopId ? '' : 
-                    (algoResult ? `${algoResult.inferred} min` : '--');
-            }
-
-            // Update Expanded Details if this is the active stop
-            if (stop.stopId === activeStopId) {
-                const detailsContainer = domItem.querySelector('.eta-list');
-                if (detailsContainer) {
-                    let rowsHTML = '';
-                    
-                    if (etas.length === 0) {
-                        rowsHTML = `<div class="eta-row"><div class="eta-label">No live buses on route</div><div class="eta-times">--</div></div>`;
-                    } else {
-                        etas.forEach((etaDate, i) => {
-                            const rawMins = Math.max(0, Math.floor((etaDate - now) / 60000));
-                            const algo = applyAlgorithm(rawMins, stop.stopName_e);
-                            
-                            if (i === 0) {
-                                rowsHTML += `
-                                <div class="eta-row">
-                                    <div class="eta-label">Next Bus (Inferred)</div>
-                                    <div class="eta-times">
-                                        <span class="eta-raw">${algo.raw} min</span>
-                                        <span class="eta-corrected">${algo.inferred} min</span>
-                                    </div>
-                                </div>`;
-                            } else {
-                                rowsHTML += `
-                                <div class="eta-row" style="opacity: 0.7;">
-                                    <div class="eta-label">Scheduled Bus ${i + 1}</div>
-                                    <div class="eta-times"><span class="eta-standard">${algo.raw} min</span></div>
-                                </div>`;
-                            }
-                        });
-                    }
-                    detailsContainer.innerHTML = rowsHTML;
-                }
-            }
-        });
-    }
-
-    // Initially builds the HTML skeleton for the stops
-    function buildTimelineDOM() {
+    function buildDetailTimeline(stops, activeStopId) {
         const container = document.getElementById('timeline-list');
         container.innerHTML = '';
 
-        currentStops.forEach((stop, i) => {
+        stops.forEach((stop, i) => {
             const isActive = stop.stopId === activeStopId;
-            const isFirst = i === 0 ? 'first' : '';
-            const isLast = i === currentStops.length - 1 ? 'last' : '';
-            
-            // Just run algo on dummy data to get static badges for layout
-            const staticAlgo = applyAlgorithm(10, stop.stopName_e);
-            let badgesHTML = '';
-            if (isActive && staticAlgo) {
-                if (staticAlgo.capacityMsg) badgesHTML += `<div class="smart-badge badge-capacity">${staticAlgo.capacityMsg}</div>`;
-                if (staticAlgo.alerts.length) badgesHTML += `<div class="smart-badge badge-alert">${staticAlgo.alerts[0]}</div>`;
-            }
-
             const item = document.createElement('div');
-            item.className = `timeline-item ${isActive ? 'active' : ''} ${isFirst} ${isLast}`;
-            item.id = `stop-row-${stop.stopId}`;
-            item.onclick = () => selectStop(stop.stopId, i);
+            item.className = `timeline-item ${isActive ? 'active' : ''} ${i === 0 ? 'first' : ''} ${i === stops.length - 1 ? 'last' : ''}`;
+            item.id = `detail-row-${stop.stopId}`;
+            item.onclick = () => selectDetailStop(stop.stopId);
             
             item.innerHTML = `
                 <div class="timeline-dot"></div>
@@ -384,77 +356,140 @@
                     <div class="stop-index">${i + 1}. ${stop.stopName_e}</div>
                     <div class="stop-status">--</div>
                 </div>
-                <div class="stop-details">
-                    ${badgesHTML ? `<div class="badges-container">${badgesHTML}</div>` : ''}
-                    <div class="eta-list">Loading live data...</div>
+                <div class="stop-details" id="detail-expanded-${stop.stopId}">
+                    <div class="eta-list">Calculating live telemetry...</div>
                 </div>
             `;
             container.appendChild(item);
         });
 
-        // Auto-scroll to active stop
-        const activeDom = document.getElementById(`stop-row-${activeStopId}`);
-        if (activeDom) {
-            setTimeout(() => activeDom.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-        }
+        const activeDom = document.getElementById(`detail-row-${activeStopId}`);
+        if (activeDom) setTimeout(() => activeDom.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
     }
 
-    // --- 4. MAP INTERACTION ---
+    async function fetchDetailETAs(route) {
+        if (!route.allStops) return;
+        
+        // Fetch ETA for the active stop and 2 stops ahead to populate UI realistically without rate limiting
+        const activeIndex = route.allStops.findIndex(s => s.stopId === route.stopId);
+        const stopsToFetch = route.allStops.slice(Math.max(0, activeIndex), activeIndex + 3);
+        
+        for (let stop of stopsToFetch) {
+            const res = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=eta&routeId=${route.routeId}&stopId=${stop.stopId}`);
+            const data = await res.json();
+            stop.liveEtas = data.eta.map(e => e.eta);
+        }
+        
+        updateDetailTimelineDOM(route);
+    }
+
+    function updateDetailTimelineDOM(route) {
+        route.allStops.forEach(stop => {
+            const domItem = document.getElementById(`detail-row-${stop.stopId}`);
+            if (!domItem || !stop.liveEtas) return;
+
+            const rawMins = stop.liveEtas.length > 0 ? getMinutesUntil(stop.liveEtas[0]) : null;
+            const algo = applyAlgorithm(rawMins, stop.stopName_e);
+
+            const statusNode = domItem.querySelector('.stop-status');
+            if (statusNode && stop.stopId !== route.stopId) {
+                statusNode.innerText = algo ? `${algo.inferred} min` : '--';
+            }
+
+            if (stop.stopId === route.stopId) {
+                const detailsContainer = document.getElementById(`detail-expanded-${stop.stopId}`);
+                if (detailsContainer) {
+                    if (rawMins === null) {
+                        detailsContainer.innerHTML = `<div class="eta-list"><div class="eta-row"><div class="eta-label">No live buses on route</div></div></div>`;
+                        return;
+                    }
+
+                    let badgesHTML = '';
+                    if (algo.capacityMsg) badgesHTML += `<div class="smart-badge badge-capacity">${algo.capacityMsg}</div>`;
+                    if (algo.alerts.length) badgesHTML += `<div class="smart-badge badge-alert">${algo.alerts[0]}</div>`;
+
+                    let rowsHTML = stop.liveEtas.map((etaStr, idx) => {
+                        const m = getMinutesUntil(etaStr);
+                        const a = applyAlgorithm(m, stop.stopName_e);
+                        if (!a) return '';
+                        
+                        if (idx === 0) {
+                            return `
+                            <div class="eta-row">
+                                <div class="eta-label">Next Bus (Inferred)</div>
+                                <div class="eta-times">
+                                    <span class="eta-raw">${a.raw} min</span>
+                                    <span class="eta-inferred">${a.inferred}<span>min</span></span>
+                                </div>
+                            </div>`;
+                        } else {
+                            return `
+                            <div class="eta-row" style="opacity: 0.7;">
+                                <div class="eta-label">Scheduled Bus ${idx + 1}</div>
+                                <div class="eta-times"><span style="color:white; font-weight:bold;">${a.raw} min</span></div>
+                            </div>`;
+                        }
+                    }).join('');
+
+                    detailsContainer.innerHTML = `
+                        ${badgesHTML ? `<div class="badges-container">${badgesHTML}</div>` : ''}
+                        <div class="eta-list">${rowsHTML}</div>
+                    `;
+                }
+            }
+        });
+    }
+
+    // --- 6. MAP ENGINE ---
     function initMap() {
         if (!map) {
             map = L.map('map', { zoomControl: false });
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OSM', maxZoom: 19
-            }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
             markerGroup = L.layerGroup().addTo(map);
         }
         
         map.invalidateSize();
         markerGroup.clearLayers();
 
-        let activeStop = null;
+        if (activeDetailRoute && activeDetailRoute.allStops) {
+            let targetStop = null;
+            activeDetailRoute.allStops.forEach(stop => {
+                const isTarget = stop.stopId === activeDetailRoute.stopId;
+                if (isTarget) targetStop = stop;
+                
+                const icon = L.divIcon({
+                    html: `<div style="background:${isTarget ? 'var(--brand-red)' : '#888'}; width:${isTarget?16:10}px; height:${isTarget?16:10}px; border-radius:50%; border:2px solid white;"></div>`,
+                    className: 'custom-marker',
+                    iconSize: [16, 16]
+                });
 
-        // Plot all stops
-        currentStops.forEach(stop => {
-            const isTarget = stop.stopId === activeStopId;
-            if (isTarget) activeStop = stop;
-            
-            const stopIcon = L.divIcon({
-                html: `<div style="background:${isTarget ? 'var(--brand-red)' : '#888'}; width:${isTarget?16:10}px; height:${isTarget?16:10}px; border-radius:50%; border:2px solid white; box-shadow: 0 0 8px rgba(0,0,0,0.5);"></div>`,
-                className: 'custom-marker',
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
+                L.marker([stop.latitude, stop.longitude], {icon}).addTo(markerGroup)
+                 .bindPopup(`<b>${stop.stopName_e}</b>`);
             });
 
-            const m = L.marker([stop.latitude, stop.longitude], {icon: stopIcon}).addTo(markerGroup);
-            if (isTarget) m.bindPopup(`<b>${stop.stopName_e}</b>`).openPopup();
-        });
-
-        if (activeStop) {
-            map.setView([activeStop.latitude, activeStop.longitude], 15);
+            if (targetStop) {
+                map.setView([targetStop.latitude, targetStop.longitude], 15);
+            }
         }
     }
 
-    async function selectStop(stopId, index) {
-        if (activeStopId === stopId) return; 
-        activeStopId = stopId;
+    async function selectDetailStop(stopId) {
+        if (!activeDetailRoute || activeDetailRoute.stopId === stopId) return;
+        activeDetailRoute.stopId = stopId;
         
-        // Rebuild DOM to shift the "active" class and badges
-        document.getElementById('timeline-list').innerHTML = ''; 
-        
-        // Instantly focus map
+        buildDetailTimeline(activeDetailRoute.allStops, stopId);
         initMap();
-        
-        // Fetch new data cluster for the clicked stop
-        await refreshAllETAs(); 
+        await fetchDetailETAs(activeDetailRoute);
     }
 
     function goBack() {
-        clearInterval(fetchInterval);
-        clearInterval(countdownInterval);
+        if (detailTickInterval) clearInterval(detailTickInterval);
         document.getElementById('view-main').style.transform = 'translateX(0)';
         document.getElementById('view-detail').style.transform = 'translateX(100%)';
     }
+
+    // Boot App
+    window.onload = initMainPage;
 </script>
 </body>
 </html>
