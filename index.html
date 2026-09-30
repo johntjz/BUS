@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>TransitPulse HK - Live Analytics</title>
 <style>
   :root {
@@ -21,6 +21,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
   }
 
   .header {
@@ -29,6 +30,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
   
   .header h1 { margin: 0; font-size: 1.2rem; font-weight: 700; }
@@ -62,20 +66,29 @@
   .stop-header {
     padding: 16px 20px;
     border-bottom: 1px solid #3a3a3c;
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background-color: var(--bg-color);
   }
 
-  .refresh-timer { font-size: 0.85rem; color: var(--text-secondary); font-weight: 400; }
+  .refresh-timer { font-size: 0.85rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+  /* Using flexbox for the list container to enable smooth re-ordering */
+  #routeList {
+    display: flex;
+    flex-direction: column;
+  }
 
   .route-card {
     display: flex;
     align-items: center;
     padding: 16px 20px;
     border-bottom: 1px solid #3a3a3c;
+    background-color: var(--bg-color);
+    transition: background-color 0.2s ease;
   }
 
   .route-no { font-size: 1.75rem; font-weight: 900; width: 65px; letter-spacing: -0.5px; }
@@ -86,6 +99,7 @@
 
   .inference-tags {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 2px;
   }
@@ -96,6 +110,7 @@
     border-radius: 4px;
     background: #3a3a3c;
     font-weight: 500;
+    white-space: nowrap;
   }
 
   .tag.high-conf { color: var(--accent-green); border: 1px solid rgba(52, 199, 89, 0.3); }
@@ -105,7 +120,7 @@
   .tag.load-heavy { color: var(--accent-orange); }
   .tag.load-light { color: var(--accent-green); }
 
-  .route-eta { font-size: 1.25rem; font-weight: 600; text-align: right; min-width: 60px; }
+  .route-eta { font-size: 1.25rem; font-weight: 600; text-align: right; min-width: 60px; font-variant-numeric: tabular-nums;}
 </style>
 </head>
 <body>
@@ -116,8 +131,8 @@
 </div>
 
 <div class="stop-header">
-  <span>📍 Nearest Stop: Lo Uk Tsuen</span>
-  <span class="refresh-timer" id="refreshTimer">Updating in 30s</span>
+  <span>📍 Lo Uk Tsuen</span>
+  <span class="refresh-timer" id="refreshTimer">Updating...</span>
 </div>
 
 <div id="routeList">
@@ -128,44 +143,38 @@
   const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
   const TARGET_STOP_NAME = 'Lo Uk Tsuen';
   const TARGET_ROUTES = ['3M', '1', '4', '2', '11']; 
-  const REFRESH_INTERVAL = 30; // seconds
+  const REFRESH_INTERVAL = 30;
+  
   let countdown = REFRESH_INTERVAL;
+  let timerInterval;
 
-  // Inference Algorithm 1: ETA Accuracy Confidence
+  // Inference Model 1: Confidence
   function calculateConfidence(bus) {
-    if (bus.noGPS === 1) return { level: 'low', text: 'Low Confidence (Scheduled)' };
-    if (bus.departed === 0) return { level: 'med', text: 'Med Confidence (At Terminus)' };
-    return { level: 'high', text: 'High Confidence (Live)' };
+    if (bus.noGPS === 1) return { level: 'low', text: 'Scheduled Only' };
+    if (bus.departed === 0) return { level: 'med', text: 'At Terminus' };
+    return { level: 'high', text: 'Live GPS' };
   }
 
-  // Inference Algorithm 2: Probabilistic Occupancy
-  // Since the NLB API lacks load cell or passenger count payloads, occupancy is derived probabilistically.
-  // This evaluates current time against known South Lantau thermodynamic flow limits (commuter vs tourist tidal surges).
+  // Inference Model 2: Occupancy Thermodynamics
   function inferOccupancy(routeNo, destName) {
     const d = new Date();
     const hour = d.getHours();
     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
     const dest = destName.toLowerCase();
     
-    let load = { level: 'light', text: 'Capacity: Probable Seats' };
+    let load = { level: 'light', text: 'Probable Seats' };
 
     if (!isWeekend) {
-      // AM Peak heading to transit hubs (Tung Chung / Mui Wo)
       if (hour >= 7 && hour <= 9 && (dest.includes('tung chung') || dest.includes('mui wo'))) {
-        load = { level: 'heavy', text: 'Capacity: Likely Standing' };
-      }
-      // PM Peak heading back to villages
-      else if (hour >= 17 && hour <= 19 && !dest.includes('tung chung') && !dest.includes('mui wo')) {
-        load = { level: 'heavy', text: 'Capacity: Likely Standing' };
+        load = { level: 'heavy', text: 'Likely Standing' };
+      } else if (hour >= 17 && hour <= 19 && !dest.includes('tung chung') && !dest.includes('mui wo')) {
+        load = { level: 'heavy', text: 'Likely Standing' };
       }
     } else {
-      // Weekend tourist influx to Tai O/Ngong Ping
       if (hour >= 10 && hour <= 14 && (dest.includes('tai o') || dest.includes('ngong ping'))) {
-        load = { level: 'heavy', text: 'Capacity: Near Maximum' };
-      }
-      // Weekend tourist exodus to hubs
-      else if (hour >= 16 && hour <= 19 && (dest.includes('tung chung') || dest.includes('mui wo'))) {
-        load = { level: 'heavy', text: 'Capacity: Near Maximum' };
+        load = { level: 'heavy', text: 'Near Maximum' };
+      } else if (hour >= 16 && hour <= 19 && (dest.includes('tung chung') || dest.includes('mui wo'))) {
+        load = { level: 'heavy', text: 'Near Maximum' };
       }
     }
     return load;
@@ -186,14 +195,15 @@
       const loadingEl = document.getElementById('loadingText');
       if (loadingEl) loadingEl.remove();
 
+      // Step 1: Ensure DOM shells exist for all monitored bindings
       for (const route of relevantRoutes) {
         const destName = route.routeName_e.split('>').pop().trim();
         const cardId = `route-${route.routeId}`;
         
-        // Inject DOM node if it doesn't exist yet
         if (!document.getElementById(cardId)) {
+          // Initialize dataset.etaMins at 9999 so loading elements sit at the bottom
           listEl.insertAdjacentHTML('beforeend', `
-            <div class="route-card" id="${cardId}">
+            <div class="route-card" id="${cardId}" data-eta-mins="9999">
               <div class="route-no">${route.routeNo}</div>
               <div class="route-info">
                 <div class="route-dest">To ${destName}</div>
@@ -204,14 +214,26 @@
             </div>
           `);
         }
-        resolveStopsAndFetchETA(route, destName);
       }
+
+      // Step 2: Fetch all ETA data concurrently to prevent sequential UI waterfalling
+      const fetchPromises = relevantRoutes.map(route => {
+        const destName = route.routeName_e.split('>').pop().trim();
+        return resolveStopsAndFetchETA(route, destName);
+      });
+
+      await Promise.all(fetchPromises);
+      
+      // Step 3: Execute sorting algorithm once all network payloads have resolved
+      sortCards();
+
     } catch (error) {
-      console.error(error);
+      console.error('Core telemetry failure:', error);
     }
   }
 
   async function resolveStopsAndFetchETA(route, destName) {
+    const cardEl = document.getElementById(`route-${route.routeId}`);
     const statusEl = document.getElementById(`status-${route.routeId}`);
     const etaEl = document.getElementById(`eta-${route.routeId}`);
     const tagsEl = document.getElementById(`tags-${route.routeId}`);
@@ -224,6 +246,7 @@
 
       if (!targetStop) {
         statusEl.innerText = 'Stop not serviced on this bound';
+        cardEl.dataset.etaMins = 9999;
         tagsEl.innerHTML = '';
         return;
       }
@@ -238,7 +261,9 @@
         const diffMs = arrivalTime - serverTime;
         const diffMins = Math.floor(diffMs / 60000);
         
-        // Update ETA Display
+        // Push resolved minutes into the DOM dataset for the sorting algorithm
+        cardEl.dataset.etaMins = diffMins;
+
         if (diffMins <= 0) {
            etaEl.innerText = 'Due';
            etaEl.style.color = 'var(--accent-yellow)';
@@ -248,7 +273,6 @@
         }
         statusEl.innerText = `Updated at ${serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
 
-        // Apply Inference Algorithms
         const conf = calculateConfidence(nextBus);
         const load = inferOccupancy(route.routeNo, destName);
 
@@ -257,27 +281,66 @@
           <span class="tag load-${load.level}">${load.text}</span>
         `;
       } else {
+        // No buses scheduled; push to bottom of sorted index
+        cardEl.dataset.etaMins = 9999; 
         etaEl.innerText = '--';
         etaEl.style.color = 'var(--text-primary)';
         statusEl.innerText = 'No upcoming departures';
         tagsEl.innerHTML = '';
       }
     } catch (error) {
+      cardEl.dataset.etaMins = 9999;
       statusEl.innerText = 'Telemetry sync failed';
     }
   }
 
-  // Polling & Countdown Loop
-  updateNetworkTelemetry();
-  
-  setInterval(() => {
-    countdown--;
-    if (countdown <= 0) {
+  // DOM Sorting Mechanism
+  function sortCards() {
+    const listEl = document.getElementById('routeList');
+    const cards = Array.from(listEl.querySelectorAll('.route-card'));
+    
+    // Sort array natively by integers
+    cards.sort((a, b) => {
+      const valA = parseInt(a.dataset.etaMins, 10);
+      const valB = parseInt(b.dataset.etaMins, 10);
+      return valA - valB;
+    });
+    
+    // Re-appending existing nodes in sorted order prevents redrawing and flickering
+    cards.forEach(card => listEl.appendChild(card));
+  }
+
+  // Mobile Web Environment Handlers
+  function startTimer() {
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        countdown = REFRESH_INTERVAL;
+        document.getElementById('refreshTimer').innerText = 'Updating...';
+        updateNetworkTelemetry();
+      } else {
+        document.getElementById('refreshTimer').innerText = `Updating in ${countdown}s`;
+      }
+    }, 1000);
+  }
+
+  // Prevent intervals from desyncing when Safari/Chrome puts tabs to sleep
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
       countdown = REFRESH_INTERVAL;
+      document.getElementById('refreshTimer').innerText = 'Updating...';
       updateNetworkTelemetry();
+      startTimer();
+    } else {
+      // Kill execution to prevent battery drain while minimized
+      clearInterval(timerInterval);
     }
-    document.getElementById('refreshTimer').innerText = `Updating in ${countdown}s`;
-  }, 1000);
+  });
+
+  // Initialization
+  updateNetworkTelemetry();
+  startTimer();
 
 </script>
 </body>
