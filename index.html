@@ -1,497 +1,220 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TransitPulse HK - Smart ETA (LIVE API)</title>
-    
-    <!-- Leaflet CSS for Map -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
-    <style>
-        :root {
-            --brand-red: #E31837;
-            --bg-gray: #1E1E1E; 
-            --panel-bg: #2D2D2D;
-            --text-light: #FFFFFF;
-            --text-muted: #A0A0A0;
-            --timeline-gray: #555555;
-            --walk-green: #10B981;
-            --sprint-orange: #F59E0B;
-            --capacity-blue: #3B82F6;
-        }
-        
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        body { background-color: var(--bg-gray); color: var(--text-light); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-        
-        /* SPA Container & Views */
-        #app-container { width: 100vw; height: 100vh; position: relative; }
-        .view { width: 100%; height: 100%; position: absolute; top: 0; left: 0; transition: transform 0.3s ease-in-out; background: var(--bg-gray); display: flex; flex-direction: column; overflow: hidden; }
-        
-        #view-main { z-index: 1; transform: translateX(0); }
-        #view-detail { z-index: 10; transform: translateX(100%); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TransitPulse HK</title>
+<style>
+  :root {
+    --bg-color: #1c1c1e;
+    --card-bg: #2c2c2e;
+    --text-primary: #ffffff;
+    --text-secondary: #8e8e93;
+    --accent-red: #e31837;
+    --accent-green: #34c759;
+    --accent-yellow: #ffcc00;
+  }
+  
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+  }
 
-        /* Shared Header */
-        header { background-color: var(--brand-red); color: white; padding: 16px; display: flex; align-items: center; z-index: 100; box-shadow: 0 2px 4px rgba(0,0,0,0.3); flex-shrink: 0; }
-        .header-title { font-size: 1.1rem; font-weight: 700; flex-grow: 1; text-align: left; }
-        .back-btn { font-size: 1.8rem; margin-right: 12px; cursor: pointer; padding: 0 8px; line-height: 1; }
-        .live-indicator { display: inline-flex; align-items: center; font-size: 0.75rem; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 12px; }
-        .live-dot { width: 6px; height: 6px; background: #10B981; border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite; }
+  .header {
+    background-color: var(--accent-red);
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .header h1 { margin: 0; font-size: 1.2rem; font-weight: 700; }
+  
+  .live-badge {
+    background: rgba(0,0,0,0.2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+  
+  .live-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--accent-green);
+    border-radius: 50%;
+  }
 
-        /* Main View */
-        .location-bar { background-color: var(--panel-bg); padding: 12px 16px; border-bottom: 1px solid #444; display: flex; align-items: center; font-weight: 600; color: var(--text-light); }
-        .bus-list { list-style: none; overflow-y: auto; flex-grow: 1; padding-bottom: 20px; }
-        .bus-item { background: var(--bg-gray); border-bottom: 1px solid #333; padding: 16px; display: flex; align-items: center; cursor: pointer; transition: background 0.2s; }
-        .bus-item:active { background: #2a2a2a; }
-        .route-number { width: 60px; font-size: 1.5rem; font-weight: 800; color: var(--text-light); }
-        .route-details { flex-grow: 1; display: flex; flex-direction: column; padding-right: 12px; }
-        .destination { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
-        .stop-name { font-size: 0.8rem; color: var(--text-muted); }
-        
-        /* ETA Display Elements */
-        .eta-display { display: flex; flex-direction: column; align-items: flex-end; min-width: 80px; }
-        .eta-raw { text-decoration: line-through; color: var(--text-muted); font-size: 0.85rem; }
-        .eta-inferred { color: var(--brand-red); font-size: 1.4rem; font-weight: 700; display: flex; align-items: baseline; gap: 2px; }
-        .eta-inferred span { font-size: 0.8rem; font-weight: 400; }
-        .eta-empty { color: var(--text-muted); font-size: 1.1rem; }
+  .stop-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #3a3a3c;
+    font-size: 1.1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 
-        /* Detail View */
-        #map { height: 30vh; width: 100%; border-bottom: 2px solid #444; flex-shrink: 0; filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
-        .timeline-container { flex-grow: 1; overflow-y: auto; padding: 20px 0; background: var(--bg-gray); position: relative; scroll-behavior: smooth; }
-        
-        #loader-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-gray); z-index: 50; display: flex; justify-content: center; align-items: center; flex-direction: column; color: var(--text-muted); display: none; }
-        .spinner { border: 3px solid #333; border-top: 3px solid var(--brand-red); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin-bottom: 10px; }
+  .route-card {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #3a3a3c;
+    background-color: transparent;
+  }
 
-        .timeline-item { display: flex; flex-direction: column; position: relative; padding: 0 16px 0 40px; cursor: pointer; }
-        .timeline-item::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--timeline-gray); }
-        .timeline-item.first::before { top: 24px; }
-        .timeline-item.last::before { bottom: auto; height: 24px; }
-        .timeline-dot { position: absolute; left: 19px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg-gray); border: 2px solid var(--timeline-gray); z-index: 2; transition: all 0.3s ease; }
-        .timeline-item.active .timeline-dot { border-color: var(--brand-red); background: var(--brand-red); box-shadow: 0 0 8px rgba(227, 24, 55, 0.6); }
-        
-        .stop-header { min-height: 52px; display: flex; align-items: center; border-bottom: 1px solid #333; }
-        .stop-index { font-weight: 600; font-size: 1rem; color: var(--text-light); }
-        .stop-status { margin-left: auto; font-size: 0.9rem; color: var(--brand-red); font-weight: bold; }
-        
-        .stop-details { display: none; padding: 12px 0 20px 0; border-bottom: 1px solid #333; }
-        .timeline-item.active .stop-details { display: block; animation: fadeIn 0.3s ease; }
-        
-        .badges-container { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-        .smart-badge { display: inline-flex; align-items: center; font-size: 0.75rem; font-weight: 600; padding: 4px 10px; border-radius: 12px; }
-        .badge-capacity { background-color: rgba(59, 130, 246, 0.2); color: var(--capacity-blue); border: 1px solid rgba(59, 130, 246, 0.4); }
-        .badge-alert { background-color: rgba(245, 158, 11, 0.2); color: var(--sprint-orange); border: 1px solid rgba(245, 158, 11, 0.4); }
-        
-        .eta-list { display: flex; flex-direction: column; gap: 12px; }
-        .eta-row { display: flex; justify-content: space-between; align-items: center; background: var(--panel-bg); padding: 10px 12px; border-radius: 8px; }
-        .eta-label { font-size: 0.85rem; color: var(--text-muted); }
-        .eta-times { text-align: right; }
-        
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-    </style>
+  .route-no {
+    font-size: 1.75rem;
+    font-weight: 900;
+    width: 65px;
+    letter-spacing: -0.5px;
+  }
+
+  .route-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .route-dest {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .route-status {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  .route-eta {
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-align: right;
+  }
+</style>
 </head>
 <body>
 
-<div id="app-container">
-    <!-- VIEW 1: Main Menu -->
-    <div id="view-main" class="view">
-        <header>
-            <div class="header-title">TransitPulse HK</div>
-            <div class="live-indicator"><div class="live-dot"></div> LIVE API</div>
-        </header>
-        <div class="location-bar">📍 Nearest Stop: Lo Uk Tsuen</div>
-        <ul class="bus-list" id="main-bus-list">
-            <!-- Dynamically populated via JS -->
-        </ul>
-    </div>
-
-    <!-- VIEW 2: Detail Map & Timeline -->
-    <div id="view-detail" class="view">
-        <header>
-            <div class="back-btn" onclick="goBack()">‹</div>
-            <div class="header-title" id="detail-title">Loading Route...</div>
-            <div class="live-indicator"><div class="live-dot"></div> LIVE API</div>
-        </header>
-        
-        <div id="map"></div>
-        
-        <div class="timeline-container" id="timeline-scroll-area">
-            <div id="loader-overlay">
-                <div class="spinner"></div>
-                <div>Compiling Live Telemetry...</div>
-            </div>
-            <div id="timeline-list"></div>
-        </div>
-    </div>
+<div class="header">
+  <h1>TransitPulse HK</h1>
+  <div class="live-badge">LIVE API</div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<div class="stop-header">
+  📍 Nearest Stop: Lo Uk Tsuen
+</div>
+
+<div id="routeList">
+  <div style="padding: 20px; color: var(--text-secondary);">Initializing API connection...</div>
+</div>
 
 <script>
-    // --- 1. FULL REQUIRED ROUTES DATASET ---
-    // This perfectly restores all missing routes to the main menu.
-    const targetRoutes = [
-        { id: 'r1', no: '3M', dest: 'Mui Wo Ferry Pier' },
-        { id: 'r2', no: '3M', dest: 'Tung Chung Station' },
-        { id: 'r3', no: '1', dest: 'Tai O' },
-        { id: 'r4', no: '1', dest: 'Mui Wo Ferry Pier' },
-        { id: 'r5', no: '4', dest: 'Tong Fuk' },
-        { id: 'r6', no: '2', dest: 'Mui Wo Ferry Pier' },
-        { id: 'r7', no: '4', dest: 'Mui Wo Ferry Pier' },
-        { id: 'r8', no: '2', dest: 'Ngong Ping' },
-        { id: 'r9', no: 'N35', dest: 'Mui Wo Ferry Pier' },
-        { id: 'r10', no: 'A35', dest: 'Mui Wo Ferry Pier' },
-        { id: 'r11', no: 'N1', dest: 'Tai O' },
-        { id: 'r12', no: 'N35', dest: 'HZMB' },
-        { id: 'r13', no: 'A35', dest: 'HZMB' }
-    ];
+  const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
+  const TARGET_STOP_NAME = 'Lo Uk Tsuen';
+  
+  // Routes visible in the provided UI design
+  const TARGET_ROUTES = ['3M', '1', '4', '2']; 
+  
+  async function fetchJSON(endpoint) {
+    const response = await fetch(`${API_BASE}${endpoint}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
+  }
 
-    // Global State
-    let mainTickInterval = null;
-    let detailTickInterval = null;
-    let activeDetailRoute = null;
-    let map, markerGroup;
+  async function initApp() {
+    const listEl = document.getElementById('routeList');
+    
+    try {
+      // 1. Fetch Master Route List to get internal 'routeId'
+      const routeData = await fetchJSON('/route.php?action=list');
+      
+      // Filter the global list to only match the routes we care about
+      const relevantRoutes = routeData.routes.filter(r => TARGET_ROUTES.includes(r.routeNo));
+      
+      listEl.innerHTML = ''; // Clear loading state
 
-    // --- 2. TIME NORMALIZATION ENGINE ---
-    // Fixes the issue where 2024 API dates clash with 2026 system clocks.
-    // Extracts purely the HH:MM:SS and maps it to TODAY.
-    function getMinutesUntil(timeStr) {
-        if (!timeStr) return null;
-        const timePart = timeStr.split(' ')[1]; 
-        if (!timePart) return null;
+      // Build UI and trigger concurrent API fetches for each route
+      for (const route of relevantRoutes) {
+        // Parse destination from "Start > Destination" format
+        const destName = route.routeName_e.split('>').pop().trim();
+        const cardId = `route-${route.routeId}`;
         
-        const [h, m, s] = timePart.split(':').map(Number);
-        const now = new Date();
-        const etaDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, s);
+        listEl.insertAdjacentHTML('beforeend', `
+          <div class="route-card" id="${cardId}">
+            <div class="route-no">${route.routeNo}</div>
+            <div class="route-info">
+              <div class="route-dest">To ${destName}</div>
+              <div class="route-status" id="status-${route.routeId}">Locating API...</div>
+            </div>
+            <div class="route-eta" id="eta-${route.routeId}">--</div>
+          </div>
+        `);
+
+        // Trigger step 2 and 3 for this specific route
+        resolveStopsAndFetchETA(route);
+      }
+    } catch (error) {
+      listEl.innerHTML = `<div style="padding: 20px; color: #ff453a;">Connection failed: ${error.message}</div>`;
+    }
+  }
+
+  async function resolveStopsAndFetchETA(route) {
+    const statusEl = document.getElementById(`status-${route.routeId}`);
+    const etaEl = document.getElementById(`eta-${route.routeId}`);
+
+    try {
+      // 2. Fetch all stops for this specific routeId
+      const stopData = await fetchJSON(`/stop.php?action=list&routeId=${route.routeId}`);
+      
+      // Find the specific stop ID for "Lo Uk Tsuen"
+      const targetStop = stopData.stops.find(s => 
+        s.stopName_e.toLowerCase().includes(TARGET_STOP_NAME.toLowerCase())
+      );
+
+      if (!targetStop) {
+        statusEl.innerText = 'Stop not serviced on this bound';
+        return;
+      }
+      
+      // 3. Fetch the actual Estimated Arrivals using resolved IDs
+      const etaData = await fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${route.routeId}&stopId=${targetStop.stopId}&language=en`);
+      
+      if (etaData.estimatedArrivals && etaData.estimatedArrivals.length > 0) {
+        const nextBus = etaData.estimatedArrivals[0];
         
-        let diffMs = etaDate.getTime() - now.getTime();
+        // Calculate time delta natively (Safari compatible dates)
+        const arrivalTime = new Date(nextBus.estimatedArrivalTime.replace(/-/g, '/'));
+        const serverTime = new Date(nextBus.generateTime.replace(/-/g, '/'));
         
-        // Handle overnight wrap-around (if bus is past midnight but it's currently 11 PM)
-        if (diffMs < -12 * 60 * 60 * 1000) {
-            diffMs += 24 * 60 * 60 * 1000;
+        const diffMs = arrivalTime - serverTime;
+        const diffMins = Math.floor(diffMs / 60000);
+        
+        if (diffMins <= 0) {
+           etaEl.innerText = 'Due';
+           etaEl.style.color = 'var(--accent-yellow)';
+        } else {
+           etaEl.innerText = `${diffMins} min`;
+           etaEl.style.color = 'var(--accent-green)';
         }
-        
-        const mins = Math.floor(diffMs / 60000);
-        return mins >= 0 ? mins : null;
+        statusEl.innerText = `Updated at ${serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      } else {
+        etaEl.innerText = '--';
+        statusEl.innerText = 'No upcoming departures';
+      }
+    } catch (error) {
+      statusEl.innerText = 'ETA temporarily unavailable';
     }
+  }
 
-    // --- 3. TRANSITPULSE ALGORITHM ---
-    function applyAlgorithm(rawMinutes, uniqueId) {
-        if (rawMinutes === null || rawMinutes < 0) return null;
-        
-        let inferred = rawMinutes;
-        let alerts = [];
-        let capacityMsg = null;
-
-        // Deterministic pseudo-randomness using string length to simulate real AI insights consistently
-        const seed = uniqueId.length + rawMinutes;
-
-        if (seed % 3 === 0 && rawMinutes < 20) {
-            capacityMsg = "💺 ~85% Full (Boarding spike)";
-            inferred += 1;
-        } else if (seed % 4 === 0 && rawMinutes < 35) {
-            alerts.push("⚠️ Traffic slowdown detected");
-            inferred += 2;
-        }
-
-        // Anti-sprint correction for buses showing 1-3 mins
-        if (rawMinutes > 0 && rawMinutes <= 3) {
-            inferred += 1; 
-        }
-
-        return { raw: rawMinutes, inferred: inferred, capacityMsg, alerts };
-    }
-
-    // --- 4. MAIN MENU LOGIC ---
-    function initMainPage() {
-        const listEl = document.getElementById('main-bus-list');
-        listEl.innerHTML = '';
-        
-        // 1. Render all 13 rows immediately with loading skeletons
-        targetRoutes.forEach(route => {
-            const li = document.createElement('li');
-            li.className = 'bus-item';
-            li.id = `main-row-${route.id}`;
-            li.onclick = () => openDetail(route);
-            li.innerHTML = `
-                <div class="route-number">${route.no}</div>
-                <div class="route-details">
-                    <div class="destination">To ${route.dest}</div>
-                    <div class="stop-name" id="main-status-${route.id}">Locating API...</div>
-                </div>
-                <div class="eta-display" id="main-eta-${route.id}">
-                    <span class="eta-empty">--</span>
-                </div>
-            `;
-            listEl.appendChild(li);
-        });
-
-        fetchMainData();
-    }
-
-    async function fetchMainData() {
-        try {
-            // Fetch Master Route List
-            const res = await fetch('https://rt.data.gov.hk/v2/transport/nlb/route.php?action=list');
-            const data = await res.json();
-            
-            // Progressive Fetching for smooth UI
-            targetRoutes.forEach(async (target) => {
-                const match = data.routes.find(r => r.routeNo === target.no && r.routeName_e.includes(target.dest));
-                if (!match) {
-                    document.getElementById(`main-status-${target.id}`).innerText = 'Offline';
-                    return;
-                }
-                
-                target.routeId = match.routeId;
-                
-                // Fetch stops to find "Lo Uk Tsuen"
-                const stopsRes = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=list&routeId=${target.routeId}`);
-                const stopsData = await stopsRes.json();
-                
-                target.allStops = stopsData.stops; // Cache for detail view
-                const stopMatch = stopsData.stops.find(s => s.stopName_e.includes('Lo Uk Tsuen'));
-                
-                if (stopMatch) {
-                    target.stopId = stopMatch.stopId;
-                    
-                    // Fetch ETA
-                    const etaRes = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=eta&routeId=${target.routeId}&stopId=${target.stopId}`);
-                    const etaData = await etaRes.json();
-                    
-                    // FIXED: Read from estimatedArrivals instead of eta, add fallback array
-                    target.liveEtas = (etaData.estimatedArrivals || []).map(e => e.estimatedArrivalTime);
-                    updateMainRowDOM(target);
-                } else {
-                    document.getElementById(`main-status-${target.id}`).innerText = 'Stop skipped';
-                }
-            });
-            
-            // Start Global Ticker for the Main View
-            if (mainTickInterval) clearInterval(mainTickInterval);
-            mainTickInterval = setInterval(() => {
-                targetRoutes.forEach(updateMainRowDOM);
-            }, 1000);
-
-        } catch (e) {
-            console.error("API Error", e);
-        }
-    }
-
-    function updateMainRowDOM(route) {
-        if (!route.liveEtas || route.liveEtas.length === 0) return;
-        
-        const statusEl = document.getElementById(`main-status-${route.id}`);
-        const etaEl = document.getElementById(`main-eta-${route.id}`);
-        if (!statusEl || !etaEl) return;
-
-        // Calculate exact minutes based on current device time
-        const rawMins = getMinutesUntil(route.liveEtas[0]);
-        
-        if (rawMins === null) {
-            statusEl.innerText = "No upcoming service";
-            etaEl.innerHTML = `<span class="eta-empty">--</span>`;
-            return;
-        }
-
-        const algo = applyAlgorithm(rawMins, route.dest);
-        
-        // Update DOM with Listed vs Inferred
-        statusEl.innerText = algo.capacityMsg || algo.alerts[0] || "Live API Active";
-        statusEl.style.color = (algo.capacityMsg || algo.alerts.length) ? "var(--sprint-orange)" : "var(--walk-green)";
-        
-        etaEl.innerHTML = `
-            ${algo.inferred !== algo.raw ? `<span class="eta-raw">${algo.raw} min</span>` : ''}
-            <div class="eta-inferred">${algo.inferred}<span>min</span></div>
-        `;
-    }
-
-    // --- 5. DETAIL VIEW LOGIC ---
-    async function openDetail(route) {
-        activeDetailRoute = route;
-        
-        document.getElementById('detail-title').innerText = `${route.no} To ${route.dest}`;
-        document.getElementById('view-main').style.transform = 'translateX(-30%)';
-        document.getElementById('view-detail').style.transform = 'translateX(0)';
-        document.getElementById('loader-overlay').style.display = 'flex';
-        
-        if (detailTickInterval) clearInterval(detailTickInterval);
-
-        // Map setup
-        setTimeout(initMap, 300);
-
-        // If stops were not cached (e.g. clicked too fast), wait for them
-        if (!route.allStops) {
-             const res = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=list&routeId=${route.routeId}`);
-             const data = await res.json();
-             route.allStops = data.stops;
-        }
-
-        buildDetailTimeline(route.allStops, route.stopId);
-        
-        document.getElementById('loader-overlay').style.display = 'none';
-
-        // Fetch deep ETA data for the timeline
-        await fetchDetailETAs(route);
-        
-        detailTickInterval = setInterval(() => {
-            updateDetailTimelineDOM(route);
-        }, 1000);
-    }
-
-    function buildDetailTimeline(stops, activeStopId) {
-        const container = document.getElementById('timeline-list');
-        container.innerHTML = '';
-
-        stops.forEach((stop, i) => {
-            const isActive = stop.stopId === activeStopId;
-            const item = document.createElement('div');
-            item.className = `timeline-item ${isActive ? 'active' : ''} ${i === 0 ? 'first' : ''} ${i === stops.length - 1 ? 'last' : ''}`;
-            item.id = `detail-row-${stop.stopId}`;
-            item.onclick = () => selectDetailStop(stop.stopId);
-            
-            item.innerHTML = `
-                <div class="timeline-dot"></div>
-                <div class="stop-header">
-                    <div class="stop-index">${i + 1}. ${stop.stopName_e}</div>
-                    <div class="stop-status">--</div>
-                </div>
-                <div class="stop-details" id="detail-expanded-${stop.stopId}">
-                    <div class="eta-list">Calculating live telemetry...</div>
-                </div>
-            `;
-            container.appendChild(item);
-        });
-
-        const activeDom = document.getElementById(`detail-row-${activeStopId}`);
-        if (activeDom) setTimeout(() => activeDom.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-    }
-
-    async function fetchDetailETAs(route) {
-        if (!route.allStops) return;
-        
-        // Fetch ETA for the active stop and 2 stops ahead to populate UI realistically without rate limiting
-        const activeIndex = route.allStops.findIndex(s => s.stopId === route.stopId);
-        const stopsToFetch = route.allStops.slice(Math.max(0, activeIndex), activeIndex + 3);
-        
-        for (let stop of stopsToFetch) {
-            const res = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=eta&routeId=${route.routeId}&stopId=${stop.stopId}`);
-            const data = await res.json();
-            // FIXED: Read from estimatedArrivals instead of eta, add fallback array
-            stop.liveEtas = (data.estimatedArrivals || []).map(e => e.estimatedArrivalTime);
-        }
-        
-        updateDetailTimelineDOM(route);
-    }
-
-    function updateDetailTimelineDOM(route) {
-        route.allStops.forEach(stop => {
-            const domItem = document.getElementById(`detail-row-${stop.stopId}`);
-            if (!domItem || !stop.liveEtas) return;
-
-            const rawMins = stop.liveEtas.length > 0 ? getMinutesUntil(stop.liveEtas[0]) : null;
-            const algo = applyAlgorithm(rawMins, stop.stopName_e);
-
-            const statusNode = domItem.querySelector('.stop-status');
-            if (statusNode && stop.stopId !== route.stopId) {
-                statusNode.innerText = algo ? `${algo.inferred} min` : '--';
-            }
-
-            if (stop.stopId === route.stopId) {
-                const detailsContainer = document.getElementById(`detail-expanded-${stop.stopId}`);
-                if (detailsContainer) {
-                    if (rawMins === null) {
-                        detailsContainer.innerHTML = `<div class="eta-list"><div class="eta-row"><div class="eta-label">No live buses on route</div></div></div>`;
-                        return;
-                    }
-
-                    let badgesHTML = '';
-                    if (algo.capacityMsg) badgesHTML += `<div class="smart-badge badge-capacity">${algo.capacityMsg}</div>`;
-                    if (algo.alerts.length) badgesHTML += `<div class="smart-badge badge-alert">${algo.alerts[0]}</div>`;
-
-                    let rowsHTML = stop.liveEtas.map((etaStr, idx) => {
-                        const m = getMinutesUntil(etaStr);
-                        const a = applyAlgorithm(m, stop.stopName_e);
-                        if (!a) return '';
-                        
-                        if (idx === 0) {
-                            return `
-                            <div class="eta-row">
-                                <div class="eta-label">Next Bus (Inferred)</div>
-                                <div class="eta-times">
-                                    <span class="eta-raw">${a.raw} min</span>
-                                    <span class="eta-inferred">${a.inferred}<span>min</span></span>
-                                </div>
-                            </div>`;
-                        } else {
-                            return `
-                            <div class="eta-row" style="opacity: 0.7;">
-                                <div class="eta-label">Scheduled Bus ${idx + 1}</div>
-                                <div class="eta-times"><span style="color:white; font-weight:bold;">${a.raw} min</span></div>
-                            </div>`;
-                        }
-                    }).join('');
-
-                    detailsContainer.innerHTML = `
-                        ${badgesHTML ? `<div class="badges-container">${badgesHTML}</div>` : ''}
-                        <div class="eta-list">${rowsHTML}</div>
-                    `;
-                }
-            }
-        });
-    }
-
-    // --- 6. MAP ENGINE ---
-    function initMap() {
-        if (!map) {
-            map = L.map('map', { zoomControl: false });
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-            markerGroup = L.layerGroup().addTo(map);
-        }
-        
-        map.invalidateSize();
-        markerGroup.clearLayers();
-
-        if (activeDetailRoute && activeDetailRoute.allStops) {
-            let targetStop = null;
-            activeDetailRoute.allStops.forEach(stop => {
-                const isTarget = stop.stopId === activeDetailRoute.stopId;
-                if (isTarget) targetStop = stop;
-                
-                const icon = L.divIcon({
-                    html: `<div style="background:${isTarget ? 'var(--brand-red)' : '#888'}; width:${isTarget?16:10}px; height:${isTarget?16:10}px; border-radius:50%; border:2px solid white;"></div>`,
-                    className: 'custom-marker',
-                    iconSize: [16, 16]
-                });
-
-                L.marker([stop.latitude, stop.longitude], {icon}).addTo(markerGroup)
-                 .bindPopup(`<b>${stop.stopName_e}</b>`);
-            });
-
-            if (targetStop) {
-                map.setView([targetStop.latitude, targetStop.longitude], 15);
-            }
-        }
-    }
-
-    async function selectDetailStop(stopId) {
-        if (!activeDetailRoute || activeDetailRoute.stopId === stopId) return;
-        activeDetailRoute.stopId = stopId;
-        
-        buildDetailTimeline(activeDetailRoute.allStops, stopId);
-        initMap();
-        await fetchDetailETAs(activeDetailRoute);
-    }
-
-    function goBack() {
-        if (detailTickInterval) clearInterval(detailTickInterval);
-        document.getElementById('view-main').style.transform = 'translateX(0)';
-        document.getElementById('view-detail').style.transform = 'translateX(100%)';
-    }
-
-    // Boot App
-    window.onload = initMainPage;
+  // Bootstrap application
+  initApp();
 </script>
 </body>
 </html>
