@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>TransitPulse HK - Enhanced Analytics</title>
+<title>TransitPulse HK - Fixed Telemetry</title>
 <style>
   :root {
     --bg-color: #121214;
@@ -35,10 +35,9 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
   }
   
-  .header h1 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.3px; }
+  .header h1 { margin: 0; font-size: 1.15rem; font-weight: 700; }
   
   .live-badge {
     background: rgba(0,0,0,0.25);
@@ -57,13 +56,6 @@
     height: 6px;
     background: var(--accent-green);
     border-radius: 50%;
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.4; }
-    100% { opacity: 1; }
   }
 
   .stop-header {
@@ -103,40 +95,15 @@
   .route-dest { font-size: 0.95rem; font-weight: 600; }
   .route-status { font-size: 0.75rem; color: var(--text-secondary); }
 
-  /* Dual ETA Layout */
-  .eta-container {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-  }
-
-  .eta-box {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    min-width: 65px;
-  }
-
-  .eta-label {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    font-weight: 700;
-    margin-bottom: 2px;
-  }
+  .eta-container { display: flex; gap: 12px; align-items: center; }
+  .eta-box { display: flex; flex-direction: column; items: flex-end; align-items: flex-end; min-width: 60px; }
+  .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; }
 
   .official-eta {
     font-size: 1.05rem;
     font-weight: 600;
     color: var(--text-secondary);
-    text-decoration: line-through;
-    text-decoration-color: rgba(255,255,255,0.2);
     font-variant-numeric: tabular-nums;
-  }
-  
-  .official-eta.matches {
-    text-decoration: none;
-    color: var(--text-primary);
   }
 
   .smart-eta {
@@ -147,14 +114,8 @@
   }
 
   .smart-eta.adjusted { color: var(--accent-blue); }
-  .smart-eta.delayed { color: var(--accent-orange); }
 
-  .inference-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-  }
+  .inference-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
   .tag {
     font-size: 0.68rem;
@@ -184,7 +145,7 @@
 </div>
 
 <div id="routeList">
-  <div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Initializing spatial telemetry & historical models...</div>
+  <div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Initializing telemetry...</div>
 </div>
 
 <script>
@@ -196,10 +157,9 @@
   let countdown = REFRESH_INTERVAL;
   let timerInterval;
 
-  // In-memory historical cache to compute decay rates & smooth jumps across polls
-  const routeStateMap = {};
+  // Track state per unique vehicle trip instance to prevent array-shift corruption
+  const busStateMap = {};
 
-  // Haversine formula to compute physical road distance (km) between GPS stops
   function calculateDistanceKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -225,7 +185,6 @@
       const loadingEl = document.getElementById('loadingText');
       if (loadingEl) loadingEl.remove();
 
-      // Step 1: Ensure DOM containers exist
       for (const route of relevantRoutes) {
         const destName = route.routeName_e.split('>').pop().trim();
         const cardId = `route-${route.routeId}`;
@@ -258,11 +217,9 @@
         }
       }
 
-      // Step 2: Concurrently query target stop and upstream stop
       const promises = relevantRoutes.map(route => processRouteSmartETA(route));
       await Promise.all(promises);
 
-      // Step 3: Sort list dynamically by Smart ETA
       sortCards();
 
     } catch (err) {
@@ -279,7 +236,6 @@
     const tagsEl = document.getElementById(`tags-${routeId}`);
 
     try {
-      // 1. Get Stop List for spatial topology
       const stopData = await fetchJSON(`/stop.php?action=list&routeId=${routeId}`);
       const stops = stopData.stops;
       
@@ -297,7 +253,6 @@
       const targetStop = stops[targetIndex];
       const upstreamStop = targetIndex > 0 ? stops[targetIndex - 1] : null;
 
-      // 2. Query target stop ETA & upstream stop ETA in parallel
       const targetReq = fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${targetStop.stopId}&language=en`);
       const upstreamReq = upstreamStop 
         ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${upstreamStop.stopId}&language=en`)
@@ -319,89 +274,66 @@
       const serverTime = new Date(rawBus.generateTime.replace(/-/g, '/'));
       const rawEtaMins = Math.max(0, Math.floor((arrivalTime - serverTime) / 60000));
 
-      // 3. Extract Upstream ETA (if available)
-      let upstreamEtaMins = null;
-      if (upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
-        const upBus = upstreamEtaRes.estimatedArrivals[0];
-        const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
-        const upServerTime = new Date(upBus.generateTime.replace(/-/g, '/'));
-        upstreamEtaMins = Math.max(0, Math.floor((upArrTime - upServerTime) / 60000));
-      }
-
-      // --- ALGORITHM: SMART VALUE-ADDED CALCULATIONS ---
       let smartMins = rawEtaMins;
       let reasonTags = [];
 
-      // A. Spatial Constraint: Check if official ETA claims "Due" prematurely
-      if (upstreamStop && upstreamEtaMins !== null) {
-        const distanceKm = calculateDistanceKm(
-          parseFloat(upstreamStop.latitude), parseFloat(upstreamStop.longitude),
-          parseFloat(targetStop.latitude), parseFloat(targetStop.longitude)
-        );
-        // Transit time floor based on physical distance (min 1 min + dwell)
-        const minTransitTimeMins = Math.max(1.0, (distanceKm / 35.0) * 60 + 0.5);
+      // RULE 1: IMMINENT ARRIVAL HARD CLAMP
+      // If official API reports Due or <= 2 mins, trust physical proximity. Zero overrides.
+      if (rawEtaMins <= 2) {
+        smartMins = rawEtaMins;
+      } else {
+        // RULE 2: TRIP-KEYED TRACKING (Fixes 21m -> 42m array shift bug)
+        const busKey = `${routeId}_${rawBus.estimatedArrivalTime}`;
+        const now = Date.now();
+        const prevState = busStateMap[busKey];
 
-        // If Target ETA claims <= 1 min but Upstream ETA says bus is still far away
-        if (rawEtaMins <= 1 && upstreamEtaMins >= 1) {
-          smartMins = Math.ceil(upstreamEtaMins + minTransitTimeMins);
-          reasonTags.push(`<span class="tag blue">Hold: Upstream Buffer (+${(smartMins - rawEtaMins).toFixed(0)}m)</span>`);
+        // Check upstream boundary only for non-imminent buses
+        if (upstreamStop && upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
+          const upBus = upstreamEtaRes.estimatedArrivals[0];
+          const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
+          const upServerTime = new Date(upBus.generateTime.replace(/-/g, '/'));
+          const upstreamEtaMins = Math.max(0, Math.floor((upArrTime - upServerTime) / 60000));
+
+          const distanceKm = calculateDistanceKm(
+            parseFloat(upstreamStop.latitude), parseFloat(upstreamStop.longitude),
+            parseFloat(targetStop.latitude), parseFloat(targetStop.longitude)
+          );
+          const minTransitMins = Math.max(1.0, (distanceKm / 35.0) * 60);
+
+          if (rawEtaMins < upstreamEtaMins + Math.floor(minTransitMins)) {
+            smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
+            reasonTags.push(`<span class="tag blue">Upstream Buffer</span>`);
+          }
         }
+
+        // Bounded Congestion Cap (+3 mins max offset, no runaway scaling)
+        if (prevState) {
+          const elapsedMins = (now - prevState.timestamp) / 60000;
+          const rawDecay = prevState.rawEtaMins - rawEtaMins;
+          const decayRate = elapsedMins > 0 ? (rawDecay / elapsedMins) : 1;
+
+          if (decayRate < 0.3 && rawEtaMins > 3) {
+            smartMins = Math.min(rawEtaMins + 3, smartMins + 2);
+            reasonTags.push(`<span class="tag orange">Minor Delay</span>`);
+          }
+        }
+
+        busStateMap[busKey] = { timestamp: now, rawEtaMins, smartMins };
       }
 
-      // B. Temporal Decay & Anti-Jitter Filter
-      const now = Date.now();
-      const prevState = routeStateMap[routeId];
-
-      if (prevState) {
-        const elapsedMins = (now - prevState.timestamp) / 60000;
-        const rawDecay = prevState.rawEtaMins - rawEtaMins;
-        const decayRate = elapsedMins > 0 ? (rawDecay / elapsedMins) : 1;
-
-        // Detect bottleneck / stalled official clock
-        if (decayRate < 0.4 && rawEtaMins > 0) {
-          const congestionFactor = Math.min(2.0, 1 / Math.max(0.2, decayRate));
-          smartMins = Math.round(smartMins * congestionFactor);
-          reasonTags.push(`<span class="tag orange">Congestion Slowdown</span>`);
-        } 
-        // Dampen sudden backward jumps (e.g., API jump from 3m to 8m)
-        else if (rawEtaMins - prevState.smartMins > 3) {
-          smartMins = Math.round(prevState.smartMins + (elapsedMins * 0.5)); // Gradual drift correction
-          reasonTags.push(`<span class="tag yellow">Filtered API Spike</span>`);
-        }
-      }
-
-      // Save state for next cycle
-      routeStateMap[routeId] = {
-        timestamp: now,
-        rawEtaMins: rawEtaMins,
-        smartMins: smartMins
-      };
-
-      // --- UI UPDATING ---
+      // UI Updates
       cardEl.dataset.smartMins = smartMins;
 
-      // Render Official ETA
       offEl.innerText = rawEtaMins === 0 ? 'Due' : `${rawEtaMins}m`;
-      if (rawEtaMins === smartMins) {
-        offEl.classList.add('matches');
-      } else {
-        offEl.classList.remove('matches');
-      }
 
-      // Render Smart ETA
       if (smartMins === 0) {
         smartEl.innerText = 'Due';
         smartEl.className = 'smart-eta';
       } else {
         smartEl.innerText = `${smartMins} min`;
-        if (smartMins > rawEtaMins) {
-          smartEl.className = 'smart-eta adjusted';
-        } else {
-          smartEl.className = 'smart-eta';
-        }
+        smartEl.className = smartMins > rawEtaMins ? 'smart-eta adjusted' : 'smart-eta';
       }
 
-      // Render GPS & Validation Badges
       const gpsTag = rawBus.noGPS === 1 
         ? `<span class="tag yellow">Scheduled</span>` 
         : `<span class="tag green">Live GPS</span>`;
@@ -418,7 +350,6 @@
   function sortCards() {
     const listEl = document.getElementById('routeList');
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
-    
     cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
     cards.forEach(card => listEl.appendChild(card));
   }
@@ -437,7 +368,6 @@
     }, 1000);
   }
 
-  // Mobile Lifecycle Optimization (Prevents timer drift when tab is backgrounded)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       countdown = REFRESH_INTERVAL;
@@ -449,7 +379,6 @@
     }
   });
 
-  // Init
   updateNetworkTelemetry();
   startTimer();
 </script>
