@@ -260,7 +260,8 @@
                     const etaRes = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=eta&routeId=${target.routeId}&stopId=${target.stopId}`);
                     const etaData = await etaRes.json();
                     
-                    target.liveEtas = etaData.eta.map(e => e.eta);
+                    // FIXED: Read from estimatedArrivals instead of eta, add fallback array
+                    target.liveEtas = (etaData.estimatedArrivals || []).map(e => e.estimatedArrivalTime);
                     updateMainRowDOM(target);
                 } else {
                     document.getElementById(`main-status-${target.id}`).innerText = 'Stop skipped';
@@ -377,7 +378,8 @@
         for (let stop of stopsToFetch) {
             const res = await fetch(`https://rt.data.gov.hk/v2/transport/nlb/stop.php?action=eta&routeId=${route.routeId}&stopId=${stop.stopId}`);
             const data = await res.json();
-            stop.liveEtas = data.eta.map(e => e.eta);
+            // FIXED: Read from estimatedArrivals instead of eta, add fallback array
+            stop.liveEtas = (data.estimatedArrivals || []).map(e => e.estimatedArrivalTime);
         }
         
         updateDetailTimelineDOM(route);
