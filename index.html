@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>TransitPulse HK - Fixed Telemetry</title>
+<title>TransitPulse HK - Smart Engine</title>
 <style>
   :root {
     --bg-color: #121214;
@@ -96,7 +96,7 @@
   .route-status { font-size: 0.75rem; color: var(--text-secondary); }
 
   .eta-container { display: flex; gap: 12px; align-items: center; }
-  .eta-box { display: flex; flex-direction: column; items: flex-end; align-items: flex-end; min-width: 60px; }
+  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 60px; }
   .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; }
 
   .official-eta {
@@ -151,13 +151,12 @@
 <script>
   const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
   const TARGET_STOP_NAME = 'Lo Uk Tsuen';
-  const TARGET_ROUTES = ['3M', '1', '4', '2', '11']; 
+  // Included N1, N35, and A35 per requirements
+  const TARGET_ROUTES = ['3M', '1', '4', '2', '11', 'A35', 'N35', 'N1']; 
   const REFRESH_INTERVAL = 30;
   
   let countdown = REFRESH_INTERVAL;
   let timerInterval;
-
-  // Track state per unique vehicle trip instance to prevent array-shift corruption
   const busStateMap = {};
 
   function calculateDistanceKm(lat1, lon1, lat2, lon2) {
@@ -230,26 +229,24 @@
   async function processRouteSmartETA(route) {
     const routeId = route.routeId;
     const cardEl = document.getElementById(`route-${routeId}`);
-    const statusEl = document.getElementById(`status-${routeId}`);
-    const offEl = document.getElementById(`off-${routeId}`);
-    const smartEl = document.getElementById(`smart-${routeId}`);
-    const tagsEl = document.getElementById(`tags-${routeId}`);
-
+    
     try {
       const stopData = await fetchJSON(`/stop.php?action=list&routeId=${routeId}`);
       const stops = stopData.stops;
       
       const targetIndex = stops.findIndex(s => s.stopName_e.toLowerCase().includes(TARGET_STOP_NAME.toLowerCase()));
 
+      // DYNAMIC CLEANUP: If the bus route variant does not stop here, destroy the DOM element entirely
       if (targetIndex === -1) {
-        statusEl.innerText = 'Not serviced on this bound';
-        cardEl.dataset.smartMins = 9999;
-        offEl.innerText = '--';
-        smartEl.innerText = '--';
-        tagsEl.innerHTML = '';
+        if (cardEl) cardEl.remove();
         return;
       }
 
+      const statusEl = document.getElementById(`status-${routeId}`);
+      const offEl = document.getElementById(`off-${routeId}`);
+      const smartEl = document.getElementById(`smart-${routeId}`);
+      const tagsEl = document.getElementById(`tags-${routeId}`);
+      
       const targetStop = stops[targetIndex];
       const upstreamStop = targetIndex > 0 ? stops[targetIndex - 1] : null;
 
@@ -277,17 +274,13 @@
       let smartMins = rawEtaMins;
       let reasonTags = [];
 
-      // RULE 1: IMMINENT ARRIVAL HARD CLAMP
-      // If official API reports Due or <= 2 mins, trust physical proximity. Zero overrides.
       if (rawEtaMins <= 2) {
         smartMins = rawEtaMins;
       } else {
-        // RULE 2: TRIP-KEYED TRACKING (Fixes 21m -> 42m array shift bug)
         const busKey = `${routeId}_${rawBus.estimatedArrivalTime}`;
         const now = Date.now();
         const prevState = busStateMap[busKey];
 
-        // Check upstream boundary only for non-imminent buses
         if (upstreamStop && upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
           const upBus = upstreamEtaRes.estimatedArrivals[0];
           const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
@@ -306,7 +299,7 @@
           }
         }
 
-        // Bounded Congestion Cap (+3 mins max offset, no runaway scaling)
+        // Delay Calculation Logic
         if (prevState) {
           const elapsedMins = (now - prevState.timestamp) / 60000;
           const rawDecay = prevState.rawEtaMins - rawEtaMins;
@@ -321,9 +314,7 @@
         busStateMap[busKey] = { timestamp: now, rawEtaMins, smartMins };
       }
 
-      // UI Updates
       cardEl.dataset.smartMins = smartMins;
-
       offEl.innerText = rawEtaMins === 0 ? 'Due' : `${rawEtaMins}m`;
 
       if (smartMins === 0) {
@@ -342,8 +333,9 @@
       statusEl.innerText = `Updated ${serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
 
     } catch (err) {
-      statusEl.innerText = 'Telemetry sync failed';
-      cardEl.dataset.smartMins = 9999;
+      const statusEl = document.getElementById(`status-${routeId}`);
+      if (statusEl) statusEl.innerText = 'Telemetry sync failed';
+      if (cardEl) cardEl.dataset.smartMins = 9999;
     }
   }
 
