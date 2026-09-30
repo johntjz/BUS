@@ -3,17 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>TransitPulse HK - Live Analytics</title>
+<title>TransitPulse HK - Enhanced Analytics</title>
 <style>
   :root {
-    --bg-color: #1c1c1e;
-    --card-bg: #2c2c2e;
+    --bg-color: #121214;
+    --card-bg: #1c1c1e;
+    --card-border: #2c2c2e;
     --text-primary: #ffffff;
-    --text-secondary: #8e8e93;
+    --text-secondary: #98989d;
     --accent-red: #e31837;
-    --accent-green: #34c759;
-    --accent-yellow: #ffcc00;
-    --accent-orange: #ff9500;
+    --accent-green: #30d158;
+    --accent-blue: #0a84ff;
+    --accent-yellow: #ffd60a;
+    --accent-orange: #ff9f0a;
   }
   
   body {
@@ -26,27 +28,27 @@
 
   .header {
     background-color: var(--accent-red);
-    padding: 16px 20px;
+    padding: 14px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     position: sticky;
     top: 0;
     z-index: 10;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
   }
   
-  .header h1 { margin: 0; font-size: 1.2rem; font-weight: 700; }
+  .header h1 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.3px; }
   
   .live-badge {
-    background: rgba(0,0,0,0.2);
+    background: rgba(0,0,0,0.25);
     padding: 4px 10px;
     border-radius: 12px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     display: flex;
     align-items: center;
     gap: 6px;
     font-weight: 600;
-    animation: pulse 2s infinite;
   }
   
   .live-badge::before {
@@ -55,18 +57,19 @@
     height: 6px;
     background: var(--accent-green);
     border-radius: 50%;
+    animation: pulse 2s infinite;
   }
 
   @keyframes pulse {
     0% { opacity: 1; }
-    50% { opacity: 0.6; }
+    50% { opacity: 0.4; }
     100% { opacity: 1; }
   }
 
   .stop-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid #3a3a3c;
-    font-size: 1rem;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 0.95rem;
     font-weight: 600;
     display: flex;
     justify-content: space-between;
@@ -74,69 +77,114 @@
     background-color: var(--bg-color);
   }
 
-  .refresh-timer { font-size: 0.85rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
+  .refresh-timer { font-size: 0.8rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
 
-  /* Using flexbox for the list container to enable smooth re-ordering */
-  #routeList {
-    display: flex;
-    flex-direction: column;
-  }
+  #routeList { display: flex; flex-direction: column; }
 
   .route-card {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     padding: 16px 20px;
-    border-bottom: 1px solid #3a3a3c;
+    border-bottom: 1px solid var(--card-border);
     background-color: var(--bg-color);
-    transition: background-color 0.2s ease;
+    gap: 10px;
   }
 
-  .route-no { font-size: 1.75rem; font-weight: 900; width: 65px; letter-spacing: -0.5px; }
+  .card-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
 
-  .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-  .route-dest { font-size: 1rem; font-weight: 600; }
-  .route-status { font-size: 0.8rem; color: var(--text-secondary); }
+  .route-left { display: flex; align-items: center; gap: 14px; }
+  .route-no { font-size: 1.8rem; font-weight: 900; width: 60px; letter-spacing: -0.5px; }
 
-  .inference-tags {
+  .route-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .route-dest { font-size: 0.95rem; font-weight: 600; }
+  .route-status { font-size: 0.75rem; color: var(--text-secondary); }
+
+  /* Dual ETA Layout */
+  .eta-container {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .eta-box {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 65px;
+  }
+
+  .eta-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .official-eta {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: line-through;
+    text-decoration-color: rgba(255,255,255,0.2);
+    font-variant-numeric: tabular-nums;
+  }
+  
+  .official-eta.matches {
+    text-decoration: none;
+    color: var(--text-primary);
+  }
+
+  .smart-eta {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--accent-green);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .smart-eta.adjusted { color: var(--accent-blue); }
+  .smart-eta.delayed { color: var(--accent-orange); }
+
+  .inference-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 2px;
+    gap: 6px;
+    align-items: center;
   }
 
   .tag {
-    font-size: 0.7rem;
-    padding: 2px 6px;
+    font-size: 0.68rem;
+    padding: 2px 7px;
     border-radius: 4px;
-    background: #3a3a3c;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
     font-weight: 500;
-    white-space: nowrap;
   }
 
-  .tag.high-conf { color: var(--accent-green); border: 1px solid rgba(52, 199, 89, 0.3); }
-  .tag.med-conf { color: var(--accent-yellow); border: 1px solid rgba(255, 204, 0, 0.3); }
-  .tag.low-conf { color: var(--accent-orange); border: 1px solid rgba(255, 149, 0, 0.3); }
-  
-  .tag.load-heavy { color: var(--accent-orange); }
-  .tag.load-light { color: var(--accent-green); }
-
-  .route-eta { font-size: 1.25rem; font-weight: 600; text-align: right; min-width: 60px; font-variant-numeric: tabular-nums;}
+  .tag.blue { color: var(--accent-blue); border-color: rgba(10, 132, 255, 0.3); }
+  .tag.green { color: var(--accent-green); border-color: rgba(48, 209, 88, 0.3); }
+  .tag.orange { color: var(--accent-orange); border-color: rgba(255, 159, 10, 0.3); }
+  .tag.yellow { color: var(--accent-yellow); border-color: rgba(255, 214, 10, 0.3); }
 </style>
 </head>
 <body>
 
 <div class="header">
   <h1>TransitPulse HK</h1>
-  <div class="live-badge">LIVE API</div>
+  <div class="live-badge">SMART ENGINE</div>
 </div>
 
 <div class="stop-header">
   <span>📍 Lo Uk Tsuen</span>
-  <span class="refresh-timer" id="refreshTimer">Updating...</span>
+  <span class="refresh-timer" id="refreshTimer">Syncing...</span>
 </div>
 
 <div id="routeList">
-  <div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Initializing telemetry...</div>
+  <div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Initializing spatial telemetry & historical models...</div>
 </div>
 
 <script>
@@ -148,41 +196,23 @@
   let countdown = REFRESH_INTERVAL;
   let timerInterval;
 
-  // Inference Model 1: Confidence
-  function calculateConfidence(bus) {
-    if (bus.noGPS === 1) return { level: 'low', text: 'Scheduled Only' };
-    if (bus.departed === 0) return { level: 'med', text: 'At Terminus' };
-    return { level: 'high', text: 'Live GPS' };
-  }
+  // In-memory historical cache to compute decay rates & smooth jumps across polls
+  const routeStateMap = {};
 
-  // Inference Model 2: Occupancy Thermodynamics
-  function inferOccupancy(routeNo, destName) {
-    const d = new Date();
-    const hour = d.getHours();
-    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-    const dest = destName.toLowerCase();
-    
-    let load = { level: 'light', text: 'Probable Seats' };
-
-    if (!isWeekend) {
-      if (hour >= 7 && hour <= 9 && (dest.includes('tung chung') || dest.includes('mui wo'))) {
-        load = { level: 'heavy', text: 'Likely Standing' };
-      } else if (hour >= 17 && hour <= 19 && !dest.includes('tung chung') && !dest.includes('mui wo')) {
-        load = { level: 'heavy', text: 'Likely Standing' };
-      }
-    } else {
-      if (hour >= 10 && hour <= 14 && (dest.includes('tai o') || dest.includes('ngong ping'))) {
-        load = { level: 'heavy', text: 'Near Maximum' };
-      } else if (hour >= 16 && hour <= 19 && (dest.includes('tung chung') || dest.includes('mui wo'))) {
-        load = { level: 'heavy', text: 'Near Maximum' };
-      }
-    }
-    return load;
+  // Haversine formula to compute physical road distance (km) between GPS stops
+  function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
   async function fetchJSON(endpoint) {
     const response = await fetch(`${API_BASE}${endpoint}`);
-    if (!response.ok) throw new Error('API unreachable');
+    if (!response.ok) throw new Error('API offline');
     return await response.json();
   }
 
@@ -195,153 +225,233 @@
       const loadingEl = document.getElementById('loadingText');
       if (loadingEl) loadingEl.remove();
 
-      // Step 1: Ensure DOM shells exist for all monitored bindings
+      // Step 1: Ensure DOM containers exist
       for (const route of relevantRoutes) {
         const destName = route.routeName_e.split('>').pop().trim();
         const cardId = `route-${route.routeId}`;
         
         if (!document.getElementById(cardId)) {
-          // Initialize dataset.etaMins at 9999 so loading elements sit at the bottom
           listEl.insertAdjacentHTML('beforeend', `
-            <div class="route-card" id="${cardId}" data-eta-mins="9999">
-              <div class="route-no">${route.routeNo}</div>
-              <div class="route-info">
-                <div class="route-dest">To ${destName}</div>
-                <div class="route-status" id="status-${route.routeId}">Awaiting telemetry...</div>
-                <div class="inference-tags" id="tags-${route.routeId}"></div>
+            <div class="route-card" id="${cardId}" data-smart-mins="9999">
+              <div class="card-main">
+                <div class="route-left">
+                  <div class="route-no">${route.routeNo}</div>
+                  <div class="route-info">
+                    <div class="route-dest">To ${destName}</div>
+                    <div class="route-status" id="status-${route.routeId}">Loading telemetry...</div>
+                  </div>
+                </div>
+                <div class="eta-container">
+                  <div class="eta-box">
+                    <span class="eta-label">Official</span>
+                    <span class="official-eta" id="off-${route.routeId}">--</span>
+                  </div>
+                  <div class="eta-box">
+                    <span class="eta-label">Smart</span>
+                    <span class="smart-eta" id="smart-${route.routeId}">--</span>
+                  </div>
+                </div>
               </div>
-              <div class="route-eta" id="eta-${route.routeId}">--</div>
+              <div class="inference-row" id="tags-${route.routeId}"></div>
             </div>
           `);
         }
       }
 
-      // Step 2: Fetch all ETA data concurrently to prevent sequential UI waterfalling
-      const fetchPromises = relevantRoutes.map(route => {
-        const destName = route.routeName_e.split('>').pop().trim();
-        return resolveStopsAndFetchETA(route, destName);
-      });
+      // Step 2: Concurrently query target stop and upstream stop
+      const promises = relevantRoutes.map(route => processRouteSmartETA(route));
+      await Promise.all(promises);
 
-      await Promise.all(fetchPromises);
-      
-      // Step 3: Execute sorting algorithm once all network payloads have resolved
+      // Step 3: Sort list dynamically by Smart ETA
       sortCards();
 
-    } catch (error) {
-      console.error('Core telemetry failure:', error);
+    } catch (err) {
+      console.error('Telemetry failure:', err);
     }
   }
 
-  async function resolveStopsAndFetchETA(route, destName) {
-    const cardEl = document.getElementById(`route-${route.routeId}`);
-    const statusEl = document.getElementById(`status-${route.routeId}`);
-    const etaEl = document.getElementById(`eta-${route.routeId}`);
-    const tagsEl = document.getElementById(`tags-${route.routeId}`);
+  async function processRouteSmartETA(route) {
+    const routeId = route.routeId;
+    const cardEl = document.getElementById(`route-${routeId}`);
+    const statusEl = document.getElementById(`status-${routeId}`);
+    const offEl = document.getElementById(`off-${routeId}`);
+    const smartEl = document.getElementById(`smart-${routeId}`);
+    const tagsEl = document.getElementById(`tags-${routeId}`);
 
     try {
-      const stopData = await fetchJSON(`/stop.php?action=list&routeId=${route.routeId}`);
-      const targetStop = stopData.stops.find(s => 
-        s.stopName_e.toLowerCase().includes(TARGET_STOP_NAME.toLowerCase())
-      );
+      // 1. Get Stop List for spatial topology
+      const stopData = await fetchJSON(`/stop.php?action=list&routeId=${routeId}`);
+      const stops = stopData.stops;
+      
+      const targetIndex = stops.findIndex(s => s.stopName_e.toLowerCase().includes(TARGET_STOP_NAME.toLowerCase()));
 
-      if (!targetStop) {
-        statusEl.innerText = 'Stop not serviced on this bound';
-        cardEl.dataset.etaMins = 9999;
+      if (targetIndex === -1) {
+        statusEl.innerText = 'Not serviced on this bound';
+        cardEl.dataset.smartMins = 9999;
+        offEl.innerText = '--';
+        smartEl.innerText = '--';
         tagsEl.innerHTML = '';
         return;
       }
-      
-      const etaData = await fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${route.routeId}&stopId=${targetStop.stopId}&language=en`);
-      
-      if (etaData.estimatedArrivals && etaData.estimatedArrivals.length > 0) {
-        const nextBus = etaData.estimatedArrivals[0];
-        const arrivalTime = new Date(nextBus.estimatedArrivalTime.replace(/-/g, '/'));
-        const serverTime = new Date(nextBus.generateTime.replace(/-/g, '/'));
-        
-        const diffMs = arrivalTime - serverTime;
-        const diffMins = Math.floor(diffMs / 60000);
-        
-        // Push resolved minutes into the DOM dataset for the sorting algorithm
-        cardEl.dataset.etaMins = diffMins;
 
-        if (diffMins <= 0) {
-           etaEl.innerText = 'Due';
-           etaEl.style.color = 'var(--accent-yellow)';
-        } else {
-           etaEl.innerText = `${diffMins} min`;
-           etaEl.style.color = 'var(--accent-green)';
-        }
-        statusEl.innerText = `Updated at ${serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      const targetStop = stops[targetIndex];
+      const upstreamStop = targetIndex > 0 ? stops[targetIndex - 1] : null;
 
-        const conf = calculateConfidence(nextBus);
-        const load = inferOccupancy(route.routeNo, destName);
+      // 2. Query target stop ETA & upstream stop ETA in parallel
+      const targetReq = fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${targetStop.stopId}&language=en`);
+      const upstreamReq = upstreamStop 
+        ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${upstreamStop.stopId}&language=en`)
+        : Promise.resolve(null);
 
-        tagsEl.innerHTML = `
-          <span class="tag ${conf.level}-conf">${conf.text}</span>
-          <span class="tag load-${load.level}">${load.text}</span>
-        `;
-      } else {
-        // No buses scheduled; push to bottom of sorted index
-        cardEl.dataset.etaMins = 9999; 
-        etaEl.innerText = '--';
-        etaEl.style.color = 'var(--text-primary)';
+      const [targetEtaRes, upstreamEtaRes] = await Promise.all([targetReq, upstreamReq]);
+
+      if (!targetEtaRes.estimatedArrivals || targetEtaRes.estimatedArrivals.length === 0) {
+        cardEl.dataset.smartMins = 9999;
+        offEl.innerText = '--';
+        smartEl.innerText = '--';
         statusEl.innerText = 'No upcoming departures';
         tagsEl.innerHTML = '';
+        return;
       }
-    } catch (error) {
-      cardEl.dataset.etaMins = 9999;
+
+      const rawBus = targetEtaRes.estimatedArrivals[0];
+      const arrivalTime = new Date(rawBus.estimatedArrivalTime.replace(/-/g, '/'));
+      const serverTime = new Date(rawBus.generateTime.replace(/-/g, '/'));
+      const rawEtaMins = Math.max(0, Math.floor((arrivalTime - serverTime) / 60000));
+
+      // 3. Extract Upstream ETA (if available)
+      let upstreamEtaMins = null;
+      if (upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
+        const upBus = upstreamEtaRes.estimatedArrivals[0];
+        const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
+        const upServerTime = new Date(upBus.generateTime.replace(/-/g, '/'));
+        upstreamEtaMins = Math.max(0, Math.floor((upArrTime - upServerTime) / 60000));
+      }
+
+      // --- ALGORITHM: SMART VALUE-ADDED CALCULATIONS ---
+      let smartMins = rawEtaMins;
+      let reasonTags = [];
+
+      // A. Spatial Constraint: Check if official ETA claims "Due" prematurely
+      if (upstreamStop && upstreamEtaMins !== null) {
+        const distanceKm = calculateDistanceKm(
+          parseFloat(upstreamStop.latitude), parseFloat(upstreamStop.longitude),
+          parseFloat(targetStop.latitude), parseFloat(targetStop.longitude)
+        );
+        // Transit time floor based on physical distance (min 1 min + dwell)
+        const minTransitTimeMins = Math.max(1.0, (distanceKm / 35.0) * 60 + 0.5);
+
+        // If Target ETA claims <= 1 min but Upstream ETA says bus is still far away
+        if (rawEtaMins <= 1 && upstreamEtaMins >= 1) {
+          smartMins = Math.ceil(upstreamEtaMins + minTransitTimeMins);
+          reasonTags.push(`<span class="tag blue">Hold: Upstream Buffer (+${(smartMins - rawEtaMins).toFixed(0)}m)</span>`);
+        }
+      }
+
+      // B. Temporal Decay & Anti-Jitter Filter
+      const now = Date.now();
+      const prevState = routeStateMap[routeId];
+
+      if (prevState) {
+        const elapsedMins = (now - prevState.timestamp) / 60000;
+        const rawDecay = prevState.rawEtaMins - rawEtaMins;
+        const decayRate = elapsedMins > 0 ? (rawDecay / elapsedMins) : 1;
+
+        // Detect bottleneck / stalled official clock
+        if (decayRate < 0.4 && rawEtaMins > 0) {
+          const congestionFactor = Math.min(2.0, 1 / Math.max(0.2, decayRate));
+          smartMins = Math.round(smartMins * congestionFactor);
+          reasonTags.push(`<span class="tag orange">Congestion Slowdown</span>`);
+        } 
+        // Dampen sudden backward jumps (e.g., API jump from 3m to 8m)
+        else if (rawEtaMins - prevState.smartMins > 3) {
+          smartMins = Math.round(prevState.smartMins + (elapsedMins * 0.5)); // Gradual drift correction
+          reasonTags.push(`<span class="tag yellow">Filtered API Spike</span>`);
+        }
+      }
+
+      // Save state for next cycle
+      routeStateMap[routeId] = {
+        timestamp: now,
+        rawEtaMins: rawEtaMins,
+        smartMins: smartMins
+      };
+
+      // --- UI UPDATING ---
+      cardEl.dataset.smartMins = smartMins;
+
+      // Render Official ETA
+      offEl.innerText = rawEtaMins === 0 ? 'Due' : `${rawEtaMins}m`;
+      if (rawEtaMins === smartMins) {
+        offEl.classList.add('matches');
+      } else {
+        offEl.classList.remove('matches');
+      }
+
+      // Render Smart ETA
+      if (smartMins === 0) {
+        smartEl.innerText = 'Due';
+        smartEl.className = 'smart-eta';
+      } else {
+        smartEl.innerText = `${smartMins} min`;
+        if (smartMins > rawEtaMins) {
+          smartEl.className = 'smart-eta adjusted';
+        } else {
+          smartEl.className = 'smart-eta';
+        }
+      }
+
+      // Render GPS & Validation Badges
+      const gpsTag = rawBus.noGPS === 1 
+        ? `<span class="tag yellow">Scheduled</span>` 
+        : `<span class="tag green">Live GPS</span>`;
+      
+      tagsEl.innerHTML = `${gpsTag} ${reasonTags.join(' ')}`;
+      statusEl.innerText = `Updated ${serverTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+
+    } catch (err) {
       statusEl.innerText = 'Telemetry sync failed';
+      cardEl.dataset.smartMins = 9999;
     }
   }
 
-  // DOM Sorting Mechanism
   function sortCards() {
     const listEl = document.getElementById('routeList');
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
     
-    // Sort array natively by integers
-    cards.sort((a, b) => {
-      const valA = parseInt(a.dataset.etaMins, 10);
-      const valB = parseInt(b.dataset.etaMins, 10);
-      return valA - valB;
-    });
-    
-    // Re-appending existing nodes in sorted order prevents redrawing and flickering
+    cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
     cards.forEach(card => listEl.appendChild(card));
   }
 
-  // Mobile Web Environment Handlers
   function startTimer() {
     clearInterval(timerInterval);
     timerInterval = setInterval(() => {
       countdown--;
       if (countdown <= 0) {
         countdown = REFRESH_INTERVAL;
-        document.getElementById('refreshTimer').innerText = 'Updating...';
+        document.getElementById('refreshTimer').innerText = 'Syncing...';
         updateNetworkTelemetry();
       } else {
-        document.getElementById('refreshTimer').innerText = `Updating in ${countdown}s`;
+        document.getElementById('refreshTimer').innerText = `Syncing in ${countdown}s`;
       }
     }, 1000);
   }
 
-  // Prevent intervals from desyncing when Safari/Chrome puts tabs to sleep
+  // Mobile Lifecycle Optimization (Prevents timer drift when tab is backgrounded)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       countdown = REFRESH_INTERVAL;
-      document.getElementById('refreshTimer').innerText = 'Updating...';
+      document.getElementById('refreshTimer').innerText = 'Syncing...';
       updateNetworkTelemetry();
       startTimer();
     } else {
-      // Kill execution to prevent battery drain while minimized
       clearInterval(timerInterval);
     }
   });
 
-  // Initialization
+  // Init
   updateNetworkTelemetry();
   startTimer();
-
 </script>
 </body>
 </html>
