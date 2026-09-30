@@ -80,7 +80,7 @@
     padding: 16px 20px;
     border-bottom: 1px solid var(--card-border);
     background-color: var(--bg-color);
-    gap: 10px;
+    gap: 12px;
   }
 
   .card-main {
@@ -115,6 +115,61 @@
   }
 
   .smart-eta.adjusted { color: var(--accent-blue); }
+
+  /* Occupancy Gauge Styling */
+  .occupancy-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255,255,255,0.03);
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .occupancy-label-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .occupancy-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+  }
+
+  .occupancy-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .bar-segments {
+    display: flex;
+    gap: 3px;
+  }
+
+  .segment {
+    width: 6px;
+    height: 12px;
+    border-radius: 1.5px;
+    background-color: #2c2c2e;
+  }
+
+  .segment.active-green { background-color: var(--accent-green); }
+  .segment.active-orange { background-color: var(--accent-orange); }
+  .segment.active-red { background-color: var(--accent-red); }
+
+  .occupancy-pct-text {
+    font-size: 0.8rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    min-width: 36px;
+    text-align: right;
+  }
 
   .inference-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
@@ -170,13 +225,40 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
-  // Time-of-day heuristic fallback if no 2nd bus is scheduled
-  function getFallbackOccupancy(routeNo, destName) {
-    const h = new Date().getHours();
+  function calculateOccupancy(destName, estimatedArrivals) {
+    const now = new Date();
+    const hour = now.getHours();
     const dest = destName.toLowerCase();
-    if (h >= 7 && h <= 9 && (dest.includes('tung chung') || dest.includes('mui wo'))) return 'orange';
-    if (h >= 17 && h <= 19 && !dest.includes('tung chung')) return 'orange';
-    return 'green';
+
+    // Time-of-day baseline load
+    let baseLoad = 35; 
+    if (hour >= 7 && hour <= 9) {
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 40;
+    } else if (hour >= 17 && hour <= 19) {
+      baseLoad = (!dest.includes('tung chung')) ? 70 : 45;
+    } else if (hour >= 11 && hour <= 14) {
+      baseLoad = 38;
+    }
+
+    let multiplier = 1.0;
+
+    if (estimatedArrivals && estimatedArrivals.length >= 2) {
+      const serverTime = new Date(estimatedArrivals[0].generateTime.replace(/-/g, '/'));
+      const t1 = Math.max(0, Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000));
+      const t2 = Math.max(0, Math.floor((new Date(estimatedArrivals[1].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000));
+      const gap = t2 - t1;
+
+      if (gap <= 10) {
+        multiplier = 1.95; // High dwell delay from heavy boardings
+      } else {
+        multiplier = Math.max(0.4, Math.min(2.1, gap / 15.0));
+      }
+    }
+
+    const pct = Math.min(98, Math.max(12, Math.round(baseLoad * multiplier)));
+    const activeBars = Math.min(10, Math.max(1, Math.round(pct / 10)));
+
+    return { pct, activeBars };
   }
 
   async function fetchJSON(endpoint) {
@@ -220,6 +302,20 @@
                   </div>
                 </div>
               </div>
+
+              <!-- 10-Bar Occupancy Section -->
+              <div class="occupancy-section" id="occ-sec-${route.routeId}" style="display:none;">
+                <div class="occupancy-label-wrap">
+                  <span class="occupancy-title">Est. Occupancy</span>
+                </div>
+                <div class="occupancy-bar-container">
+                  <div class="bar-segments" id="bars-${route.routeId}">
+                    ${Array(10).fill('<div class="segment"></div>').join('')}
+                  </div>
+                  <span class="occupancy-pct-text" id="pct-${route.routeId}">--%</span>
+                </div>
+              </div>
+
               <div class="inference-row" id="tags-${route.routeId}"></div>
             </div>
           `);
@@ -254,6 +350,9 @@
       const offEl = document.getElementById(`off-${routeId}`);
       const smartEl = document.getElementById(`smart-${routeId}`);
       const tagsEl = document.getElementById(`tags-${routeId}`);
+      const occSecEl = document.getElementById(`occ-sec-${routeId}`);
+      const barsEl = document.getElementById(`bars-${routeId}`);
+      const pctEl = document.getElementById(`pct-${routeId}`);
       
       const targetStop = stops[targetIndex];
       const upstreamStop = targetIndex > 0 ? stops[targetIndex - 1] : null;
@@ -271,6 +370,7 @@
         smartEl.innerText = '--';
         statusEl.innerText = 'No upcoming departures';
         tagsEl.innerHTML = '';
+        if (occSecEl) occSecEl.style.display = 'none';
         return;
       }
 
@@ -282,30 +382,29 @@
       let smartMins = rawEtaMins;
       let reasonTags = [];
 
-      // 1. Occupancy Inference (Headway Compression Math)
-      if (targetEtaRes.estimatedArrivals.length > 1) {
-        const bus2 = targetEtaRes.estimatedArrivals[1];
-        const arrTime2 = new Date(bus2.estimatedArrivalTime.replace(/-/g, '/'));
-        const rawEtaMins2 = Math.max(0, Math.floor((arrTime2 - serverTime) / 60000));
-        
-        const headwayGap = rawEtaMins2 - rawEtaMins;
-        
-        if (headwayGap <= 12) {
-          reasonTags.push(`<span class="tag purple">High Load (Bunching)</span>`);
-        } else if (headwayGap >= 25) {
-          reasonTags.push(`<span class="tag orange">High Load (Wide Gap)</span>`);
+      // Render 10-Bar Occupancy Visual
+      const destName = route.routeName_e.split('>').pop().trim();
+      const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals);
+      
+      let colorClass = 'active-green';
+      if (pct > 75) colorClass = 'active-red';
+      else if (pct > 45) colorClass = 'active-orange';
+
+      let barHtml = '';
+      for (let i = 1; i <= 10; i++) {
+        if (i <= activeBars) {
+          barHtml += `<div class="segment ${colorClass}"></div>`;
         } else {
-          reasonTags.push(`<span class="tag green">Normal Load</span>`);
+          barHtml += `<div class="segment"></div>`;
         }
-      } else {
-        // Fallback heuristic if no 2nd bus is listed
-        const destName = route.routeName_e.split('>').pop().trim();
-        const fbColor = getFallbackOccupancy(route.routeNo, destName);
-        const fbText = fbColor === 'orange' ? 'Likely Standing' : 'Probable Seats';
-        reasonTags.push(`<span class="tag ${fbColor}">${fbText} (Time Est.)</span>`);
       }
 
-      // 2. Spatial & Delay Logic
+      barsEl.innerHTML = barHtml;
+      pctEl.innerText = `${pct}%`;
+      pctEl.style.color = pct > 75 ? 'var(--accent-red)' : (pct > 45 ? 'var(--accent-orange)' : 'var(--accent-green)');
+      occSecEl.style.display = 'flex';
+
+      // Spatial & Delay Computation
       if (rawEtaMins <= 2) {
         smartMins = rawEtaMins;
       } else {
@@ -344,7 +443,7 @@
         busStateMap[busKey] = { timestamp: now, rawEtaMins, smartMins };
       }
 
-      // 3. UI Updates
+      // DOM Updates
       cardEl.dataset.smartMins = smartMins;
       offEl.innerText = rawEtaMins === 0 ? 'Due' : `${rawEtaMins}m`;
 
