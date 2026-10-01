@@ -245,27 +245,36 @@
   // --- INITIALIZATION & SELECTOR LOGIC ---
   async function initApp() {
     try {
-      const [rData, sData] = await Promise.all([
-        fetchJSON('/route.php?action=list'),
-        fetchJSON('/stop.php?action=list')
-      ]);
+      document.getElementById('loadingText').innerText = "Loading NLB station index...";
       
-      allRoutes = rData.routes;
+      const rData = await fetchJSON('/route.php?action=list');
+      allRoutes = rData.routes || [];
       
       // Populate Route Select
       const rSelect = document.getElementById('routeSelect');
       allRoutes.forEach(r => {
-          const dest = r.routeName_e.split('>').pop().trim();
+          const dest = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
           rSelect.insertAdjacentHTML('beforeend', `<option value="${r.routeId}">${r.routeNo} (To ${dest})</option>`);
       });
 
-      // Extract all unique stops across entire NLB network
+      // Build complete stop index across all routes
+      await Promise.all(allRoutes.map(async (r) => {
+        try {
+          const res = await fetchJSON(`/stop.php?action=list&routeId=${r.routeId}`);
+          routeStopsCache[r.routeId] = res.stops || [];
+        } catch(e) {
+          routeStopsCache[r.routeId] = [];
+        }
+      }));
+
+      // Aggregate all unique network stops
       const uniqueStops = new Map();
-      sData.stops.forEach(s => {
-        if (s.stopName_e && !uniqueStops.has(s.stopName_e)) {
+      Object.values(routeStopsCache).flat().forEach(s => {
+        if (s && s.stopName_e && !uniqueStops.has(s.stopName_e)) {
           uniqueStops.set(s.stopName_e, s);
         }
       });
+
       allStops = Array.from(uniqueStops.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
       
       const savedStop = localStorage.getItem('selectedNLBStop');
@@ -276,14 +285,13 @@
           rSelect.value = savedRoute;
       }
       
-      if (savedRoute !== 'ALL' && savedRoute != null) {
-          await cacheRouteStops(savedRoute);
+      if (savedRoute !== 'ALL' && savedRoute != null && routeStopsCache[savedRoute]) {
           populateStopDropdown(routeStopsCache[savedRoute]);
       } else {
           populateStopDropdown(allStops); 
       }
       
-      if (savedStop) {
+      if (savedStop && allStops.some(s => s.stopName_e === savedStop)) {
         currentStopName = savedStop;
         document.getElementById('stopSelect').value = currentStopName;
         startAppLoop();
@@ -295,25 +303,16 @@
     }
   }
 
-  async function cacheRouteStops(routeId) {
-    if (!routeStopsCache[routeId]) {
-        try {
-            const res = await fetchJSON(`/stop.php?action=list&routeId=${routeId}`);
-            routeStopsCache[routeId] = res.stops || [];
-        } catch(e) {
-            routeStopsCache[routeId] = [];
-        }
-    }
-  }
-
   function populateStopDropdown(stopsList) {
     const sSelect = document.getElementById('stopSelect');
     sSelect.innerHTML = '';
     
+    if (!stopsList || stopsList.length === 0) return;
+
     const unique = [];
     const seen = new Set();
-    for(const s of stopsList) {
-        if(!seen.has(s.stopName_e)) {
+    for (const s of stopsList) {
+        if (s && s.stopName_e && !seen.has(s.stopName_e)) {
             seen.add(s.stopName_e);
             unique.push(s);
         }
@@ -322,6 +321,13 @@
     unique.forEach(s => {
         sSelect.insertAdjacentHTML('beforeend', `<option value="${s.stopName_e}">${s.stopName_c} - ${s.stopName_e}</option>`);
     });
+
+    if (sSelect.options.length > 0) {
+      if (!currentStopName || !seen.has(currentStopName)) {
+        currentStopName = sSelect.options[0].value;
+      }
+      sSelect.value = currentStopName;
+    }
   }
 
   async function handleRouteChange(val) {
@@ -330,12 +336,18 @@
     
     if (val === 'ALL') {
         populateStopDropdown(allStops);
-        // Attempt auto-locate. The 'true' flag ensures we fail gracefully to dropdown if GPS is off.
         locateNearestStop(false, true); 
         return;
     } else {
         document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Loading route stations...</div>';
-        await cacheRouteStops(val);
+        if (!routeStopsCache[val]) {
+          try {
+            const res = await fetchJSON(`/stop.php?action=list&routeId=${val}`);
+            routeStopsCache[val] = res.stops || [];
+          } catch(e) {
+            routeStopsCache[val] = [];
+          }
+        }
         populateStopDropdown(routeStopsCache[val]);
         ensureValidStopAndFetch();
     }
@@ -345,7 +357,7 @@
     if (!val || val.trim() === '') return;
     currentStopName = val.trim();
     localStorage.setItem('selectedNLBStop', currentStopName);
-    document.getElementById('gpsStatus').innerText = ''; // Cleared since manually overridden
+    document.getElementById('gpsStatus').innerText = ''; 
     
     document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Fetching live arrivals...</div>';
     for (let key in busStateMap) delete busStateMap[key];
@@ -454,10 +466,8 @@
     if (isAutoInit) {
         fallbackDefault();
     } else if (isFromDropdown) {
-        // GPS failed when selecting 'All Lines' - proceed to load stations manually anyway
         ensureValidStopAndFetch();
     }
-    // If it was a manual user click (both false), we just show the error in gpsStatus and do nothing else
   }
 
   function fallbackDefault() {
@@ -465,11 +475,13 @@
     document.getElementById('routeSelect').value = 'ALL';
     populateStopDropdown(allStops);
     
-    const valid = allStops.some(s => s.stopName_e === currentStopName);
-    if (!valid || !currentStopName) {
-        currentStopName = 'Tung Chung Station Bus Terminus';
+    if (allStops.length > 0) {
+      const valid = allStops.some(s => s.stopName_e === currentStopName);
+      if (!valid || !currentStopName) {
+          currentStopName = 'Tung Chung Station Bus Terminus';
+      }
+      document.getElementById('stopSelect').value = currentStopName;
     }
-    document.getElementById('stopSelect').value = currentStopName;
     startAppLoop();
   }
 
@@ -484,16 +496,6 @@
     
     try {
       const routesToCheck = currentRouteId === 'ALL' ? allRoutes : allRoutes.filter(r => r.routeId === currentRouteId);
-      const uncachedRoutes = routesToCheck.filter(r => !routeStopsCache[r.routeId]);
-      
-      if (uncachedRoutes.length > 0) {
-          if (!document.getElementById('loadingText')) {
-              document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Mapping route network...</div>';
-          }
-          const fetchPromises = uncachedRoutes.map(r => cacheRouteStops(r.routeId));
-          await Promise.all(fetchPromises);
-      }
-
       const relevantRoutes = [];
       const searchLower = currentStopName.toLowerCase();
       
@@ -520,7 +522,7 @@
       for (const item of relevantRoutes) {
         const routeId = item.route.routeId;
         const cardId = `route-${routeId}`;
-        const destName = item.route.routeName_e.split('>').pop().trim();
+        const destName = item.route.routeName_e ? item.route.routeName_e.split('>').pop().trim() : '';
 
         if (!document.getElementById(cardId)) {
           listEl.insertAdjacentHTML('beforeend', `
@@ -579,7 +581,7 @@
     const cardEl = document.getElementById(`route-${routeId}`);
     
     try {
-      const destName = route.routeName_e.split('>').pop().trim();
+      const destName = route.routeName_e ? route.routeName_e.split('>').pop().trim() : '';
       const offEl = document.getElementById(`off-${routeId}`);
       const smartEl = document.getElementById(`smart-${routeId}`);
       const occSecEl = document.getElementById(`occ-sec-${routeId}`);
