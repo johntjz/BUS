@@ -212,7 +212,7 @@
   
   let allStops = [];
   let allRoutes = [];
-  let routeStopsCache = {}; // Cache to prevent spamming API on every tick
+  let routeStopsCache = {};
   const busStateMap = {};
 
   async function fetchJSON(endpoint) {
@@ -224,7 +224,6 @@
   // --- INITIALIZATION & SPATIAL LOGIC ---
   async function initApp() {
     try {
-      // 1. Fetch Global Data concurrently
       const [rData, sData] = await Promise.all([
         fetchJSON('/route.php?action=list'),
         fetchJSON('/stop.php?action=list')
@@ -232,7 +231,6 @@
       
       allRoutes = rData.routes;
       
-      // Map out all distinct stops to populate autocomplete datalist
       const uniqueStops = new Map();
       sData.stops.forEach(s => {
         if (s.stopName_e && !uniqueStops.has(s.stopName_e)) {
@@ -246,14 +244,12 @@
         datalist.insertAdjacentHTML('beforeend', `<option value="${s.stopName_e}">${s.stopName_c} - ${s.stopName_e}</option>`);
       });
 
-      // 2. Location Bootstrapping (Auto GPS)
       const savedStop = localStorage.getItem('selectedNLBStop');
       if (savedStop) {
         currentStopName = savedStop;
         document.getElementById('stopSearch').value = currentStopName;
         startAppLoop();
       } else {
-        // Attempt Auto-GPS. If it fails, fallback to Lo Uk Tsuen
         locateNearestStop(true); 
       }
     } catch (err) {
@@ -267,7 +263,6 @@
     currentStopName = val.trim();
     localStorage.setItem('selectedNLBStop', currentStopName);
     
-    // Clear state & trigger immediate reload
     document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Syncing stop telemetry...</div>';
     for (let key in busStateMap) delete busStateMap[key];
     
@@ -347,7 +342,6 @@
     if (!currentStopName) return;
     
     try {
-      // 1. Populate route stop caches if empty (to prevent O(n^2) API spam)
       if (Object.keys(routeStopsCache).length === 0) {
         document.getElementById('loadingText').innerText = "Caching route structure (one-time setup)...";
         const stopPromises = allRoutes.map(async r => {
@@ -359,7 +353,6 @@
         await Promise.all(stopPromises);
       }
 
-      // 2. Identify routes matching the search term flexibly
       const relevantRoutes = [];
       const searchLower = currentStopName.toLowerCase();
       
@@ -384,7 +377,6 @@
         return;
       }
 
-      // Ensure cards exist
       for (const item of relevantRoutes) {
         const routeId = item.route.routeId;
         const cardId = `route-${routeId}`;
@@ -426,13 +418,11 @@
         }
       }
 
-      // Cleanup obsolete cards (if stop changed)
       const validIds = relevantRoutes.map(i => `route-${i.route.routeId}`);
       document.querySelectorAll('.route-card').forEach(c => {
         if (!validIds.includes(c.id)) c.remove();
       });
 
-      // 3. Process Live Data Only for Relevant Routes
       const promises = relevantRoutes.map(item => processRouteSmartETA(item.route, item.stops, item.targetIndex));
       await Promise.all(promises);
 
@@ -443,7 +433,6 @@
     }
   }
 
-  // Same robust anti-jump algorithms maintained for verified performance
   async function processRouteSmartETA(route, stops, targetIndex) {
     const routeId = route.routeId;
     const cardEl = document.getElementById(`route-${routeId}`);
@@ -474,8 +463,6 @@
       }
 
       const now = Date.now();
-      
-      // Focus strictly on immediate arriving bus (index 0) to prevent skipping
       const activeBus = targetEtaRes.estimatedArrivals[0];
       const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
       const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
@@ -498,8 +485,8 @@
          reasonTags.push(`<span class="tag orange">Traffic Signal</span>`);
       }
 
-      // Gauge
-      const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals);
+      // Updated Gauge Math (Integrated Spatial/Temporal Occ)
+      const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals, targetIndex, stops.length);
       let colorClass = pct > 75 ? 'active-red' : (pct > 45 ? 'active-orange' : 'active-green');
       let barHtml = '';
       for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
@@ -549,12 +536,22 @@
             }
           }
         } else if (prevState && prevState.smartMins <= 1 && rawEtaMins > 5) {
-          // Grace Period Anti-Jump (Smooth transition handling when bus departs)
           const timeSincePreviousDue = (now - prevState.timestamp) / 1000;
           if (timeSincePreviousDue < 25) {
             smartMins = 0;
             reasonTags.push(`<span class="tag green">At Stop</span>`);
           }
+        }
+
+        // --- BUG FIX: ETA LATCHING PREVENTION ---
+        // If the official time is 2 minutes or less, the bus is on final approach.
+        // Force the Smart ETA to mirror the Official ETA to prevent grabbing the next bus.
+        if (rawEtaMins <= 2) {
+          smartMins = rawEtaMins;
+        } 
+        // Failsafe: If the discrepancy is massive, the smart logic likely shifted context.
+        else if (Math.abs(smartMins - rawEtaMins) > 10) {
+          smartMins = rawEtaMins;
         }
 
         busStateMap[routeId] = { timestamp: now, rawEtaMins, smartMins, busArrivalTimeId };
@@ -590,33 +587,53 @@
     }
   }
   
-  function calculateOccupancy(destName, estimatedArrivals) {
+  function calculateOccupancy(destName, estimatedArrivals, currentStopIndex, totalStops) {
     const now = new Date();
     const hour = now.getHours();
     const dest = destName.toLowerCase();
 
-    let baseLoad = 35; 
+    // 1. Determine Base Load by Temporal Demand
+    let baseLoad = 40; 
     if (hour >= 7 && hour <= 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 40;
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 80 : 45;
     } else if (hour >= 17 && hour <= 19) {
-      baseLoad = (!dest.includes('tung chung')) ? 70 : 45;
+      baseLoad = (!dest.includes('tung chung')) ? 75 : 50;
     } else if (hour >= 11 && hour <= 14) {
-      baseLoad = 38;
+      baseLoad = 35;
     }
 
-    let multiplier = 1.0;
+    // 2. Spatial Decay Math
+    const routeProgress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
+    let spatialMultiplier = 1 - Math.pow(routeProgress, 2.5);
+    
+    // Terminus adjustment
+    if (routeProgress < 0.05 && estimatedArrivals && estimatedArrivals.length > 0) {
+      const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - now) / 60000);
+      if (minToDeparture > 5) spatialMultiplier *= 0.5; // Boarding just started
+    }
+
+    // 3. Poisson-inspired Headway Math
+    let headwayMultiplier = 1.0;
     if (estimatedArrivals && estimatedArrivals.length >= 2) {
       const serverTime = new Date(estimatedArrivals[0].generateTime.replace(/-/g, '/'));
-      const t1 = Math.max(0, Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000));
-      const t2 = Math.max(0, Math.floor((new Date(estimatedArrivals[1].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000));
+      const t1 = Math.max(0, (new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000);
+      const t2 = Math.max(0, (new Date(estimatedArrivals[1].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000);
       const gap = t2 - t1;
 
-      if (gap <= 10) multiplier = 1.95;
-      else multiplier = Math.max(0.4, Math.min(2.1, gap / 15.0));
+      if (gap <= 8) {
+        headwayMultiplier = 1.8; // Bunching, front bus heavily loaded
+      } else {
+        const lambda = 0.08; 
+        headwayMultiplier = 0.5 + (2.0 * (1 - Math.exp(-lambda * gap)));
+      }
     }
 
-    const pct = Math.min(98, Math.max(12, Math.round(baseLoad * multiplier)));
+    let calculatedLoad = baseLoad * spatialMultiplier * headwayMultiplier;
+    const noise = (Math.random() * 6) - 3;
+    
+    const pct = Math.min(98, Math.max(5, Math.round(calculatedLoad + noise)));
     const activeBars = Math.min(10, Math.max(1, Math.round(pct / 10)));
+
     return { pct, activeBars };
   }
 
