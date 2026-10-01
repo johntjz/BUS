@@ -64,31 +64,29 @@
     border-bottom: 1px solid var(--card-border);
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     background-color: var(--bg-color);
     gap: 12px;
     flex-wrap: wrap;
   }
 
-  .search-wrap {
+  .controls-container {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex: 1;
-    min-width: 240px;
+    min-width: 260px;
   }
 
   .gps-btn {
     background: #2c2c2e;
     color: #fff;
     border: 1px solid #3a3a3c;
-    width: 36px;
-    height: 36px;
+    width: 48px;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.2rem;
+    font-size: 1.4rem;
     cursor: pointer;
     transition: all 0.2s;
     flex-shrink: 0;
@@ -103,22 +101,37 @@
     100% { opacity: 1; }
   }
 
-  .stop-input {
+  .selectors {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  select.stop-input {
     background: #2c2c2e;
     color: #fff;
     border: 1px solid #3a3a3c;
-    padding: 8px 12px;
+    padding: 8px 32px 8px 12px;
     border-radius: 8px;
     font-size: 0.9rem;
     font-weight: 600;
     outline: none;
-    flex: 1;
     width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url('data:image/svg+xml;utf8,<svg fill="%2398989d" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
   }
   
-  .stop-input::placeholder { color: var(--text-secondary); font-weight: 400; }
+  select.stop-input:focus { border-color: var(--accent-blue); }
 
-  .refresh-timer { font-size: 0.8rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
+  .refresh-timer { font-size: 0.8rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; margin-top: 6px; }
 
   #routeList { display: flex; flex-direction: column; min-height: 50vh; }
 
@@ -190,10 +203,14 @@
 </div>
 
 <div class="stop-header">
-  <div class="search-wrap">
+  <div class="controls-container">
     <button id="gpsBtn" class="gps-btn" onclick="locateNearestStop(false)" aria-label="Find nearest stop">📍</button>
-    <input type="text" id="stopSearch" class="stop-input" list="nlb-stops" placeholder="Search any NLB stop..." onchange="handleStopChange(this.value)">
-    <datalist id="nlb-stops"></datalist>
+    <div class="selectors">
+      <select id="routeSelect" class="stop-input" onchange="handleRouteChange(this.value)">
+        <option value="ALL">All Lines</option>
+      </select>
+      <select id="stopSelect" class="stop-input" onchange="handleStopChange(this.value)"></select>
+    </div>
   </div>
   <span class="refresh-timer" id="refreshTimer">Initializing...</span>
 </div>
@@ -204,8 +221,9 @@
 
 <script>
   const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
-  const REFRESH_INTERVAL = 30;
+  const REFRESH_INTERVAL = 15; // Increased polling precision
   
+  let currentRouteId = 'ALL';
   let currentStopName = '';
   let countdown = REFRESH_INTERVAL;
   let timerInterval;
@@ -221,7 +239,7 @@
     return await response.json();
   }
 
-  // --- INITIALIZATION & SPATIAL LOGIC ---
+  // --- INITIALIZATION & SELECTOR LOGIC ---
   async function initApp() {
     try {
       const [rData, sData] = await Promise.all([
@@ -231,23 +249,39 @@
       
       allRoutes = rData.routes;
       
+      // Populate Route Select
+      const rSelect = document.getElementById('routeSelect');
+      allRoutes.forEach(r => {
+          const dest = r.routeName_e.split('>').pop().trim();
+          rSelect.insertAdjacentHTML('beforeend', `<option value="${r.routeId}">${r.routeNo} (To ${dest})</option>`);
+      });
+
+      // Filter global unique stops for 'ALL' mode
       const uniqueStops = new Map();
       sData.stops.forEach(s => {
         if (s.stopName_e && !uniqueStops.has(s.stopName_e)) {
           uniqueStops.set(s.stopName_e, s);
         }
       });
-      allStops = Array.from(uniqueStops.values());
+      allStops = Array.from(uniqueStops.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
       
-      const datalist = document.getElementById('nlb-stops');
-      allStops.forEach(s => {
-        datalist.insertAdjacentHTML('beforeend', `<option value="${s.stopName_e}">${s.stopName_c} - ${s.stopName_e}</option>`);
-      });
+      populateStopDropdown(allStops);
 
       const savedStop = localStorage.getItem('selectedNLBStop');
+      const savedRoute = localStorage.getItem('selectedNLBRoute');
+      
+      if (savedRoute) {
+          currentRouteId = savedRoute;
+          rSelect.value = savedRoute;
+      }
+      
       if (savedStop) {
         currentStopName = savedStop;
-        document.getElementById('stopSearch').value = currentStopName;
+        if (currentRouteId !== 'ALL') {
+           await cacheRouteStops(currentRouteId);
+           populateStopDropdown(routeStopsCache[currentRouteId]);
+        }
+        document.getElementById('stopSelect').value = currentStopName;
         startAppLoop();
       } else {
         locateNearestStop(true); 
@@ -256,6 +290,63 @@
       document.getElementById('loadingText').innerText = "Network Error: Could not connect to HK Gov Transport API.";
       console.error(err);
     }
+  }
+
+  async function cacheRouteStops(routeId) {
+    if (!routeStopsCache[routeId]) {
+        try {
+            const res = await fetchJSON(`/stop.php?action=list&routeId=${routeId}`);
+            routeStopsCache[routeId] = res.stops || [];
+        } catch(e) {
+            routeStopsCache[routeId] = [];
+        }
+    }
+  }
+
+  function populateStopDropdown(stopsList) {
+    const sSelect = document.getElementById('stopSelect');
+    sSelect.innerHTML = '';
+    
+    const unique = [];
+    const seen = new Set();
+    for(const s of stopsList) {
+        if(!seen.has(s.stopName_e)) {
+            seen.add(s.stopName_e);
+            unique.push(s);
+        }
+    }
+    
+    unique.forEach(s => {
+        sSelect.insertAdjacentHTML('beforeend', `<option value="${s.stopName_e}">${s.stopName_c} - ${s.stopName_e}</option>`);
+    });
+  }
+
+  async function handleRouteChange(val) {
+    currentRouteId = val;
+    localStorage.setItem('selectedNLBRoute', currentRouteId);
+    
+    if (val === 'ALL') {
+        populateStopDropdown(allStops);
+    } else {
+        document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Caching line stops...</div>';
+        await cacheRouteStops(val);
+        populateStopDropdown(routeStopsCache[val]);
+    }
+    
+    // Auto-select nearest/valid stop if current is wiped out by line change
+    const sSelect = document.getElementById('stopSelect');
+    let stopExists = Array.from(sSelect.options).some(opt => opt.value === currentStopName);
+    
+    if (!stopExists && sSelect.options.length > 0) {
+        currentStopName = sSelect.options[0].value;
+        localStorage.setItem('selectedNLBStop', currentStopName);
+    } else {
+        sSelect.value = currentStopName;
+    }
+    
+    for (let key in busStateMap) delete busStateMap[key];
+    countdown = REFRESH_INTERVAL;
+    updateNetworkTelemetry();
   }
 
   function handleStopChange(val) {
@@ -270,6 +361,7 @@
     updateNetworkTelemetry();
   }
 
+  // --- SPATIAL MATH & GPS ---
   function calculateDistanceKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -307,12 +399,24 @@
       
       btn.classList.remove('loading');
       if (closest) {
+        // Reset Line to ALL to guarantee we see data at this new physical location
+        currentRouteId = 'ALL';
+        document.getElementById('routeSelect').value = 'ALL';
+        localStorage.setItem('selectedNLBRoute', 'ALL');
+        populateStopDropdown(allStops);
+
         currentStopName = closest.stopName_e;
-        document.getElementById('stopSearch').value = currentStopName;
+        document.getElementById('stopSelect').value = currentStopName;
         localStorage.setItem('selectedNLBStop', currentStopName);
         
+        for (let key in busStateMap) delete busStateMap[key];
+        
         if (isAutoInit) startAppLoop();
-        else handleStopChange(currentStopName);
+        else {
+            document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Syncing nearest stop telemetry...</div>';
+            countdown = REFRESH_INTERVAL;
+            updateNetworkTelemetry();
+        }
       } else if (isAutoInit) {
         fallbackDefault();
       }
@@ -327,8 +431,11 @@
   }
 
   function fallbackDefault() {
+    currentRouteId = 'ALL';
+    document.getElementById('routeSelect').value = 'ALL';
     currentStopName = 'Lo Uk Tsuen';
-    document.getElementById('stopSearch').value = currentStopName;
+    populateStopDropdown(allStops);
+    document.getElementById('stopSelect').value = currentStopName;
     startAppLoop();
   }
 
@@ -342,25 +449,24 @@
     if (!currentStopName) return;
     
     try {
-      if (Object.keys(routeStopsCache).length === 0) {
-        document.getElementById('loadingText').innerText = "Caching route structure (one-time setup)...";
-        const stopPromises = allRoutes.map(async r => {
-           try {
-             const res = await fetchJSON(`/stop.php?action=list&routeId=${r.routeId}`);
-             routeStopsCache[r.routeId] = res.stops || [];
-           } catch (e) { routeStopsCache[r.routeId] = []; }
-        });
-        await Promise.all(stopPromises);
+      const routesToCheck = currentRouteId === 'ALL' ? allRoutes : allRoutes.filter(r => r.routeId === currentRouteId);
+      const uncachedRoutes = routesToCheck.filter(r => !routeStopsCache[r.routeId]);
+      
+      if (uncachedRoutes.length > 0) {
+          if (!document.getElementById('loadingText')) {
+              document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Caching route structure...</div>';
+          }
+          const fetchPromises = uncachedRoutes.map(r => cacheRouteStops(r.routeId));
+          await Promise.all(fetchPromises);
       }
 
       const relevantRoutes = [];
       const searchLower = currentStopName.toLowerCase();
       
-      for (const r of allRoutes) {
+      for (const r of routesToCheck) {
         const stops = routeStopsCache[r.routeId] || [];
         const targetIndex = stops.findIndex(s => 
-          (s.stopName_e && s.stopName_e.toLowerCase().includes(searchLower)) ||
-          (s.stopName_c && s.stopName_c.includes(currentStopName))
+          (s.stopName_e && s.stopName_e.toLowerCase() === searchLower)
         );
         
         if (targetIndex !== -1) {
@@ -373,7 +479,7 @@
       if (loadingEl) loadingEl.remove();
 
       if (relevantRoutes.length === 0) {
-        listEl.innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">No routes operating at "${currentStopName}" found.</div>`;
+        listEl.innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">No active routes match this criteria.</div>`;
         return;
       }
 
@@ -485,7 +591,6 @@
          reasonTags.push(`<span class="tag orange">Traffic Signal</span>`);
       }
 
-      // Updated Gauge Math (Integrated Spatial/Temporal Occ)
       const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals, targetIndex, stops.length);
       let colorClass = pct > 75 ? 'active-red' : (pct > 45 ? 'active-orange' : 'active-green');
       let barHtml = '';
@@ -543,14 +648,9 @@
           }
         }
 
-        // --- BUG FIX: ETA LATCHING PREVENTION ---
-        // If the official time is 2 minutes or less, the bus is on final approach.
-        // Force the Smart ETA to mirror the Official ETA to prevent grabbing the next bus.
         if (rawEtaMins <= 2) {
           smartMins = rawEtaMins;
-        } 
-        // Failsafe: If the discrepancy is massive, the smart logic likely shifted context.
-        else if (Math.abs(smartMins - rawEtaMins) > 10) {
+        } else if (Math.abs(smartMins - rawEtaMins) > 10) {
           smartMins = rawEtaMins;
         }
 
@@ -560,7 +660,6 @@
         busStateMap[routeId] = { timestamp: now, rawEtaMins: 0, smartMins: 0, busArrivalTimeId };
       }
 
-      // UI Commit
       cardEl.dataset.smartMins = smartMins;
       offEl.innerText = rawEtaMins === 0 ? 'Due' : `${rawEtaMins}m`;
 
@@ -592,7 +691,6 @@
     const hour = now.getHours();
     const dest = destName.toLowerCase();
 
-    // 1. Determine Base Load by Temporal Demand
     let baseLoad = 40; 
     if (hour >= 7 && hour <= 9) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 80 : 45;
@@ -602,17 +700,14 @@
       baseLoad = 35;
     }
 
-    // 2. Spatial Decay Math
     const routeProgress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
     let spatialMultiplier = 1 - Math.pow(routeProgress, 2.5);
     
-    // Terminus adjustment
     if (routeProgress < 0.05 && estimatedArrivals && estimatedArrivals.length > 0) {
       const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - now) / 60000);
-      if (minToDeparture > 5) spatialMultiplier *= 0.5; // Boarding just started
+      if (minToDeparture > 5) spatialMultiplier *= 0.5;
     }
 
-    // 3. Poisson-inspired Headway Math
     let headwayMultiplier = 1.0;
     if (estimatedArrivals && estimatedArrivals.length >= 2) {
       const serverTime = new Date(estimatedArrivals[0].generateTime.replace(/-/g, '/'));
@@ -621,7 +716,7 @@
       const gap = t2 - t1;
 
       if (gap <= 8) {
-        headwayMultiplier = 1.8; // Bunching, front bus heavily loaded
+        headwayMultiplier = 1.8;
       } else {
         const lambda = 0.08; 
         headwayMultiplier = 0.5 + (2.0 * (1 - Math.exp(-lambda * gap)));
