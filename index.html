@@ -86,7 +86,7 @@
     color: #fff;
     border: 1px solid #3a3a3c;
     width: 48px;
-    height: 72px; /* Matches height of the two dropdowns combined */
+    height: 72px; 
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -198,7 +198,7 @@
 
 <div class="stop-header">
   <div class="controls-container">
-    <button id="gpsBtn" class="gps-btn" onclick="locateNearestStop(false)" aria-label="Find nearest stop">📍</button>
+    <button id="gpsBtn" class="gps-btn" onclick="locateNearestStop(false, false)" aria-label="Find nearest stop">📍</button>
     <div class="selectors">
       <select id="routeSelect" class="stop-input" onchange="handleRouteChange(this.value)">
         <option value="ALL">All Lines (Network-Wide)</option>
@@ -268,8 +268,6 @@
       });
       allStops = Array.from(uniqueStops.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
       
-      populateStopDropdown(allStops);
-
       const savedStop = localStorage.getItem('selectedNLBStop');
       const savedRoute = localStorage.getItem('selectedNLBRoute');
       
@@ -282,7 +280,7 @@
           await cacheRouteStops(savedRoute);
           populateStopDropdown(routeStopsCache[savedRoute]);
       } else {
-          populateStopDropdown(allStops); // Load full network stops for ALL
+          populateStopDropdown(allStops); 
       }
       
       if (savedStop) {
@@ -290,7 +288,7 @@
         document.getElementById('stopSelect').value = currentStopName;
         startAppLoop();
       } else {
-        locateNearestStop(true); 
+        locateNearestStop(true, false); 
       }
     } catch (err) {
       document.getElementById('loadingText').innerText = "Network Error: Could not connect to HK Gov Transport API.";
@@ -332,28 +330,14 @@
     
     if (val === 'ALL') {
         populateStopDropdown(allStops);
-        // User requested: Auto-locate based on GPS when 'All Lines' is selected
-        locateNearestStop(false);
+        // Attempt auto-locate. The 'true' flag ensures we fail gracefully to dropdown if GPS is off.
+        locateNearestStop(false, true); 
         return;
     } else {
         document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Loading route stations...</div>';
         await cacheRouteStops(val);
         populateStopDropdown(routeStopsCache[val]);
-        
-        // Auto-select valid stop or fallback
-        const sSelect = document.getElementById('stopSelect');
-        let stopExists = Array.from(sSelect.options).some(opt => opt.value === currentStopName);
-        
-        if (!stopExists && sSelect.options.length > 0) {
-            currentStopName = sSelect.options[0].value;
-            localStorage.setItem('selectedNLBStop', currentStopName);
-        }
-        sSelect.value = currentStopName;
-        
-        document.getElementById('gpsStatus').innerText = ''; // Clear GPS distance if line changed manually
-        for (let key in busStateMap) delete busStateMap[key];
-        countdown = REFRESH_INTERVAL;
-        updateNetworkTelemetry();
+        ensureValidStopAndFetch();
     }
   }
 
@@ -370,8 +354,30 @@
     updateNetworkTelemetry();
   }
 
+  function ensureValidStopAndFetch() {
+    const sSelect = document.getElementById('stopSelect');
+    let stopExists = Array.from(sSelect.options).some(opt => opt.value === currentStopName);
+    
+    if (!stopExists && sSelect.options.length > 0) {
+        currentStopName = sSelect.options[0].value;
+        localStorage.setItem('selectedNLBStop', currentStopName);
+    } 
+    
+    if (sSelect.options.length > 0) {
+        sSelect.value = currentStopName;
+    }
+    
+    document.getElementById('gpsStatus').innerText = '';
+    document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Fetching live arrivals...</div>';
+    for (let key in busStateMap) delete busStateMap[key];
+    
+    countdown = REFRESH_INTERVAL;
+    updateNetworkTelemetry();
+  }
+
   // --- SPATIAL MATH & GPS ---
   function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) return Infinity;
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
@@ -381,10 +387,9 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
-  function locateNearestStop(isAutoInit = false) {
+  function locateNearestStop(isAutoInit = false, isFromDropdown = false) {
     if (!navigator.geolocation) {
-      if (isAutoInit) fallbackDefault();
-      else alert("Geolocation is not supported by your browser");
+      handleGPSFailure(isAutoInit, isFromDropdown, "GPS Not Supported");
       return;
     }
     
@@ -400,7 +405,11 @@
       let minDistance = Infinity;
       
       allStops.forEach(s => {
-        const d = calculateDistanceKm(lat, lon, parseFloat(s.latitude), parseFloat(s.longitude));
+        const sLat = parseFloat(s.latitude);
+        const sLon = parseFloat(s.longitude);
+        if (isNaN(sLat) || isNaN(sLon) || sLat === 0 || sLon === 0) return;
+        
+        const d = calculateDistanceKm(lat, lon, sLat, sLon);
         if (d < minDistance) {
           minDistance = d;
           closest = s;
@@ -410,7 +419,6 @@
       btn.classList.remove('loading');
       
       if (closest) {
-        // Enforce 'ALL' routes when GPS locates to see everything at this stop
         currentRouteId = 'ALL';
         document.getElementById('routeSelect').value = 'ALL';
         localStorage.setItem('selectedNLBRoute', 'ALL');
@@ -425,29 +433,43 @@
         
         for (let key in busStateMap) delete busStateMap[key];
         
-        if (isAutoInit) startAppLoop();
-        else {
+        if (isAutoInit) {
+            startAppLoop();
+        } else {
             document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Fetching live arrivals...</div>';
             countdown = REFRESH_INTERVAL;
             updateNetworkTelemetry();
         }
-      } else if (isAutoInit) {
-        fallbackDefault();
+      } else {
+        handleGPSFailure(isAutoInit, isFromDropdown, "No stops found");
       }
     }, (err) => {
       btn.classList.remove('loading');
-      document.getElementById('gpsStatus').innerText = 'GPS Denied';
-      if (isAutoInit) fallbackDefault();
+      handleGPSFailure(isAutoInit, isFromDropdown, "GPS Denied / Failed");
     }, { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 });
+  }
+
+  function handleGPSFailure(isAutoInit, isFromDropdown, msg) {
+    document.getElementById('gpsStatus').innerText = msg;
+    if (isAutoInit) {
+        fallbackDefault();
+    } else if (isFromDropdown) {
+        // GPS failed when selecting 'All Lines' - proceed to load stations manually anyway
+        ensureValidStopAndFetch();
+    }
+    // If it was a manual user click (both false), we just show the error in gpsStatus and do nothing else
   }
 
   function fallbackDefault() {
     currentRouteId = 'ALL';
     document.getElementById('routeSelect').value = 'ALL';
-    currentStopName = 'Tung Chung Station Bus Terminus';
     populateStopDropdown(allStops);
+    
+    const valid = allStops.some(s => s.stopName_e === currentStopName);
+    if (!valid || !currentStopName) {
+        currentStopName = 'Tung Chung Station Bus Terminus';
+    }
     document.getElementById('stopSelect').value = currentStopName;
-    document.getElementById('gpsStatus').innerText = '';
     startAppLoop();
   }
 
@@ -596,14 +618,12 @@
       let smartMins = rawEtaMins;
       const destNameLower = destName.toLowerCase();
 
-      // Simple heuristic for signal delays near Mui Wo
       if (destNameLower.includes('mui wo') && rawEtaMins <= 3 && rawEtaMins > 0) {
          smartMins = Math.max(smartMins, rawEtaMins + 1);
       }
 
       const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals, targetIndex, stops.length);
       
-      // Update the 5-Bar visuals and rider-friendly text
       let colorClass = pct > 80 ? 'active-red' : (pct > 50 ? 'active-orange' : 'active-green');
       let barHtml = '';
       for (let i = 1; i <= 5; i++) {
@@ -727,8 +747,6 @@
     const noise = (Math.random() * 6) - 3;
     
     const pct = Math.min(98, Math.max(5, Math.round(calculatedLoad + noise)));
-    
-    // Scale 1-5 active bars (20% per bar)
     const activeBars = Math.min(5, Math.max(1, Math.ceil(pct / 20)));
 
     return { pct, activeBars };
