@@ -217,18 +217,19 @@
 </div>
 
 <script>
-  // Strictly call the Gov API direct from client to bypass Vercel CDN entirely
+  // Strictly client-side API requests to bypass Vercel CDN usage limits
   const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
   const REFRESH_INTERVAL = 15; 
-  const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 Days in milliseconds
+  const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 Days
   
-  let currentRouteId = 'ALL';
+  let currentRouteKey = 'ALL';
   let currentStopName = '';
   let countdown = REFRESH_INTERVAL;
   let timerInterval;
   
   let allStops = [];
-  let allRoutes = [];
+  let rawRoutes = [];
+  let groupedRoutes = []; // Merged route definitions
   let routeStopsCache = {};
   const busStateMap = {};
 
@@ -243,31 +244,56 @@
     return await response.json();
   }
 
-  // --- INITIALIZATION & CLIENT-SIDE CACHING ---
+  function generateGroupKey(routeNo, destName) {
+    return `${routeNo}___${destName}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
+  // --- INITIALIZATION & MERGING ROUTE VARIANTS ---
   async function initApp() {
     try {
       document.getElementById('loadingText').innerText = "Loading NLB station index...";
       
-      const cachedRoutes = localStorage.getItem('nlb_routes_v1');
-      const cachedStops = localStorage.getItem('nlb_stops_v1');
-      const cacheTime = localStorage.getItem('nlb_cache_time_v1');
+      const cachedGrouped = localStorage.getItem('nlb_grouped_routes_v2');
+      const cachedStops = localStorage.getItem('nlb_stops_v2');
+      const cacheTime = localStorage.getItem('nlb_cache_time_v2');
       const now = Date.now();
 
-      // Use Client-side Storage if cache is valid to avoid slamming the API
-      if (cachedRoutes && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
-        allRoutes = JSON.parse(cachedRoutes);
+      if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
+        groupedRoutes = JSON.parse(cachedGrouped);
         routeStopsCache = JSON.parse(cachedStops);
       } else {
-        document.getElementById('loadingText').innerText = "Downloading Transit Network Data (First time only, please wait)...";
+        document.getElementById('loadingText').innerText = "Syncing Network Mappings (First time only)...";
         
         const rData = await fetchJSON('/route.php?action=list');
-        allRoutes = rData.routes || [];
+        rawRoutes = rData.routes || [];
         
-        // Batch fetch stops to prevent browser stutter and rate-limits
+        // Group raw route variants by routeNo + main destination to merge duplicates
+        const groupedMap = new Map();
+        rawRoutes.forEach(r => {
+          const rawDest = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
+          // Normalize destination text to merge minor string variants
+          const cleanDest = rawDest.replace(/\s*\([^)]*\)/g, '').trim(); 
+          const key = generateGroupKey(r.routeNo, cleanDest);
+
+          if (!groupedMap.has(key)) {
+            groupedMap.set(key, {
+              key: key,
+              routeNo: r.routeNo,
+              destName: cleanDest,
+              routeIds: [r.routeId]
+            });
+          } else {
+            groupedMap.get(key).routeIds.push(r.routeId);
+          }
+        });
+
+        groupedRoutes = Array.from(groupedMap.values());
+
+        // Batch fetch stops across all underlying route IDs
         routeStopsCache = {};
         const chunkSize = 6;
-        for (let i = 0; i < allRoutes.length; i += chunkSize) {
-          const chunk = allRoutes.slice(i, i + chunkSize);
+        for (let i = 0; i < rawRoutes.length; i += chunkSize) {
+          const chunk = rawRoutes.slice(i, i + chunkSize);
           await Promise.all(chunk.map(async (r) => {
             try {
               const res = await fetchJSON(`/stop.php?action=list&routeId=${r.routeId}`);
@@ -276,34 +302,40 @@
               routeStopsCache[r.routeId] = [];
             }
           }));
-          document.getElementById('loadingText').innerText = `Syncing Station Mappings... (${Math.round((i/allRoutes.length)*100)}%)`;
+          document.getElementById('loadingText').innerText = `Building Station Index... (${Math.round((i/rawRoutes.length)*100)}%)`;
         }
         
         try {
-          localStorage.setItem('nlb_routes_v1', JSON.stringify(allRoutes));
-          localStorage.setItem('nlb_stops_v1', JSON.stringify(routeStopsCache));
-          localStorage.setItem('nlb_cache_time_v1', now.toString());
-        } catch (e) { console.warn('LocalStorage limit reached or disabled.'); }
+          localStorage.setItem('nlb_grouped_routes_v2', JSON.stringify(groupedRoutes));
+          localStorage.setItem('nlb_stops_v2', JSON.stringify(routeStopsCache));
+          localStorage.setItem('nlb_cache_time_v2', now.toString());
+        } catch (e) { console.warn('LocalStorage unavailable'); }
       }
       
+      // Populate Route Selector without duplicate entries
       const rSelect = document.getElementById('routeSelect');
-      allRoutes.forEach(r => {
-          const dest = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
-          rSelect.insertAdjacentHTML('beforeend', `<option value="${r.routeId}">${r.routeNo} (To ${dest})</option>`);
+      groupedRoutes.forEach(g => {
+          rSelect.insertAdjacentHTML('beforeend', `<option value="${g.key}">${g.routeNo} (To ${g.destName})</option>`);
       });
 
       buildAllStopsList();
       
       const savedStop = localStorage.getItem('selectedNLBStop');
-      const savedRoute = localStorage.getItem('selectedNLBRoute');
+      const savedRoute = localStorage.getItem('selectedNLBRouteKey');
       
       if (savedRoute) {
-          currentRouteId = savedRoute;
+          currentRouteKey = savedRoute;
           rSelect.value = savedRoute;
       }
       
-      if (savedRoute !== 'ALL' && savedRoute != null && routeStopsCache[savedRoute]) {
-          populateStopDropdown(routeStopsCache[savedRoute]);
+      if (savedRoute !== 'ALL' && savedRoute != null) {
+          const targetGroup = groupedRoutes.find(g => g.key === savedRoute);
+          if (targetGroup) {
+            const groupStops = getStopsForGroup(targetGroup);
+            populateStopDropdown(groupStops);
+          } else {
+            populateStopDropdown(allStops);
+          }
       } else {
           populateStopDropdown(allStops); 
       }
@@ -318,6 +350,19 @@
     } catch (err) {
       document.getElementById('loadingText').innerText = "Network Error: Could not connect to HK Gov Transport API.";
     }
+  }
+
+  function getStopsForGroup(group) {
+    const uniqueMap = new Map();
+    group.routeIds.forEach(id => {
+      const stops = routeStopsCache[id] || [];
+      stops.forEach(s => {
+        if (s && s.stopName_e && !uniqueMap.has(s.stopName_e)) {
+          uniqueMap.set(s.stopName_e, s);
+        }
+      });
+    });
+    return Array.from(uniqueMap.values());
   }
 
   function buildAllStopsList() {
@@ -358,24 +403,19 @@
   }
 
   async function handleRouteChange(val) {
-    currentRouteId = val;
-    localStorage.setItem('selectedNLBRoute', currentRouteId);
+    currentRouteKey = val;
+    localStorage.setItem('selectedNLBRouteKey', currentRouteKey);
     
     if (val === 'ALL') {
         populateStopDropdown(allStops);
         locateNearestStop(false, true); 
         return;
     } else {
-        document.getElementById('routeList').innerHTML = '<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Loading route stations...</div>';
-        if (!routeStopsCache[val]) {
-          try {
-            const res = await fetchJSON(`/stop.php?action=list&routeId=${val}`);
-            routeStopsCache[val] = res.stops || [];
-          } catch(e) {
-            routeStopsCache[val] = [];
-          }
+        const targetGroup = groupedRoutes.find(g => g.key === val);
+        if (targetGroup) {
+          const groupStops = getStopsForGroup(targetGroup);
+          populateStopDropdown(groupStops);
         }
-        populateStopDropdown(routeStopsCache[val]);
         ensureValidStopAndFetch();
     }
   }
@@ -457,9 +497,9 @@
       btn.classList.remove('loading');
       
       if (closest) {
-        currentRouteId = 'ALL';
+        currentRouteKey = 'ALL';
         document.getElementById('routeSelect').value = 'ALL';
-        localStorage.setItem('selectedNLBRoute', 'ALL');
+        localStorage.setItem('selectedNLBRouteKey', 'ALL');
         populateStopDropdown(allStops);
 
         currentStopName = closest.stopName_e;
@@ -497,7 +537,7 @@
   }
 
   function fallbackDefault() {
-    currentRouteId = 'ALL';
+    currentRouteKey = 'ALL';
     document.getElementById('routeSelect').value = 'ALL';
     populateStopDropdown(allStops);
     
@@ -516,23 +556,32 @@
     startTimer();
   }
 
-  // --- CORE ETA ENGINE ---
+  // --- MERGED TELEMETRY LOGIC ---
   async function updateNetworkTelemetry() {
     if (!currentStopName) return;
     
     try {
-      const routesToCheck = currentRouteId === 'ALL' ? allRoutes : allRoutes.filter(r => r.routeId === currentRouteId);
-      const relevantRoutes = [];
+      const groupsToCheck = currentRouteKey === 'ALL' 
+        ? groupedRoutes 
+        : groupedRoutes.filter(g => g.key === currentRouteKey);
+        
+      const relevantGroups = [];
       const searchLower = currentStopName.toLowerCase();
       
-      for (const r of routesToCheck) {
-        const stops = routeStopsCache[r.routeId] || [];
-        const targetIndex = stops.findIndex(s => 
-          (s.stopName_e && s.stopName_e.toLowerCase() === searchLower)
-        );
+      for (const group of groupsToCheck) {
+        const matchDetails = [];
         
-        if (targetIndex !== -1) {
-          relevantRoutes.push({ route: r, stops, targetIndex });
+        for (const routeId of group.routeIds) {
+          const stops = routeStopsCache[routeId] || [];
+          const targetIndex = stops.findIndex(s => s.stopName_e && s.stopName_e.toLowerCase() === searchLower);
+          
+          if (targetIndex !== -1) {
+            matchDetails.push({ routeId, stops, targetIndex });
+          }
+        }
+        
+        if (matchDetails.length > 0) {
+          relevantGroups.push({ group, matchDetails });
         }
       }
 
@@ -540,39 +589,38 @@
       const loadingEl = document.getElementById('loadingText');
       if (loadingEl) loadingEl.remove();
 
-      if (relevantRoutes.length === 0) {
+      if (relevantGroups.length === 0) {
         listEl.innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">No active buses depart from here currently.</div>`;
         return;
       }
 
-      for (const item of relevantRoutes) {
-        const routeId = item.route.routeId;
-        const cardId = `route-${routeId}`;
-        const destName = item.route.routeName_e ? item.route.routeName_e.split('>').pop().trim() : '';
+      for (const item of relevantGroups) {
+        const group = item.group;
+        const cardId = `route-${group.key}`;
 
         if (!document.getElementById(cardId)) {
           listEl.insertAdjacentHTML('beforeend', `
             <div class="route-card" id="${cardId}" data-smart-mins="9999">
               <div class="route-left">
-                <div class="route-no">${item.route.routeNo}</div>
+                <div class="route-no">${group.routeNo}</div>
                 <div class="route-info">
-                  <div class="route-dest">To ${destName}</div>
-                  <div class="compact-occupancy" id="occ-sec-${routeId}" style="display:none;">
-                    <div class="bar-segments" id="bars-${routeId}">
+                  <div class="route-dest">To ${group.destName}</div>
+                  <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
+                    <div class="bar-segments" id="bars-${group.key}">
                       ${Array(5).fill('<div class="segment"></div>').join('')}
                     </div>
-                    <span class="occupancy-pct-text" id="pct-text-${routeId}">--</span>
+                    <span class="occupancy-pct-text" id="pct-text-${group.key}">--</span>
                   </div>
                 </div>
               </div>
               <div class="eta-container">
                 <div class="eta-box">
                   <span class="eta-label">Official</span>
-                  <span class="official-eta" id="off-${routeId}">--</span>
+                  <span class="official-eta" id="off-${group.key}">--</span>
                 </div>
                 <div class="eta-box">
                   <span class="eta-label">Actual ETA</span>
-                  <span class="smart-eta" id="smart-${routeId}">--</span>
+                  <span class="smart-eta" id="smart-${group.key}">--</span>
                 </div>
               </div>
             </div>
@@ -580,12 +628,12 @@
         }
       }
 
-      const validIds = relevantRoutes.map(i => `route-${i.route.routeId}`);
+      const validCardIds = relevantGroups.map(i => `route-${i.group.key}`);
       document.querySelectorAll('.route-card').forEach(c => {
-        if (!validIds.includes(c.id)) c.remove();
+        if (!validCardIds.includes(c.id)) c.remove();
       });
 
-      const promises = relevantRoutes.map(item => processRouteSmartETA(item.route, item.stops, item.targetIndex));
+      const promises = relevantGroups.map(item => processMergedSmartETA(item.group, item.matchDetails));
       await Promise.all(promises);
 
       sortCards();
@@ -594,43 +642,62 @@
       console.error('Telemetry failure:', err);
     }
   }
-  
-  function getOccupancyText(pct) {
-      if (pct < 35) return "Plenty of Seats";
-      if (pct < 65) return "Seats Available";
-      if (pct < 85) return "Standing Room Only";
-      return "Very Crowded";
-  }
 
-  async function processRouteSmartETA(route, stops, targetIndex) {
-    const routeId = route.routeId;
-    const cardEl = document.getElementById(`route-${routeId}`);
+  async function processMergedSmartETA(group, matchDetails) {
+    const groupKey = group.key;
+    const cardEl = document.getElementById(`route-${groupKey}`);
     
     try {
-      const destName = route.routeName_e ? route.routeName_e.split('>').pop().trim() : '';
-      const offEl = document.getElementById(`off-${routeId}`);
-      const smartEl = document.getElementById(`smart-${routeId}`);
-      const occSecEl = document.getElementById(`occ-sec-${routeId}`);
-      const barsEl = document.getElementById(`bars-${routeId}`);
-      const pctTextEl = document.getElementById(`pct-text-${routeId}`);
-      
-      const targetStop = stops[targetIndex];
-      const upstreamStop = targetIndex > 0 ? stops[targetIndex - 1] : null;
+      const offEl = document.getElementById(`off-${groupKey}`);
+      const smartEl = document.getElementById(`smart-${groupKey}`);
+      const occSecEl = document.getElementById(`occ-sec-${groupKey}`);
+      const barsEl = document.getElementById(`bars-${groupKey}`);
+      const pctTextEl = document.getElementById(`pct-text-${groupKey}`);
 
-      const [targetEtaRes, upstreamEtaRes] = await Promise.all([
-        fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${targetStop.stopId}&language=en`),
-        upstreamStop 
-          ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${routeId}&stopId=${upstreamStop.stopId}&language=en`)
-          : Promise.resolve(null)
-      ]);
+      let combinedArrivals = [];
 
-      if (!targetEtaRes.estimatedArrivals || targetEtaRes.estimatedArrivals.length === 0) {
+      // Query live ETA for all underlying variant route IDs simultaneously
+      await Promise.all(matchDetails.map(async (m) => {
+        const targetStop = m.stops[m.targetIndex];
+        const upstreamStop = m.targetIndex > 0 ? m.stops[m.targetIndex - 1] : null;
+
+        const [targetEtaRes, upstreamEtaRes] = await Promise.all([
+          fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`),
+          upstreamStop 
+            ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${upstreamStop.stopId}&language=en`)
+            : Promise.resolve(null)
+        ]);
+
+        if (targetEtaRes && targetEtaRes.estimatedArrivals) {
+          targetEtaRes.estimatedArrivals.forEach(arr => {
+            combinedArrivals.push({
+              arrival: arr,
+              routeId: m.routeId,
+              targetStop,
+              upstreamStop,
+              upstreamEtaRes,
+              targetIndex: m.targetIndex,
+              totalStops: m.stops.length
+            });
+          });
+        }
+      }));
+
+      if (combinedArrivals.length === 0) {
         setEmptyState(cardEl, offEl, smartEl, occSecEl);
         return;
       }
 
+      // Sort merged arrivals by upcoming arrival time
+      combinedArrivals.sort((a, b) => {
+        const tA = new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')).getTime();
+        const tB = new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')).getTime();
+        return tA - tB;
+      });
+
+      const activeItem = combinedArrivals[0];
+      const activeBus = activeItem.arrival;
       const now = Date.now();
-      const activeBus = targetEtaRes.estimatedArrivals[0];
       const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
       const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
       const busArrivalTimeId = activeBus.estimatedArrivalTime;
@@ -644,13 +711,14 @@
       const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
       
       let smartMins = rawEtaMins;
-      const destNameLower = destName.toLowerCase();
+      const destNameLower = group.destName.toLowerCase();
 
       if (destNameLower.includes('mui wo') && rawEtaMins <= 3 && rawEtaMins > 0) {
          smartMins = Math.max(smartMins, rawEtaMins + 1);
       }
 
-      const { pct, activeBars } = calculateOccupancy(destName, targetEtaRes.estimatedArrivals, targetIndex, stops.length);
+      const allRawArrivals = combinedArrivals.map(c => c.arrival);
+      const { pct, activeBars } = calculateOccupancy(group.destName, allRawArrivals, activeItem.targetIndex, activeItem.totalStops);
       
       let colorClass = pct > 80 ? 'active-red' : (pct > 50 ? 'active-orange' : 'active-green');
       let barHtml = '';
@@ -662,19 +730,19 @@
       pctTextEl.style.color = pct > 80 ? 'var(--accent-red)' : (pct > 50 ? 'var(--accent-orange)' : 'var(--accent-green)');
       occSecEl.style.display = 'flex';
 
-      const prevState = busStateMap[routeId];
+      const prevState = busStateMap[groupKey];
       const isSameBus = prevState && prevState.busArrivalTimeId === busArrivalTimeId;
 
       if (rawEtaMins > 0) {
-        if (upstreamStop && upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
-          const upBus = upstreamEtaRes.estimatedArrivals[0];
+        if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
+          const upBus = activeItem.upstreamEtaRes.estimatedArrivals[0];
           const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
           const upServerTime = new Date(upBus.generateTime.replace(/-/g, '/'));
           const upstreamEtaMins = Math.max(0, Math.floor((upArrTime - upServerTime) / 60000));
 
           const distanceKm = calculateDistanceKm(
-            parseFloat(upstreamStop.latitude), parseFloat(upstreamStop.longitude),
-            parseFloat(targetStop.latitude), parseFloat(targetStop.longitude)
+            parseFloat(activeItem.upstreamStop.latitude), parseFloat(activeItem.upstreamStop.longitude),
+            parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
           );
           const minTransitMins = Math.max(1.0, (distanceKm / 35.0) * 60);
 
@@ -710,10 +778,10 @@
           smartMins = rawEtaMins;
         }
 
-        busStateMap[routeId] = { timestamp: now, rawEtaMins, smartMins, busArrivalTimeId };
+        busStateMap[groupKey] = { timestamp: now, rawEtaMins, smartMins, busArrivalTimeId };
       } else {
         smartMins = 0;
-        busStateMap[routeId] = { timestamp: now, rawEtaMins: 0, smartMins: 0, busArrivalTimeId };
+        busStateMap[groupKey] = { timestamp: now, rawEtaMins: 0, smartMins: 0, busArrivalTimeId };
       }
 
       cardEl.dataset.smartMins = smartMins;
@@ -728,12 +796,17 @@
       }
 
     } catch (err) {
-      if (cardEl) {
-        cardEl.dataset.smartMins = 9999;
-      }
+      if (cardEl) cardEl.dataset.smartMins = 9999;
     }
   }
   
+  function getOccupancyText(pct) {
+      if (pct < 35) return "Plenty of Seats";
+      if (pct < 65) return "Seats Available";
+      if (pct < 85) return "Standing Room Only";
+      return "Very Crowded";
+  }
+
   function calculateOccupancy(destName, estimatedArrivals, currentStopIndex, totalStops) {
     const now = new Date();
     const hour = now.getHours();
@@ -811,7 +884,6 @@
     }, 1000);
   }
 
-  // Prevents the background tab from making thousands of requests an hour when you lock your phone
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       countdown = REFRESH_INTERVAL;
