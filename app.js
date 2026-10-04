@@ -5,6 +5,7 @@ const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 let currentLang = localStorage.getItem('pulse_lang') || 'en';
 document.getElementById('langSelect').value = currentLang;
 
+// GTFS-Realtime Standardized Occupancy Dictionary
 const i18n = {
   en: {
     allLines: "All Lines (Network-Wide)", loadingIndex: "Loading station index...",
@@ -13,8 +14,9 @@ const i18n = {
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
     to: "To", due: "Due", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
-    occPlenty: "Plenty of Seats", occAvail: "Seats Available", occStand: "Standing Room Only", occFull: "Very Crowded",
-    official: "Official", actual: "Actual ETA"
+    official: "Official", actual: "Actual ETA",
+    occEmpty: "Empty", occManySeats: "Many Seats Available", occFewSeats: "Few Seats Available", 
+    occStanding: "Standing Room Only", occCrushed: "Crushed Standing Room", occFull: "Full"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -23,8 +25,9 @@ const i18n = {
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
     to: "往", due: "即將到達", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
-    occPlenty: "大量空座", occAvail: "尚有空位", occStand: "只設企位", occFull: "非常擁擠",
-    official: "官方", actual: "實際預計"
+    official: "官方", actual: "實際預計",
+    occEmpty: "車廂空載", occManySeats: "大量空座", occFewSeats: "尚有空位", 
+    occStanding: "只設企位", occCrushed: "嚴重擁擠", occFull: "客滿"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -33,8 +36,9 @@ const i18n = {
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
     to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
-    occPlenty: "大量空座", occAvail: "尚有空位", occStand: "只设企位", occFull: "非常拥挤",
-    official: "官方", actual: "实际预计"
+    official: "官方", actual: "实际预计",
+    occEmpty: "车厢空载", occManySeats: "大量空座", occFewSeats: "尚有空位", 
+    occStanding: "只设企位", occCrushed: "严重拥挤", occFull: "客满"
   }
 };
 
@@ -49,7 +53,45 @@ let allStops = [];
 let rawRoutes = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
-const busStateMap = {}; // Tracks bus history to detect frozen ETAs
+const busStateMap = {}; 
+
+// --- ADVANCED STATE-SPACE KALMAN FILTER ---
+class KalmanFilter1D {
+  constructor(processNoise, measurementNoise, initialEstimate, initialError) {
+    this.q = processNoise; // Q_k: Process variance (traffic uncertainty)
+    this.r = measurementNoise; // R_k: Measurement variance (API noise)
+    this.x = initialEstimate; // \hat{x}_{k|k}: State estimate (True ETA)
+    this.p = initialError; // P_{k|k}: Estimate error covariance
+  }
+
+  update(measurement, dt) {
+    // Predict Phase (Extrapolation based on temporal physics)
+    this.x = this.x - dt; 
+    this.p = this.p + this.q; 
+
+    // Correct Phase (Update based on new API sensor data)
+    const k = this.p / (this.p + this.r); 
+    this.x = this.x + k * (measurement - this.x); 
+    this.p = (1 - k) * this.p; 
+
+    return Math.max(0, this.x); 
+  }
+}
+
+// --- DETERMINISTIC NOISE GENERATOR ---
+function generateDeterministicNoise(busId, currentStopIndex, timestamp) {
+  const timeBlock = Math.floor(timestamp / 300000); 
+  const seed = `${busId}-${currentStopIndex}-${timeBlock}`;
+  
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0; 
+  }
+  
+  const normalized = (Math.abs(hash) % 100) / 100;
+  return (normalized * 6) - 3;
+}
 
 setInterval(() => {
   document.getElementById('liveClock').innerText = new Date().toLocaleTimeString(
@@ -403,22 +445,14 @@ async function processSmartArrivals(group, matchDetails) {
 
     await Promise.all(matchDetails.map(async (m) => {
       const targetStop = m.stops[m.targetIndex];
-      const upstreamStop = m.targetIndex > 0 ? m.stops[m.targetIndex - 1] : null;
 
-      const [targetEtaRes, upstreamEtaRes] = await Promise.all([
-        fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`),
-        upstreamStop 
-          ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${upstreamStop.stopId}&language=en`)
-          : Promise.resolve(null)
-      ]);
-
+      const targetEtaRes = await fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`);
+      
       if (targetEtaRes && targetEtaRes.estimatedArrivals) {
         targetEtaRes.estimatedArrivals.forEach(arr => {
           combinedArrivals.push({
             arrival: arr,
             targetStop,
-            upstreamStop,
-            upstreamEtaRes,
             targetIndex: m.targetIndex,
             totalStops: m.stops.length
           });
@@ -441,7 +475,9 @@ async function processSmartArrivals(group, matchDetails) {
     const now = Date.now();
     const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
     const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
-    const busArrivalTimeId = activeBus.estimatedArrivalTime;
+    
+    // Create a deterministic pseudo-unique ID for this specific bus event
+    const pseudoBusId = activeBus.estimatedArrivalTime.replace(/[^0-9]/g, ''); 
     
     let elapsedSinceGenerate = now - serverTime.getTime();
     if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) elapsedSinceGenerate = 0; 
@@ -449,77 +485,56 @@ async function processSmartArrivals(group, matchDetails) {
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    let smartMins = rawEtaMins;
-    const destNameLower = group.dest_e.toLowerCase();
-
-    if (destNameLower.includes('mui wo') && rawEtaMins <= 3 && rawEtaMins > 0) {
-       smartMins = Math.max(smartMins, rawEtaMins + 1);
-    }
-
-    const { pct, activeBars } = calculateOccupancy(group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops);
+    // --- LOAD FACTOR DETERMINATION & GTFS-RT MAPPING ---
+    const { pct, activeBars } = calculateOccupancy(group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, pseudoBusId, now);
     
-    let colorClass = pct > 80 ? 'active-red' : (pct > 50 ? 'active-orange' : 'active-green');
+    let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
     let barHtml = '';
     for (let i = 1; i <= 5; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
     document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
     
-    let occText = pct < 35 ? getT('occPlenty') : (pct < 65 ? getT('occAvail') : (pct < 85 ? getT('occStand') : getT('occFull')));
+    // GTFS-Realtime Standardized Categorization
+    let occText;
+    if (pct <= 10) occText = getT('occEmpty');
+    else if (pct <= 40) occText = getT('occManySeats');
+    else if (pct <= 65) occText = getT('occFewSeats');
+    else if (pct <= 85) occText = getT('occStanding');
+    else if (pct <= 99) occText = getT('occCrushed');
+    else occText = getT('occFull');
+
     const pctEl = document.getElementById(`pct-text-${groupKey}`);
     pctEl.innerText = occText;
-    pctEl.style.color = pct > 80 ? 'var(--accent-red)' : (pct > 50 ? 'var(--accent-orange)' : 'var(--accent-green)');
+    pctEl.style.color = pct > 85 ? 'var(--accent-red)' : (pct > 65 ? 'var(--accent-orange)' : 'var(--accent-green)');
     occSecEl.style.display = 'flex';
 
-    // The Logic to detect stuck buses
-    const prevState = busStateMap[groupKey];
-    const isSameBus = prevState && prevState.busArrivalTimeId === busArrivalTimeId;
-
+    // --- KALMAN FILTER EXECUTION ---
+    let smartMins = rawEtaMins;
+    
     if (rawEtaMins > 0) {
-      if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
-        const upBus = activeItem.upstreamEtaRes.estimatedArrivals[0];
-        const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
-        const upServerTime = new Date(upBus.generateTime.replace(/-/g, '/'));
-        const upstreamEtaMins = Math.max(0, Math.floor((upArrTime - upServerTime) / 60000));
-
-        const distanceKm = calculateDistanceKm(
-          parseFloat(activeItem.upstreamStop.latitude), parseFloat(activeItem.upstreamStop.longitude),
-          parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
-        );
-        const minTransitMins = Math.max(1.0, (distanceKm / 35.0) * 60);
-
-        if (rawEtaMins < upstreamEtaMins + Math.floor(minTransitMins)) {
-          smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
-        }
+      if (!busStateMap[groupKey] || busStateMap[groupKey].pseudoBusId !== pseudoBusId) {
+        // Initialize a new filter state for a new arriving bus
+        // Q (Process Variance) = 0.1, R (Measurement Variance) = 2.0 (High API noise assumed)
+        busStateMap[groupKey] = {
+           filter: new KalmanFilter1D(0.1, 2.0, rawEtaMins, 1.0),
+           timestamp: now,
+           pseudoBusId: pseudoBusId
+        };
       }
-
-      if (isSameBus) {
-        const elapsedMins = (now - prevState.timestamp) / 60000;
-        const expectedSmart = prevState.smartMins - elapsedMins;
-        
-        if (smartMins < expectedSmart - 1) { 
-          smartMins = Math.ceil(expectedSmart - 0.5);
-        }
-
-        const rawDecay = prevState.rawEtaMins - rawEtaMins;
-        const decayRate = elapsedMins > 0 ? (rawDecay / elapsedMins) : 1;
-        
-        // If official ETA is stuck (low decay rate)
-        if (decayRate < 0.2 && rawEtaMins > 2) {
-          smartMins = Math.max(smartMins, Math.min(rawEtaMins + 2, prevState.smartMins));
-        }
-      } else if (prevState && prevState.smartMins <= 1 && rawEtaMins > 5) {
-        const timeSincePreviousDue = (now - prevState.timestamp) / 1000;
-        if (timeSincePreviousDue < 25) {
-          smartMins = 0;
-        }
+      
+      const state = busStateMap[groupKey];
+      const dtMins = (now - state.timestamp) / 60000;
+      
+      // Update the state-space model if time has passed
+      if (dtMins > 0) {
+         smartMins = Math.round(state.filter.update(rawEtaMins, dtMins));
+         state.timestamp = now;
+      } else {
+         smartMins = Math.round(state.filter.x);
       }
-
-      if (rawEtaMins <= 2) smartMins = rawEtaMins;
-      else if (Math.abs(smartMins - rawEtaMins) > 10) smartMins = rawEtaMins;
-
-      busStateMap[groupKey] = { timestamp: now, rawEtaMins, smartMins, busArrivalTimeId };
+      
     } else {
       smartMins = 0;
-      busStateMap[groupKey] = { timestamp: now, rawEtaMins: 0, smartMins: 0, busArrivalTimeId };
+      delete busStateMap[groupKey]; 
     }
 
     cardEl.dataset.smartMins = smartMins;
@@ -538,7 +553,7 @@ async function processSmartArrivals(group, matchDetails) {
   }
 }
 
-function calculateOccupancy(destName, estimatedArrivals, currentStopIndex, totalStops) {
+function calculateOccupancy(destName, estimatedArrivals, currentStopIndex, totalStops, busId, currentTimestamp) {
   const hour = new Date().getHours();
   const dest = destName.toLowerCase();
   let baseLoad = 40; 
@@ -559,8 +574,15 @@ function calculateOccupancy(destName, estimatedArrivals, currentStopIndex, total
     headwayMultiplier = gap <= 8 ? 1.8 : 0.5 + (2.0 * (1 - Math.exp(-0.08 * gap)));
   }
 
-  let pct = Math.min(98, Math.max(5, Math.round((baseLoad * spatialMultiplier * headwayMultiplier) + ((Math.random() * 6) - 3))));
-  return { pct, activeBars: Math.min(5, Math.max(1, Math.ceil(pct / 20))) };
+  // Inject deterministic hashed noise instead of Math.random() for stable UI state
+  const stableNoise = generateDeterministicNoise(busId, currentStopIndex, currentTimestamp);
+
+  let pct = Math.min(100, Math.max(0, Math.round((baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise)));
+  
+  // Calculate active bar segments (1 to 5)
+  const activeBars = Math.min(5, Math.max(1, Math.ceil(pct / 20)));
+  
+  return { pct, activeBars };
 }
 
 function startTimer() {
