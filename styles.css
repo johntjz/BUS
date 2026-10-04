@@ -98,8 +98,13 @@ select.stop-input {
 .route-info { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 
-.eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 50px; flex-shrink: 0; }
-.official-eta { font-size: 1.45rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; }
+.eta-container { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+.eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 50px; }
+.eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; }
+
+.official-eta { font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.smart-eta { font-size: 1.45rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; }
+.smart-eta.adjusted { color: var(--accent-blue); }
 
 .compact-occupancy { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .bar-segments { display: flex; gap: 3px; }
