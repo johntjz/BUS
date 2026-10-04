@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Pulse</title>
+<title>Pulse NLB</title>
 <style>
   :root {
     --bg-color: #121214;
@@ -40,7 +40,7 @@
   .header-left { display: flex; flex-direction: column; }
   .title-row { display: flex; align-items: baseline; gap: 8px; }
   .header h1 { margin: 0; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; }
-  .build-badge { font-size: 0.65rem; color: rgba(255, 255, 255, 0.7); font-family: monospace; font-weight: 600; letter-spacing: 0.5px; }
+  .build-badge { font-size: 0.6rem; color: rgba(255, 255, 255, 0.7); font-family: monospace; font-weight: 600; letter-spacing: 0.5px; }
   .clock { font-size: 0.75rem; font-weight: 500; opacity: 0.9; margin-top: 2px; font-variant-numeric: tabular-nums; }
   
   select.lang-select {
@@ -111,7 +111,7 @@
 <div class="header">
   <div class="header-left">
     <div class="title-row">
-      <h1>Pulse</h1>
+      <h1>Pulse NLB</h1>
       <span class="build-badge" id="buildVersion"></span>
     </div>
     <span class="clock" id="liveClock">--:--:--</span>
@@ -146,7 +146,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "Build 1014";
+const APP_VERSION = "v.1015";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -155,7 +155,7 @@ if (document.getElementById('langSelect')) document.getElementById('langSelect')
 
 const i18n = {
   en: {
-    allLines: "All Lines (Network-Wide)", loadingIndex: "Loading station index...",
+    allLines: "All", loadingIndex: "Loading station index...",
     syncing: "Syncing Network Mappings...", building: "Building Station Index...",
     liveETA: "Fetching live arrivals...", locating: "Locating...", nearest: "Nearest:",
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
@@ -165,7 +165,7 @@ const i18n = {
     arrivingLabel: "Status", arriving: "Arriving..."
   },
   tc: {
-    allLines: "所有路線", loadingIndex: "載入車站索引...",
+    allLines: "所有", loadingIndex: "載入車站索引...",
     syncing: "同步網絡數據...", building: "建立車站索引...",
     liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
@@ -175,7 +175,7 @@ const i18n = {
     arrivingLabel: "狀態", arriving: "即將抵達..."
   },
   sc: {
-    allLines: "所有路线", loadingIndex: "载入车站索引...",
+    allLines: "所有", loadingIndex: "载入车站索引...",
     syncing: "同步网络数据...", building: "建立车站索引...",
     liveETA: "获取实时班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
