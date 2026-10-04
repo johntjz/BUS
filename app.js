@@ -13,7 +13,8 @@ const i18n = {
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
     to: "To", due: "Due", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
-    occPlenty: "Plenty of Seats", occAvail: "Seats Available", occStand: "Standing Room Only", occFull: "Very Crowded"
+    occPlenty: "Plenty of Seats", occAvail: "Seats Available", occStand: "Standing Room Only", occFull: "Very Crowded",
+    official: "Official", actual: "Actual ETA"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -22,7 +23,8 @@ const i18n = {
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
     to: "往", due: "即將到達", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
-    occPlenty: "大量空座", occAvail: "尚有空位", occStand: "只設企位", occFull: "非常擁擠"
+    occPlenty: "大量空座", occAvail: "尚有空位", occStand: "只設企位", occFull: "非常擁擠",
+    official: "官方", actual: "實際預計"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -31,7 +33,8 @@ const i18n = {
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
     to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
-    occPlenty: "大量空座", occAvail: "尚有空位", occStand: "只设企位", occFull: "非常拥挤"
+    occPlenty: "大量空座", occAvail: "尚有空位", occStand: "只设企位", occFull: "非常拥挤",
+    official: "官方", actual: "实际预计"
   }
 };
 
@@ -46,6 +49,7 @@ let allStops = [];
 let rawRoutes = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
+const busStateMap = {}; // Tracks bus history to detect frozen ETAs
 
 setInterval(() => {
   document.getElementById('liveClock').innerText = new Date().toLocaleTimeString(
@@ -246,6 +250,7 @@ function ensureValidStopAndFetch() {
 function resetAndFetch() {
   document.getElementById('gpsStatus').innerText = ''; 
   document.getElementById('routeList').innerHTML = `<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">${getT('liveETA')}</div>`;
+  for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
   updateNetworkTelemetry();
 }
@@ -278,6 +283,7 @@ function locateNearestStop(isAutoInit = false, isFromDropdown = false) {
       localStorage.setItem('pulse_stop', currentStopName_e);
       
       document.getElementById('gpsStatus').innerText = `${getT('nearest')} ${Math.round(minDistance * 1000)}m`;
+      for (let key in busStateMap) delete busStateMap[key];
       isAutoInit ? startAppLoop() : resetAndFetch();
     } else {
       handleGPSFailure(isAutoInit, isFromDropdown, getT('noStops'));
@@ -294,6 +300,7 @@ function handleGPSFailure(isAutoInit, isFromDropdown, msg) {
           currentStopName_e = 'Tung Chung Station Bus Terminus';
       }
       document.getElementById('stopSelect').value = currentStopName_e;
+      for (let key in busStateMap) delete busStateMap[key];
       startAppLoop();
   } else if (isFromDropdown) {
       ensureValidStopAndFetch();
@@ -337,7 +344,7 @@ async function updateNetworkTelemetry() {
 
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card" id="${cardId}" data-mins="9999">
+          <div class="route-card" id="${cardId}" data-smart-mins="9999">
             <div class="route-left">
               <div class="route-no">${group.routeNo}</div>
               <div class="route-info">
@@ -350,13 +357,22 @@ async function updateNetworkTelemetry() {
                 </div>
               </div>
             </div>
-            <div class="eta-box">
-              <span class="official-eta" id="eta-${group.key}">--</span>
+            <div class="eta-container">
+              <div class="eta-box">
+                <span class="eta-label" id="lbl-off-${group.key}">${getT('official')}</span>
+                <span class="official-eta" id="off-${group.key}">--</span>
+              </div>
+              <div class="eta-box">
+                <span class="eta-label" id="lbl-smart-${group.key}">${getT('actual')}</span>
+                <span class="smart-eta" id="smart-${group.key}">--</span>
+              </div>
             </div>
           </div>
         `);
       } else {
          document.querySelector(`#${cardId} .route-dest`).innerText = `${getT('to')} ${destName}`;
+         document.getElementById(`lbl-off-${group.key}`).innerText = getT('official');
+         document.getElementById(`lbl-smart-${group.key}`).innerText = getT('actual');
       }
     }
 
@@ -365,65 +381,160 @@ async function updateNetworkTelemetry() {
       if (!validCardIds.includes(c.id)) c.remove();
     });
 
-    await Promise.all(relevantGroups.map(item => processArrivals(item.group, item.matchDetails)));
+    await Promise.all(relevantGroups.map(item => processSmartArrivals(item.group, item.matchDetails)));
 
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
-    cards.sort((a, b) => parseInt(a.dataset.mins, 10) - parseInt(b.dataset.mins, 10));
+    cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
     cards.forEach(card => listEl.appendChild(card));
 
   } catch (err) {}
 }
 
-async function processArrivals(group, matchDetails) {
-  const cardEl = document.getElementById(`route-${group.key}`);
+async function processSmartArrivals(group, matchDetails) {
+  const groupKey = group.key;
+  const cardEl = document.getElementById(`route-${groupKey}`);
   
   try {
+    const offEl = document.getElementById(`off-${groupKey}`);
+    const smartEl = document.getElementById(`smart-${groupKey}`);
+    const occSecEl = document.getElementById(`occ-sec-${groupKey}`);
+
     let combinedArrivals = [];
+
     await Promise.all(matchDetails.map(async (m) => {
       const targetStop = m.stops[m.targetIndex];
-      const res = await fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`);
-      if (res && res.estimatedArrivals) {
-        res.estimatedArrivals.forEach(arr => combinedArrivals.push({ arrival: arr, targetIndex: m.targetIndex, totalStops: m.stops.length }));
+      const upstreamStop = m.targetIndex > 0 ? m.stops[m.targetIndex - 1] : null;
+
+      const [targetEtaRes, upstreamEtaRes] = await Promise.all([
+        fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`),
+        upstreamStop 
+          ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${upstreamStop.stopId}&language=en`)
+          : Promise.resolve(null)
+      ]);
+
+      if (targetEtaRes && targetEtaRes.estimatedArrivals) {
+        targetEtaRes.estimatedArrivals.forEach(arr => {
+          combinedArrivals.push({
+            arrival: arr,
+            targetStop,
+            upstreamStop,
+            upstreamEtaRes,
+            targetIndex: m.targetIndex,
+            totalStops: m.stops.length
+          });
+        });
       }
     }));
 
     if (combinedArrivals.length === 0) {
-      if(cardEl) cardEl.dataset.mins = 9999;
-      document.getElementById(`eta-${group.key}`).innerText = '--';
-      document.getElementById(`occ-sec-${group.key}`).style.display = 'none';
+      if(cardEl) cardEl.dataset.smartMins = 9999;
+      offEl.innerText = '--';
+      smartEl.innerText = '--';
+      occSecEl.style.display = 'none';
       return;
     }
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
     
     const activeItem = combinedArrivals[0];
-    const serverTime = new Date(activeItem.arrival.generateTime.replace(/-/g, '/')).getTime();
-    const arrivalTime = new Date(activeItem.arrival.estimatedArrivalTime.replace(/-/g, '/')).getTime();
+    const activeBus = activeItem.arrival;
+    const now = Date.now();
+    const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
+    const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
+    const busArrivalTimeId = activeBus.estimatedArrivalTime;
     
-    let elapsed = Date.now() - serverTime;
-    if (elapsed < 0 || elapsed > 120000) elapsed = 0; 
+    let elapsedSinceGenerate = now - serverTime.getTime();
+    if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) elapsedSinceGenerate = 0; 
+
+    const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
+    const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    const rawEtaMins = Math.max(0, Math.floor(((arrivalTime - serverTime) - elapsed) / 60000));
-    
+    let smartMins = rawEtaMins;
+    const destNameLower = group.dest_e.toLowerCase();
+
+    if (destNameLower.includes('mui wo') && rawEtaMins <= 3 && rawEtaMins > 0) {
+       smartMins = Math.max(smartMins, rawEtaMins + 1);
+    }
+
     const { pct, activeBars } = calculateOccupancy(group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops);
     
     let colorClass = pct > 80 ? 'active-red' : (pct > 50 ? 'active-orange' : 'active-green');
     let barHtml = '';
     for (let i = 1; i <= 5; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
-    
-    document.getElementById(`bars-${group.key}`).innerHTML = barHtml;
+    document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
     
     let occText = pct < 35 ? getT('occPlenty') : (pct < 65 ? getT('occAvail') : (pct < 85 ? getT('occStand') : getT('occFull')));
-    const pctEl = document.getElementById(`pct-text-${group.key}`);
+    const pctEl = document.getElementById(`pct-text-${groupKey}`);
     pctEl.innerText = occText;
     pctEl.style.color = pct > 80 ? 'var(--accent-red)' : (pct > 50 ? 'var(--accent-orange)' : 'var(--accent-green)');
-    document.getElementById(`occ-sec-${group.key}`).style.display = 'flex';
+    occSecEl.style.display = 'flex';
 
-    cardEl.dataset.mins = rawEtaMins;
-    document.getElementById(`eta-${group.key}`).innerText = rawEtaMins === 0 ? getT('due') : `${rawEtaMins}${getT('min')}`;
+    // The Logic to detect stuck buses
+    const prevState = busStateMap[groupKey];
+    const isSameBus = prevState && prevState.busArrivalTimeId === busArrivalTimeId;
+
+    if (rawEtaMins > 0) {
+      if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
+        const upBus = activeItem.upstreamEtaRes.estimatedArrivals[0];
+        const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
+        const upServerTime = new Date(upBus.generateTime.replace(/-/g, '/'));
+        const upstreamEtaMins = Math.max(0, Math.floor((upArrTime - upServerTime) / 60000));
+
+        const distanceKm = calculateDistanceKm(
+          parseFloat(activeItem.upstreamStop.latitude), parseFloat(activeItem.upstreamStop.longitude),
+          parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
+        );
+        const minTransitMins = Math.max(1.0, (distanceKm / 35.0) * 60);
+
+        if (rawEtaMins < upstreamEtaMins + Math.floor(minTransitMins)) {
+          smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
+        }
+      }
+
+      if (isSameBus) {
+        const elapsedMins = (now - prevState.timestamp) / 60000;
+        const expectedSmart = prevState.smartMins - elapsedMins;
+        
+        if (smartMins < expectedSmart - 1) { 
+          smartMins = Math.ceil(expectedSmart - 0.5);
+        }
+
+        const rawDecay = prevState.rawEtaMins - rawEtaMins;
+        const decayRate = elapsedMins > 0 ? (rawDecay / elapsedMins) : 1;
+        
+        // If official ETA is stuck (low decay rate)
+        if (decayRate < 0.2 && rawEtaMins > 2) {
+          smartMins = Math.max(smartMins, Math.min(rawEtaMins + 2, prevState.smartMins));
+        }
+      } else if (prevState && prevState.smartMins <= 1 && rawEtaMins > 5) {
+        const timeSincePreviousDue = (now - prevState.timestamp) / 1000;
+        if (timeSincePreviousDue < 25) {
+          smartMins = 0;
+        }
+      }
+
+      if (rawEtaMins <= 2) smartMins = rawEtaMins;
+      else if (Math.abs(smartMins - rawEtaMins) > 10) smartMins = rawEtaMins;
+
+      busStateMap[groupKey] = { timestamp: now, rawEtaMins, smartMins, busArrivalTimeId };
+    } else {
+      smartMins = 0;
+      busStateMap[groupKey] = { timestamp: now, rawEtaMins: 0, smartMins: 0, busArrivalTimeId };
+    }
+
+    cardEl.dataset.smartMins = smartMins;
+    offEl.innerText = rawEtaMins === 0 ? getT('due') : `${rawEtaMins}${getT('min')}`;
+
+    if (smartMins === 0) {
+      smartEl.innerText = getT('due');
+      smartEl.className = 'smart-eta';
+    } else {
+      smartEl.innerText = `${smartMins}${getT('min')}`;
+      smartEl.className = smartMins > rawEtaMins ? 'smart-eta adjusted' : 'smart-eta';
+    }
 
   } catch (err) {
-    if (cardEl) cardEl.dataset.mins = 9999;
+    if (cardEl) cardEl.dataset.smartMins = 9999;
   }
 }
 
