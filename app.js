@@ -468,7 +468,6 @@ async function processSmartArrivals(group, matchDetails) {
     
     let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
     let barHtml = '';
-    // Scaled to 10 bars
     for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
     document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
     occSecEl.style.display = 'flex';
@@ -517,46 +516,80 @@ async function processSmartArrivals(group, matchDetails) {
 }
 
 function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, busId, currentTimestamp) {
-  const hour = new Date().getHours();
+  const date = new Date(currentTimestamp);
+  const hour = date.getHours();
+  const day = date.getDay(); // 0 is Sunday
+  const isWeekend = (day === 0 || day === 6);
   const dest = destName.toLowerCase();
-  let baseLoad = 40; 
   
-  if (hour >= 7 && hour <= 9) baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 80 : 45;
-  else if (hour >= 17 && hour <= 19) baseLoad = (!dest.includes('tung chung')) ? 75 : 50;
-  else if (hour >= 11 && hour <= 14) baseLoad = 35;
+  // 1. Time & Day Matrix (Base Load)
+  let baseLoad = 35; // Default
 
-  let spatialMultiplier = 1 - Math.pow(Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1))), 2.5);
-  
-  // --- STARTING STATION ACCURACY FIX ---
-  if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
-    const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
-    if (minToDeparture > 10) spatialMultiplier = 0.1; // Mostly empty waiting
-    else if (minToDeparture > 5) spatialMultiplier = 0.4; // Filling up
-    else spatialMultiplier = 1.0; // Ready to depart, full base load
+  if (!isWeekend) {
+    if (hour >= 7 && hour <= 9) {
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 30;
+    } else if (hour >= 17 && hour <= 19) {
+      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 80 : 35;
+    } else if (hour >= 20) {
+      baseLoad = 10;
+    }
+  } else {
+    // Weekends
+    if (hour >= 9 && hour <= 14) {
+      baseLoad = (!dest.includes('tung chung')) ? 85 : 20; 
+    } else if (hour >= 15 && hour <= 18) {
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 90 : 25; 
+    } else if (hour >= 19) {
+      // Hard crash the load factor for Sunday evenings in all directions
+      baseLoad = 5; 
+    }
   }
 
+  // 2. Route Progress (Bell Curve Spatial Multiplier)
+  // Ensures buses are empty at the start, full in the middle, and empty at the end.
+  let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
+  let spatialMultiplier = 0.5 + (2.0 * progress * (1 - progress)); 
+
+  if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
+    const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
+    if (minToDeparture > 10) spatialMultiplier = 0.1; 
+    else if (minToDeparture > 5) spatialMultiplier = 0.3; 
+    else spatialMultiplier = 0.8; 
+  }
+
+  // 3. Headway / Gap Multiplier 
   let headwayMultiplier = 1.0;
   if (estimatedArrivals && estimatedArrivals.length >= 2) {
     const serverTime = new Date(estimatedArrivals[0].generateTime.replace(/-/g, '/'));
     const t1 = Math.max(0, (new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000);
     const t2 = Math.max(0, (new Date(estimatedArrivals[1].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000);
     const gap = t2 - t1;
-    headwayMultiplier = gap <= 8 ? 1.8 : 0.5 + (2.0 * (1 - Math.exp(-0.08 * gap)));
+    
+    // Only aggressively scale up crowding for gaps during peak hours
+    if (baseLoad > 40) {
+        headwayMultiplier = gap <= 8 ? 1.5 : 0.5 + (1.5 * (1 - Math.exp(-0.05 * gap)));
+    } else {
+        // Prevent huge schedule gaps at night from falsely registering as massive crowds
+        headwayMultiplier = gap <= 15 ? 1.0 : 1.2;
+    }
   }
 
   const stableNoise = generateDeterministicNoise(busId, currentStopIndex, currentTimestamp);
   let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
 
+  // 4. Fleet Capacity Divider
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
   const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6'];
+  const mixedHeavy = ['3M', '4']; // High likelihood of double-deckers
 
   let capacityDivider = 1.0; 
   if (strictSingle.includes(routeNo)) capacityDivider = 0.6; 
-  if (strictDouble.includes(routeNo)) capacityDivider = 1.3; 
+  else if (strictDouble.includes(routeNo)) capacityDivider = 1.3; 
+  else if (mixedHeavy.includes(routeNo)) capacityDivider = 1.1; 
 
   let pct = Math.min(100, Math.max(0, Math.round(rawVolume / capacityDivider)));
   
-  // Math for 10 bars (10% each) instead of 5
+  // 5. Active Bars (10 scale)
   const activeBars = Math.min(10, Math.max(1, Math.ceil(pct / 10)));
   
   return { pct, activeBars };
