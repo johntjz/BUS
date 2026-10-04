@@ -486,7 +486,7 @@ async function processSmartArrivals(group, matchDetails) {
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
     // --- LOAD FACTOR DETERMINATION & GTFS-RT MAPPING ---
-    const { pct, activeBars } = calculateOccupancy(group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, pseudoBusId, now);
+    const { pct, activeBars } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, pseudoBusId, now);
     
     let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
     let barHtml = '';
@@ -553,7 +553,7 @@ async function processSmartArrivals(group, matchDetails) {
   }
 }
 
-function calculateOccupancy(destName, estimatedArrivals, currentStopIndex, totalStops, busId, currentTimestamp) {
+function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, busId, currentTimestamp) {
   const hour = new Date().getHours();
   const dest = destName.toLowerCase();
   let baseLoad = 40; 
@@ -576,8 +576,17 @@ function calculateOccupancy(destName, estimatedArrivals, currentStopIndex, total
 
   // Inject deterministic hashed noise instead of Math.random() for stable UI state
   const stableNoise = generateDeterministicNoise(busId, currentStopIndex, currentTimestamp);
+  let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
 
-  let pct = Math.min(100, Math.max(0, Math.round((baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise)));
+  // --- FLEET CAPACITY DIVIDER ---
+  const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
+  const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6'];
+
+  let capacityDivider = 1.0; // Baseline for mixed routes (e.g., 3M, 4)
+  if (strictSingle.includes(routeNo)) capacityDivider = 0.6; // Single-deckers fill up much faster
+  if (strictDouble.includes(routeNo)) capacityDivider = 1.3; // Double-deckers absorb more volume easily
+
+  let pct = Math.min(100, Math.max(0, Math.round(rawVolume / capacityDivider)));
   
   // Calculate active bar segments (1 to 5)
   const activeBars = Math.min(5, Math.max(1, Math.ceil(pct / 20)));
