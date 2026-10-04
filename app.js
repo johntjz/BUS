@@ -366,7 +366,6 @@ async function updateNetworkTelemetry() {
       const cardId = `route-${group.key}`;
       const destName = getLocalizedName(group, 'dest');
 
-      // Note: The text <span> has been completely removed from this template
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
           <div class="route-card" id="${cardId}" data-smart-mins="9999">
@@ -376,7 +375,7 @@ async function updateNetworkTelemetry() {
                 <div class="route-dest">${getT('to')} ${destName}</div>
                 <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
                   <div class="bar-segments" id="bars-${group.key}">
-                    ${Array(5).fill('<div class="segment"></div>').join('')}
+                    ${Array(10).fill('<div class="segment"></div>').join('')}
                   </div>
                 </div>
               </div>
@@ -469,7 +468,8 @@ async function processSmartArrivals(group, matchDetails) {
     
     let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
     let barHtml = '';
-    for (let i = 1; i <= 5; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
+    // Scaled to 10 bars
+    for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
     document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
     occSecEl.style.display = 'flex';
 
@@ -528,7 +528,6 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   let spatialMultiplier = 1 - Math.pow(Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1))), 2.5);
   
   // --- STARTING STATION ACCURACY FIX ---
-  // If at the terminus, a bus is empty until shortly before departure.
   if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
     const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
     if (minToDeparture > 10) spatialMultiplier = 0.1; // Mostly empty waiting
@@ -556,7 +555,9 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   if (strictDouble.includes(routeNo)) capacityDivider = 1.3; 
 
   let pct = Math.min(100, Math.max(0, Math.round(rawVolume / capacityDivider)));
-  const activeBars = Math.min(5, Math.max(1, Math.ceil(pct / 20)));
+  
+  // Math for 10 bars (10% each) instead of 5
+  const activeBars = Math.min(10, Math.max(1, Math.ceil(pct / 10)));
   
   return { pct, activeBars };
 }
