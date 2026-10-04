@@ -16,16 +16,21 @@
     --accent-orange: #ff9f0a;
     --accent-blue: #0a84ff;
   }
+  
+  /* Universal box-sizing prevents padding from pushing elements off-screen */
+  * { box-sizing: border-box; }
+  
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden; /* Force strict containment to prevent horizontal swipe/scroll */
   }
   .header {
     background-color: var(--accent-red);
-    padding: 12px 20px;
+    padding: 12px 16px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -34,24 +39,26 @@
     z-index: 10;
   }
   .header-left { display: flex; flex-direction: column; }
+  .title-row { display: flex; align-items: baseline; gap: 8px; }
   .header h1 { margin: 0; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; }
+  .build-badge { font-size: 0.65rem; color: rgba(255, 255, 255, 0.7); font-family: monospace; font-weight: 600; letter-spacing: 0.5px; }
   .clock { font-size: 0.75rem; font-weight: 500; opacity: 0.9; margin-top: 2px; font-variant-numeric: tabular-nums; }
   
   select.lang-select {
     background: rgba(0,0,0,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.3);
-    padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; cursor: pointer;
+    padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; cursor: pointer; flex-shrink: 0;
   }
   .stop-header {
-    padding: 12px 20px; border-bottom: 1px solid var(--card-border);
+    padding: 12px 16px; border-bottom: 1px solid var(--card-border);
     display: flex; justify-content: space-between; align-items: flex-start;
     background-color: var(--bg-color); gap: 12px; flex-wrap: wrap;
   }
-  .controls-container { display: flex; gap: 10px; flex: 1; min-width: 260px; }
+  .controls-container { display: flex; gap: 10px; flex: 1 1 100%; min-width: 0; }
   .gps-btn {
     background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
-    width: 48px; height: 72px; border-radius: 8px;
+    width: 44px; height: 72px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.4rem; cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+    font-size: 1.2rem; cursor: pointer; transition: all 0.2s; flex-shrink: 0;
   }
   .gps-btn:active { background: #3a3a3c; }
   .selectors { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
@@ -64,26 +71,27 @@
     background-repeat: no-repeat; background-position: right 8px center;
     text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
   }
-  .status-bar { display: flex; flex-direction: column; align-items: flex-end; }
+  .status-bar { display: flex; flex-direction: column; align-items: flex-end; width: 100%; }
   .refresh-timer { font-size: 0.8rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
   .gps-status { font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-top: 4px; text-align: right; }
-  #routeList { display: flex; flex-direction: column; min-height: 50vh; }
+  
+  #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
   .route-card {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; border-bottom: 1px solid var(--card-border);
+    padding: 16px; border-bottom: 1px solid var(--card-border); gap: 8px;
   }
-  .route-left { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; padding-right: 10px; }
-  .route-no { font-size: 1.8rem; font-weight: 900; width: 60px; letter-spacing: -0.5px; flex-shrink: 0; }
-  .route-info { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .route-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+  .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; }
+  .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
-  .eta-container { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
-  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 50px; }
-  .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; }
+  
+  .eta-container { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; }
+  .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; text-align: right; }
   .official-eta { font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); text-decoration: line-through; opacity: 0.7; font-variant-numeric: tabular-nums; }
   .smart-eta { font-size: 1.45rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; transition: color 0.3s; }
   .smart-eta.adjusted { color: var(--accent-blue); }
   
-  /* Arriving animation for the Grace Period */
   @keyframes blink-arriving {
     0% { opacity: 1; }
     50% { opacity: 0.5; }
@@ -92,8 +100,8 @@
   .smart-eta.arriving { color: var(--accent-orange); font-size: 1.25rem; animation: blink-arriving 1.5s infinite; }
 
   .compact-occupancy { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
-  .bar-segments { display: flex; gap: 3px; }
-  .segment { width: 8px; height: 12px; border-radius: 2px; background-color: #2c2c2e; }
+  .bar-segments { display: flex; gap: 2px; }
+  .segment { width: 7px; height: 12px; border-radius: 2px; background-color: #2c2c2e; }
   .segment.active-green { background-color: var(--accent-green); }
   .segment.active-orange { background-color: var(--accent-orange); }
   .segment.active-red { background-color: var(--accent-red); }
@@ -103,7 +111,10 @@
 
 <div class="header">
   <div class="header-left">
-    <h1>Pulse</h1>
+    <div class="title-row">
+      <h1>Pulse</h1>
+      <span class="build-badge" id="buildVersion"></span>
+    </div>
     <span class="clock" id="liveClock">--:--:--</span>
   </div>
   <select id="langSelect" class="lang-select" onchange="changeLanguage(this.value)">
@@ -128,17 +139,16 @@
 </div>
 
 <div id="routeList">
-  <div style="padding: 20px; color: var(--text-secondary);" id="loadingText">Connecting to network...</div>
+  <div style="padding: 20px; color: var(--text-secondary); text-align: center;" id="loadingText">Connecting to network...</div>
 </div>
-
-<div id="buildVersion" style="text-align: center; padding: 24px 0 40px; font-size: 0.75rem; color: var(--text-secondary); font-family: monospace;"></div>
 
 <script>
 const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v1.0.8 (Build 1012)";
+// Minimal Build Number injected directly into the header
+const APP_VERSION = "Build 1013";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -419,7 +429,7 @@ function ensureValidStopAndFetch() {
 
 function resetAndFetch() {
   document.getElementById('gpsStatus').innerText = ''; 
-  document.getElementById('routeList').innerHTML = `<div style="padding: 20px; color: var(--text-secondary);" id="loadingText">${getT('liveETA')}</div>`;
+  document.getElementById('routeList').innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
   updateNetworkTelemetry();
@@ -595,21 +605,17 @@ async function processSmartArrivals(group, matchDetails) {
       }
     }));
 
-    // --- GRACE PERIOD LOGIC (The "Latching" Bug Fix) ---
     const prevState = busStateMap[groupKey];
     const now = Date.now();
 
-    // If we were tracking a bus that was < 3 mins away, but the API just deleted it...
     if (prevState && prevState.filter.x <= 3) {
        let isBusStillThere = false;
        if (combinedArrivals.length > 0) {
-           // Check if the old bus is still in the new data payload
            isBusStillThere = combinedArrivals.some(c => c.arrival.estimatedArrivalTime.replace(/[^0-9]/g, '') === prevState.pseudoBusId);
        }
        
        if (!isBusStillThere) {
            const timeSinceLost = now - prevState.timestamp;
-           // If we lost it less than 3 minutes ago, FORCE the ghost state onto the UI
            if (timeSinceLost < 180000) { 
                cardEl.dataset.smartMins = 0;
                offEl.innerText = '--';
@@ -618,15 +624,13 @@ async function processSmartArrivals(group, matchDetails) {
                smartEl.className = 'smart-eta arriving';
                if (boxOffEl) boxOffEl.style.display = 'none';
 
-               // Lock the occupancy bars to their last known state
                let barHtml = '';
                for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= prevState.activeBars ? prevState.colorClass : ''}"></div>`;
                document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
                occSecEl.style.display = 'flex';
 
-               return; // **CRITICAL FIX:** Exit function here. Do NOT process the "next" bus yet.
+               return; 
            } else {
-               // Grace period expired, the bus is truly gone. Delete memory.
                delete busStateMap[groupKey];
            }
        }
@@ -656,7 +660,6 @@ async function processSmartArrivals(group, matchDetails) {
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    // --- LOAD FACTOR DETERMINATION ---
     const { pct, activeBars } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, pseudoBusId, now);
     
     let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
@@ -665,7 +668,6 @@ async function processSmartArrivals(group, matchDetails) {
     document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
     occSecEl.style.display = 'flex';
 
-    // --- ETA EXECUTION ---
     let smartMins = rawEtaMins;
     
     if (rawEtaMins > 0) {
@@ -771,8 +773,12 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 85 : 35; 
     } else if (hour >= 19) {
       // Hub Crash: Sunday night outbound from villages is completely dead.
-      // E.g. To Tung Chung, To Mui Wo, To Tai O
-      baseLoad = 5;
+      if (dest.includes('tung chung') || dest.includes('mui wo')) {
+         baseLoad = 5;
+      } else {
+         // Inbound to villages drops severely on Sunday nights (Fixing Route 1 Tai O false full)
+         baseLoad = 15;
+      }
     }
   }
 
