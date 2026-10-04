@@ -2,8 +2,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Direct injection bypasses the DOMContentLoaded bug
-const APP_VERSION = "v1.0.2 (Build 1005)";
+const APP_VERSION = "v1.0.3 (Build 1006)";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -389,11 +388,11 @@ async function updateNetworkTelemetry() {
               </div>
             </div>
             <div class="eta-container">
-              <div class="eta-box">
+              <div class="eta-box" id="box-off-${group.key}" style="display: none;">
                 <span class="eta-label" id="lbl-off-${group.key}">${getT('official')}</span>
                 <span class="official-eta" id="off-${group.key}">--</span>
               </div>
-              <div class="eta-box">
+              <div class="eta-box" id="box-smart-${group.key}">
                 <span class="eta-label" id="lbl-smart-${group.key}">${getT('actual')}</span>
                 <span class="smart-eta" id="smart-${group.key}">--</span>
               </div>
@@ -429,6 +428,7 @@ async function processSmartArrivals(group, matchDetails) {
     const offEl = document.getElementById(`off-${groupKey}`);
     const smartEl = document.getElementById(`smart-${groupKey}`);
     const occSecEl = document.getElementById(`occ-sec-${groupKey}`);
+    const boxOffEl = document.getElementById(`box-off-${groupKey}`);
 
     let combinedArrivals = [];
 
@@ -450,9 +450,10 @@ async function processSmartArrivals(group, matchDetails) {
 
     if (combinedArrivals.length === 0) {
       if(cardEl) cardEl.dataset.smartMins = 9999;
-      offEl.innerText = '--';
-      smartEl.innerText = '--';
-      occSecEl.style.display = 'none';
+      if(offEl) offEl.innerText = '--';
+      if(smartEl) smartEl.innerText = '--';
+      if(occSecEl) occSecEl.style.display = 'none';
+      if(boxOffEl) boxOffEl.style.display = 'none';
       return;
     }
 
@@ -518,6 +519,11 @@ async function processSmartArrivals(group, matchDetails) {
       smartEl.className = smartMins > rawEtaMins ? 'smart-eta adjusted' : 'smart-eta';
     }
 
+    // Logic: Hide Official ETA if it exactly matches the Smart ETA
+    if (boxOffEl) {
+      boxOffEl.style.display = (smartMins === rawEtaMins) ? 'none' : 'flex';
+    }
+
   } catch (err) {
     if (cardEl) cardEl.dataset.smartMins = 9999;
   }
@@ -548,7 +554,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else if (hour >= 15 && hour <= 18) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 90 : 25; 
     } else if (hour >= 19) {
-      baseLoad = 5; // Hard crash the load factor for Sunday evenings
+      baseLoad = 5; 
     }
   }
 
