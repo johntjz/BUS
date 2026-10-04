@@ -2,11 +2,10 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v1.0.1 (Build 1004)";
-document.addEventListener("DOMContentLoaded", () => {
-  const vEl = document.getElementById("buildVersion");
-  if (vEl) vEl.innerText = APP_VERSION;
-});
+// Direct injection bypasses the DOMContentLoaded bug
+const APP_VERSION = "v1.0.2 (Build 1005)";
+const vEl = document.getElementById("buildVersion");
+if (vEl) vEl.innerText = APP_VERSION;
 
 let currentLang = localStorage.getItem('pulse_lang') || 'en';
 if (document.getElementById('langSelect')) document.getElementById('langSelect').value = currentLang;
