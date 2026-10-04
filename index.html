@@ -217,10 +217,9 @@
 </div>
 
 <script>
-  // Strictly client-side API requests to bypass Vercel CDN usage limits
   const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
   const REFRESH_INTERVAL = 15; 
-  const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 Days
+  const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
   
   let currentRouteKey = 'ALL';
   let currentStopName = '';
@@ -229,7 +228,7 @@
   
   let allStops = [];
   let rawRoutes = [];
-  let groupedRoutes = []; // Merged route definitions
+  let groupedRoutes = []; 
   let routeStopsCache = {};
   const busStateMap = {};
 
@@ -246,6 +245,24 @@
 
   function generateGroupKey(routeNo, destName) {
     return `${routeNo}___${destName}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
+  // --- BUS FLEET IDENTIFIER ---
+  function getExpectedFleet(routeNo) {
+    // Always single due to terrain (Tai O / Ngong Ping) or specific use (Airport)
+    const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
+    
+    // Mostly double, but sometimes randomly single (which destroys capacity)
+    const mixedRisk = ['3M', '4'];
+    
+    // High-capacity routes that are reliably double-decker
+    const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6'];
+    
+    if (strictSingle.includes(routeNo)) return { type: "Single-Decker", risk: false };
+    if (mixedRisk.includes(routeNo)) return { type: "Usually Double-Decker", risk: true };
+    if (strictDouble.includes(routeNo)) return { type: "Double-Decker", risk: false };
+    
+    return { type: "Unknown Fleet", risk: false };
   }
 
   // --- INITIALIZATION & MERGING ROUTE VARIANTS ---
@@ -267,11 +284,9 @@
         const rData = await fetchJSON('/route.php?action=list');
         rawRoutes = rData.routes || [];
         
-        // Group raw route variants by routeNo + main destination to merge duplicates
         const groupedMap = new Map();
         rawRoutes.forEach(r => {
           const rawDest = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
-          // Normalize destination text to merge minor string variants
           const cleanDest = rawDest.replace(/\s*\([^)]*\)/g, '').trim(); 
           const key = generateGroupKey(r.routeNo, cleanDest);
 
@@ -289,7 +304,6 @@
 
         groupedRoutes = Array.from(groupedMap.values());
 
-        // Batch fetch stops across all underlying route IDs
         routeStopsCache = {};
         const chunkSize = 6;
         for (let i = 0; i < rawRoutes.length; i += chunkSize) {
@@ -312,7 +326,6 @@
         } catch (e) { console.warn('LocalStorage unavailable'); }
       }
       
-      // Populate Route Selector without duplicate entries
       const rSelect = document.getElementById('routeSelect');
       groupedRoutes.forEach(g => {
           rSelect.insertAdjacentHTML('beforeend', `<option value="${g.key}">${g.routeNo} (To ${g.destName})</option>`);
@@ -599,12 +612,22 @@
         const cardId = `route-${group.key}`;
 
         if (!document.getElementById(cardId)) {
+          // Identify fleet type and generate warning if applicable
+          const fleetInfo = getExpectedFleet(group.routeNo);
+          const capacityWarning = fleetInfo.risk 
+            ? `<div style="font-size: 0.65rem; color: var(--accent-orange); margin-top: 4px; font-weight: 600;">⚠️ High crowding risk if Single-Decker</div>` 
+            : '';
+
           listEl.insertAdjacentHTML('beforeend', `
             <div class="route-card" id="${cardId}" data-smart-mins="9999">
               <div class="route-left">
                 <div class="route-no">${group.routeNo}</div>
                 <div class="route-info">
                   <div class="route-dest">To ${group.destName}</div>
+                  <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px;">
+                    ${fleetInfo.type}
+                  </div>
+                  ${capacityWarning}
                   <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
                     <div class="bar-segments" id="bars-${group.key}">
                       ${Array(5).fill('<div class="segment"></div>').join('')}
@@ -656,7 +679,6 @@
 
       let combinedArrivals = [];
 
-      // Query live ETA for all underlying variant route IDs simultaneously
       await Promise.all(matchDetails.map(async (m) => {
         const targetStop = m.stops[m.targetIndex];
         const upstreamStop = m.targetIndex > 0 ? m.stops[m.targetIndex - 1] : null;
@@ -688,7 +710,6 @@
         return;
       }
 
-      // Sort merged arrivals by upcoming arrival time
       combinedArrivals.sort((a, b) => {
         const tA = new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')).getTime();
         const tB = new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')).getTime();
