@@ -17,7 +17,6 @@
     --accent-blue: #0a84ff;
   }
   
-  /* Universal box-sizing prevents padding from pushing elements off-screen */
   * { box-sizing: border-box; }
   
   body {
@@ -26,7 +25,7 @@
     background-color: var(--bg-color);
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
-    overflow-x: hidden; /* Force strict containment to prevent horizontal swipe/scroll */
+    overflow-x: hidden; 
   }
   .header {
     background-color: var(--accent-red);
@@ -147,8 +146,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Minimal Build Number injected directly into the header
-const APP_VERSION = "Build 1013";
+const APP_VERSION = "Build 1014";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -772,12 +770,12 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else if (hour >= 15 && hour <= 18) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 85 : 35; 
     } else if (hour >= 19) {
-      // Hub Crash: Sunday night outbound from villages is completely dead.
-      if (dest.includes('tung chung') || dest.includes('mui wo')) {
-         baseLoad = 5;
+      if (dest.includes('tung chung')) {
+         baseLoad = 35; 
+      } else if (dest.includes('mui wo')) {
+         baseLoad = 15; 
       } else {
-         // Inbound to villages drops severely on Sunday nights (Fixing Route 1 Tai O false full)
-         baseLoad = 15;
+         baseLoad = 10; 
       }
     }
   }
