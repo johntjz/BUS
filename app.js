@@ -2,8 +2,14 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
+const APP_VERSION = "v1.0.1 (Build 1004)";
+document.addEventListener("DOMContentLoaded", () => {
+  const vEl = document.getElementById("buildVersion");
+  if (vEl) vEl.innerText = APP_VERSION;
+});
+
 let currentLang = localStorage.getItem('pulse_lang') || 'en';
-document.getElementById('langSelect').value = currentLang;
+if (document.getElementById('langSelect')) document.getElementById('langSelect').value = currentLang;
 
 const i18n = {
   en: {
@@ -79,10 +85,13 @@ function generateDeterministicNoise(busId, currentStopIndex, timestamp) {
 }
 
 setInterval(() => {
-  document.getElementById('liveClock').innerText = new Date().toLocaleTimeString(
-    currentLang === 'en' ? 'en-US' : 'zh-HK', 
-    { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: currentLang==='en' }
-  );
+  const clockEl = document.getElementById('liveClock');
+  if (clockEl) {
+    clockEl.innerText = new Date().toLocaleTimeString(
+      currentLang === 'en' ? 'en-US' : 'zh-HK', 
+      { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: currentLang==='en' }
+    );
+  }
 }, 1000);
 
 async function fetchJSON(endpoint) {
@@ -540,13 +549,11 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else if (hour >= 15 && hour <= 18) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 90 : 25; 
     } else if (hour >= 19) {
-      // Hard crash the load factor for Sunday evenings in all directions
-      baseLoad = 5; 
+      baseLoad = 5; // Hard crash the load factor for Sunday evenings
     }
   }
 
   // 2. Route Progress (Bell Curve Spatial Multiplier)
-  // Ensures buses are empty at the start, full in the middle, and empty at the end.
   let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
   let spatialMultiplier = 0.5 + (2.0 * progress * (1 - progress)); 
 
@@ -565,11 +572,9 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     const t2 = Math.max(0, (new Date(estimatedArrivals[1].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000);
     const gap = t2 - t1;
     
-    // Only aggressively scale up crowding for gaps during peak hours
     if (baseLoad > 40) {
         headwayMultiplier = gap <= 8 ? 1.5 : 0.5 + (1.5 * (1 - Math.exp(-0.05 * gap)));
     } else {
-        // Prevent huge schedule gaps at night from falsely registering as massive crowds
         headwayMultiplier = gap <= 15 ? 1.0 : 1.2;
     }
   }
@@ -580,7 +585,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   // 4. Fleet Capacity Divider
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
   const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6'];
-  const mixedHeavy = ['3M', '4']; // High likelihood of double-deckers
+  const mixedHeavy = ['3M', '4']; 
 
   let capacityDivider = 1.0; 
   if (strictSingle.includes(routeNo)) capacityDivider = 0.6; 
