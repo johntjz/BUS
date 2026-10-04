@@ -5,7 +5,6 @@ const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 let currentLang = localStorage.getItem('pulse_lang') || 'en';
 document.getElementById('langSelect').value = currentLang;
 
-// GTFS-Realtime Standardized Occupancy Dictionary
 const i18n = {
   en: {
     allLines: "All Lines (Network-Wide)", loadingIndex: "Loading station index...",
@@ -14,9 +13,7 @@ const i18n = {
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
     to: "To", due: "Due", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
-    official: "Official", actual: "Actual ETA",
-    occEmpty: "Empty", occManySeats: "Many Seats Available", occFewSeats: "Few Seats Available", 
-    occStanding: "Standing Room Only", occCrushed: "Crushed Standing Room", occFull: "Full"
+    official: "Official", actual: "Actual ETA"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -25,9 +22,7 @@ const i18n = {
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
     to: "往", due: "即將到達", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
-    official: "官方", actual: "實際預計",
-    occEmpty: "車廂空載", occManySeats: "大量空座", occFewSeats: "尚有空位", 
-    occStanding: "只設企位", occCrushed: "嚴重擁擠", occFull: "客滿"
+    official: "官方", actual: "實際預計"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -36,9 +31,7 @@ const i18n = {
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
     to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
-    official: "官方", actual: "实际预计",
-    occEmpty: "车厢空载", occManySeats: "大量空座", occFewSeats: "尚有空位", 
-    occStanding: "只设企位", occCrushed: "严重拥挤", occFull: "客满"
+    official: "官方", actual: "实际预计"
   }
 };
 
@@ -55,40 +48,32 @@ let groupedRoutes = [];
 let routeStopsCache = {};
 const busStateMap = {}; 
 
-// --- ADVANCED STATE-SPACE KALMAN FILTER ---
 class KalmanFilter1D {
   constructor(processNoise, measurementNoise, initialEstimate, initialError) {
-    this.q = processNoise; // Q_k: Process variance (traffic uncertainty)
-    this.r = measurementNoise; // R_k: Measurement variance (API noise)
-    this.x = initialEstimate; // \hat{x}_{k|k}: State estimate (True ETA)
-    this.p = initialError; // P_{k|k}: Estimate error covariance
+    this.q = processNoise; 
+    this.r = measurementNoise; 
+    this.x = initialEstimate; 
+    this.p = initialError; 
   }
 
   update(measurement, dt) {
-    // Predict Phase (Extrapolation based on temporal physics)
     this.x = this.x - dt; 
     this.p = this.p + this.q; 
-
-    // Correct Phase (Update based on new API sensor data)
     const k = this.p / (this.p + this.r); 
     this.x = this.x + k * (measurement - this.x); 
     this.p = (1 - k) * this.p; 
-
     return Math.max(0, this.x); 
   }
 }
 
-// --- DETERMINISTIC NOISE GENERATOR ---
 function generateDeterministicNoise(busId, currentStopIndex, timestamp) {
   const timeBlock = Math.floor(timestamp / 300000); 
   const seed = `${busId}-${currentStopIndex}-${timeBlock}`;
-  
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     hash = ((hash << 5) - hash) + seed.charCodeAt(i);
     hash |= 0; 
   }
-  
   const normalized = (Math.abs(hash) % 100) / 100;
   return (normalized * 6) - 3;
 }
@@ -110,10 +95,8 @@ function changeLanguage(lang) {
   currentLang = lang;
   localStorage.setItem('pulse_lang', lang);
   populateRouteDropdown();
-  
   const targetGroup = groupedRoutes.find(g => g.key === currentRouteKey);
   populateStopDropdown(targetGroup && currentRouteKey !== 'ALL' ? getStopsForGroup(targetGroup) : allStops);
-  
   updateNetworkTelemetry();
 }
 
@@ -145,7 +128,6 @@ async function initApp() {
         const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
         const dest_c = r.routeName_c ? r.routeName_c.split(/[>＞]/).pop().trim() : '';
         const dest_s = r.routeName_s ? r.routeName_s.split(/[>＞]/).pop().trim() : '';
-        
         const cleanDest = dest_e.replace(/\s*\([^)]*\)/g, '').trim(); 
         const key = `${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
@@ -384,6 +366,7 @@ async function updateNetworkTelemetry() {
       const cardId = `route-${group.key}`;
       const destName = getLocalizedName(group, 'dest');
 
+      // Note: The text <span> has been completely removed from this template
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
           <div class="route-card" id="${cardId}" data-smart-mins="9999">
@@ -395,7 +378,6 @@ async function updateNetworkTelemetry() {
                   <div class="bar-segments" id="bars-${group.key}">
                     ${Array(5).fill('<div class="segment"></div>').join('')}
                   </div>
-                  <span class="occupancy-pct-text" id="pct-text-${group.key}">--</span>
                 </div>
               </div>
             </div>
@@ -445,7 +427,6 @@ async function processSmartArrivals(group, matchDetails) {
 
     await Promise.all(matchDetails.map(async (m) => {
       const targetStop = m.stops[m.targetIndex];
-
       const targetEtaRes = await fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`);
       
       if (targetEtaRes && targetEtaRes.estimatedArrivals) {
@@ -475,8 +456,6 @@ async function processSmartArrivals(group, matchDetails) {
     const now = Date.now();
     const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
     const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
-    
-    // Create a deterministic pseudo-unique ID for this specific bus event
     const pseudoBusId = activeBus.estimatedArrivalTime.replace(/[^0-9]/g, ''); 
     
     let elapsedSinceGenerate = now - serverTime.getTime();
@@ -485,26 +464,13 @@ async function processSmartArrivals(group, matchDetails) {
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    // --- LOAD FACTOR DETERMINATION & GTFS-RT MAPPING ---
+    // --- LOAD FACTOR DETERMINATION ---
     const { pct, activeBars } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, pseudoBusId, now);
     
     let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
     let barHtml = '';
     for (let i = 1; i <= 5; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
     document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
-    
-    // GTFS-Realtime Standardized Categorization
-    let occText;
-    if (pct <= 10) occText = getT('occEmpty');
-    else if (pct <= 40) occText = getT('occManySeats');
-    else if (pct <= 65) occText = getT('occFewSeats');
-    else if (pct <= 85) occText = getT('occStanding');
-    else if (pct <= 99) occText = getT('occCrushed');
-    else occText = getT('occFull');
-
-    const pctEl = document.getElementById(`pct-text-${groupKey}`);
-    pctEl.innerText = occText;
-    pctEl.style.color = pct > 85 ? 'var(--accent-red)' : (pct > 65 ? 'var(--accent-orange)' : 'var(--accent-green)');
     occSecEl.style.display = 'flex';
 
     // --- KALMAN FILTER EXECUTION ---
@@ -512,8 +478,6 @@ async function processSmartArrivals(group, matchDetails) {
     
     if (rawEtaMins > 0) {
       if (!busStateMap[groupKey] || busStateMap[groupKey].pseudoBusId !== pseudoBusId) {
-        // Initialize a new filter state for a new arriving bus
-        // Q (Process Variance) = 0.1, R (Measurement Variance) = 2.0 (High API noise assumed)
         busStateMap[groupKey] = {
            filter: new KalmanFilter1D(0.1, 2.0, rawEtaMins, 1.0),
            timestamp: now,
@@ -524,7 +488,6 @@ async function processSmartArrivals(group, matchDetails) {
       const state = busStateMap[groupKey];
       const dtMins = (now - state.timestamp) / 60000;
       
-      // Update the state-space model if time has passed
       if (dtMins > 0) {
          smartMins = Math.round(state.filter.update(rawEtaMins, dtMins));
          state.timestamp = now;
@@ -562,9 +525,17 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   else if (hour >= 17 && hour <= 19) baseLoad = (!dest.includes('tung chung')) ? 75 : 50;
   else if (hour >= 11 && hour <= 14) baseLoad = 35;
 
-  const routeProgress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
-  let spatialMultiplier = 1 - Math.pow(routeProgress, 2.5);
+  let spatialMultiplier = 1 - Math.pow(Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1))), 2.5);
   
+  // --- STARTING STATION ACCURACY FIX ---
+  // If at the terminus, a bus is empty until shortly before departure.
+  if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
+    const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
+    if (minToDeparture > 10) spatialMultiplier = 0.1; // Mostly empty waiting
+    else if (minToDeparture > 5) spatialMultiplier = 0.4; // Filling up
+    else spatialMultiplier = 1.0; // Ready to depart, full base load
+  }
+
   let headwayMultiplier = 1.0;
   if (estimatedArrivals && estimatedArrivals.length >= 2) {
     const serverTime = new Date(estimatedArrivals[0].generateTime.replace(/-/g, '/'));
@@ -574,21 +545,17 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     headwayMultiplier = gap <= 8 ? 1.8 : 0.5 + (2.0 * (1 - Math.exp(-0.08 * gap)));
   }
 
-  // Inject deterministic hashed noise instead of Math.random() for stable UI state
   const stableNoise = generateDeterministicNoise(busId, currentStopIndex, currentTimestamp);
   let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
 
-  // --- FLEET CAPACITY DIVIDER ---
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
   const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6'];
 
-  let capacityDivider = 1.0; // Baseline for mixed routes (e.g., 3M, 4)
-  if (strictSingle.includes(routeNo)) capacityDivider = 0.6; // Single-deckers fill up much faster
-  if (strictDouble.includes(routeNo)) capacityDivider = 1.3; // Double-deckers absorb more volume easily
+  let capacityDivider = 1.0; 
+  if (strictSingle.includes(routeNo)) capacityDivider = 0.6; 
+  if (strictDouble.includes(routeNo)) capacityDivider = 1.3; 
 
   let pct = Math.min(100, Math.max(0, Math.round(rawVolume / capacityDivider)));
-  
-  // Calculate active bar segments (1 to 5)
   const activeBars = Math.min(5, Math.max(1, Math.ceil(pct / 20)));
   
   return { pct, activeBars };
