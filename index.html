@@ -154,7 +154,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1022";
+const APP_VERSION = "v.1023";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -638,49 +638,13 @@ async function processSmartArrivals(group, matchDetails) {
       }
     }));
 
-    const prevState = busStateMap[groupKey];
+    const activeState = busStateMap[groupKey];
     const now = Date.now();
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
-    let validArrivals = [];
-    for (let i = 0; i < combinedArrivals.length; i++) {
-        let c = combinedArrivals[i];
-        let cArrTime = new Date(c.arrival.estimatedArrivalTime.replace(/-/g, '/'));
-        let cSrvTime = new Date(c.arrival.generateTime.replace(/-/g, '/'));
-        let cElapsed = now - cSrvTime.getTime();
-        if (cElapsed < 0 || cElapsed > 120000) cElapsed = 0;
-        let cRawEta = Math.max(0, Math.floor(((cArrTime.getTime() - cSrvTime.getTime()) - cElapsed) / 60000));
-        let cIsNoGPS = c.arrival.noGPS === 1 || c.arrival.noGPS === '1';
-
-        let isGhost = false;
-
-        if (prevState && prevState.filter.x <= 2 && cIsNoGPS && cRawEta <= 1) {
-            isGhost = true;
-        }
-
-        if (i === 0 && cRawEta <= 1 && combinedArrivals.length > 1) {
-            let next = combinedArrivals[1];
-            let nArrTime = new Date(next.arrival.estimatedArrivalTime.replace(/-/g, '/'));
-            let nSrvTime = new Date(next.arrival.generateTime.replace(/-/g, '/'));
-            let nRawEta = Math.max(0, Math.floor((nArrTime.getTime() - nSrvTime.getTime()) / 60000));
-            
-            if (nRawEta > 15 && prevState && prevState.filter.x <= 1) {
-                isGhost = true; 
-            }
-        }
-
-        if (!isGhost) {
-            validArrivals.push(c);
-        } else {
-            delete busStateMap[groupKey];
-        }
-    }
-    
-    combinedArrivals = validArrivals;
-    const activeState = busStateMap[groupKey];
-
-    if (activeState && activeState.filter.x <= 3) {
+    // Determine if bus is genuinely missing or just passed
+    if (activeState) {
        let isBusStillThere = false;
        if (combinedArrivals.length > 0) {
            for (let c of combinedArrivals) {
@@ -689,7 +653,6 @@ async function processSmartArrivals(group, matchDetails) {
                    isBusStillThere = true;
                    break;
                }
-               
                const checkArrTime = new Date(c.arrival.estimatedArrivalTime.replace(/-/g, '/'));
                const checkSrvTime = new Date(c.arrival.generateTime.replace(/-/g, '/'));
                const checkEta = Math.max(0, Math.floor((checkArrTime - checkSrvTime) / 60000));
@@ -703,33 +666,36 @@ async function processSmartArrivals(group, matchDetails) {
        
        if (!isBusStillThere) {
            const timeSinceLost = now - activeState.timestamp;
-           const hour = new Date(now).getHours();
-           const isWeekend = (new Date(now).getDay() === 0 || new Date(now).getDay() === 6);
+           const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
            
-           let graceLimitMs = 180000; 
-           if (!isWeekend && hour >= 7 && hour <= 9) {
-               graceLimitMs = 90000; 
-           } else if (hour >= 22 || hour <= 5) {
-               graceLimitMs = 240000; 
-           }
-           
-           if (timeSinceLost < graceLimitMs) { 
-               cardEl.dataset.smartMins = 0;
+           if (timeSpentAtZero > 45000 || timeSinceLost > 75000) { 
+               // Bus sat at 0m for > 45s and then vanished, meaning it definitely departed. Drop instantly.
+               // Or it has been missing for over 75s.
+               delete busStateMap[groupKey];
+           } else {
+               // Anti-Jump Buffer: Protects against momentary API drops (e.g. dropping at 4m or 0m)
+               // Renders the projected last known ETA so it doesn't jump to the 15m scheduled bus.
+               let projectedMins = Math.max(0, Math.round(activeState.filter.x - (timeSinceLost / 60000)));
+               cardEl.dataset.smartMins = projectedMins;
                if (cardEl) cardEl.classList.remove('inactive');
-               offEl.innerText = '--';
-               lblSmartEl.innerText = getT('arrivingLabel');
-               smartEl.innerText = getT('arriving');
-               smartEl.className = 'smart-eta arriving';
                if (boxOffEl) boxOffEl.style.display = 'none';
-
+               
+               if (projectedMins === 0) {
+                   lblSmartEl.innerText = getT('arrivingLabel');
+                   smartEl.innerText = getT('arriving');
+                   smartEl.className = 'smart-eta arriving';
+               } else {
+                   lblSmartEl.innerText = getT('actual');
+                   smartEl.innerText = `${projectedMins}${getT('min')}`;
+                   smartEl.className = 'smart-eta adjusted';
+                   offEl.innerText = '--';
+               }
+               
                let barHtml = '';
                for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeState.activeBars ? activeState.colorClass : ''}"></div>`;
                document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
                occSecEl.style.display = 'flex';
-
                return; 
-           } else {
-               delete busStateMap[groupKey];
            }
        }
     }
@@ -797,10 +763,16 @@ async function processSmartArrivals(group, matchDetails) {
              timestamp: now,
              pseudoBusId: pseudoBusId, 
              activeBars: activeBars,
-             colorClass: colorClass
+             colorClass: colorClass,
+             firstZeroTime: (rawEtaMins === 0) ? now : null 
           };
         } else {
           busStateMap[groupKey].pseudoBusId = pseudoBusId; 
+          if (rawEtaMins === 0) {
+              busStateMap[groupKey].firstZeroTime = busStateMap[groupKey].firstZeroTime || now;
+          } else {
+              busStateMap[groupKey].firstZeroTime = null; 
+          }
         }
         
         const state = busStateMap[groupKey];
@@ -891,8 +863,10 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   let baseLoad = 35; 
 
   if (!isWeekend) {
-    if (hour >= 7 && hour <= 9) {
+    if (hour >= 7 && hour < 9) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 25;
+    } else if (hour === 9) {
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 25;
     } else if (hour >= 17 && hour <= 19) {
       baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 30;
     } else if (hour >= 20) {
@@ -948,7 +922,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   let capacityDivider = 1.0; 
   if (strictSingle.includes(routeNo)) capacityDivider = 0.6; 
   else if (strictDouble.includes(routeNo)) capacityDivider = 1.3; 
-  else if (mixedHeavy.includes(routeNo)) capacityDivider = 1.1; 
+  else if (mixedHeavy.includes(routeNo)) capacityDivider = 1.25; 
 
   let pct = Math.min(100, Math.max(0, Math.round(rawVolume / capacityDivider)));
   const activeBars = Math.min(10, Math.max(1, Math.ceil(pct / 10)));
