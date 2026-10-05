@@ -154,7 +154,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1023";
+const APP_VERSION = "v.1024";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -864,11 +864,11 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
 
   if (!isWeekend) {
     if (hour >= 7 && hour < 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 25;
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 15; 
     } else if (hour === 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 25;
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 10; 
     } else if (hour >= 17 && hour <= 19) {
-      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 30;
+      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20; 
     } else if (hour >= 20) {
       baseLoad = 10;
     }
@@ -916,8 +916,8 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
 
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
-  const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6'];
-  const mixedHeavy = ['3M', '4']; 
+  const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6', '4']; 
+  const mixedHeavy = ['3M']; 
 
   let capacityDivider = 1.0; 
   if (strictSingle.includes(routeNo)) capacityDivider = 0.6; 
