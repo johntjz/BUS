@@ -154,7 +154,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1025";
+const APP_VERSION = "v.1026";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -193,7 +193,7 @@ const i18n = {
     to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
     arrivingLabel: "状态", arriving: "即将抵达...",
-    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线"
+    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班路线"
   }
 };
 
@@ -643,7 +643,8 @@ async function processSmartArrivals(group, matchDetails) {
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
-    if (activeState) {
+    // Check if the bus we were tracking is still in the API feed or if it dropped off
+    if (activeState && (activeState.isScheduled || (activeState.filter && activeState.filter.x <= 3))) {
        let isBusStillThere = false;
        if (combinedArrivals.length > 0) {
            for (let c of combinedArrivals) {
@@ -656,7 +657,10 @@ async function processSmartArrivals(group, matchDetails) {
                const checkSrvTime = new Date(c.arrival.generateTime.replace(/-/g, '/'));
                const checkEta = Math.max(0, Math.floor((checkArrTime - checkSrvTime) / 60000));
                
-               if (Math.abs(checkEta - activeState.filter.x) <= 3) {
+               if (activeState.filter && Math.abs(checkEta - activeState.filter.x) <= 3) {
+                   isBusStillThere = true;
+                   break;
+               } else if (activeState.isScheduled && (c.arrival.noGPS === 1 || c.arrival.noGPS === '1') && checkEta <= 2) {
                    isBusStillThere = true;
                    break;
                }
@@ -665,32 +669,66 @@ async function processSmartArrivals(group, matchDetails) {
        
        if (!isBusStillThere) {
            const timeSinceLost = now - activeState.timestamp;
-           const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
            
-           if (timeSpentAtZero > 45000 || timeSinceLost > 75000) { 
-               delete busStateMap[groupKey];
-           } else {
-               let projectedMins = Math.max(0, Math.round(activeState.filter.x - (timeSinceLost / 60000)));
-               cardEl.dataset.smartMins = projectedMins;
-               if (cardEl) cardEl.classList.remove('inactive');
-               if (boxOffEl) boxOffEl.style.display = 'none';
-               
-               if (projectedMins === 0) {
-                   lblSmartEl.innerText = getT('arrivingLabel');
-                   smartEl.innerText = getT('arriving');
-                   smartEl.className = 'smart-eta arriving';
-               } else {
-                   lblSmartEl.innerText = getT('actual');
-                   smartEl.innerText = `${projectedMins}${getT('min')}`;
-                   smartEl.className = 'smart-eta adjusted';
-                   offEl.innerText = '--';
+           if (activeState.isScheduled) {
+               // Scheduled Ghost Retention: NLB deletes scheduled buses exactly at departure time,
+               // even if they are running 5-8 minutes late. Protect against this if next bus is far.
+               let nextBusEta = 999;
+               if (combinedArrivals.length > 0) {
+                   let nArr = new Date(combinedArrivals[0].arrival.estimatedArrivalTime.replace(/-/g, '/'));
+                   let nSrv = new Date(combinedArrivals[0].arrival.generateTime.replace(/-/g, '/'));
+                   let nElapsed = Math.max(0, now - nSrv.getTime());
+                   if (nElapsed > 120000) nElapsed = 0;
+                   nextBusEta = Math.max(0, Math.floor(((nArr.getTime() - nSrv.getTime()) - nElapsed) / 60000));
                }
                
-               let barHtml = '';
-               for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeState.activeBars ? activeState.colorClass : ''}"></div>`;
-               document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
-               occSecEl.style.display = 'flex';
-               return; 
+               if (timeSinceLost < 480000 && nextBusEta > 10) { 
+                   // Retain for up to 8 minutes (480,000ms)
+                   cardEl.dataset.smartMins = 0;
+                   if (cardEl) cardEl.classList.remove('inactive');
+                   if (boxOffEl) boxOffEl.style.display = 'none';
+                   
+                   lblSmartEl.innerText = getT('scheduled');
+                   smartEl.innerText = getT('due');
+                   smartEl.className = 'smart-eta arriving';
+                   smartEl.style.color = 'var(--accent-orange)';
+                   
+                   let barHtml = '';
+                   for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeState.activeBars ? activeState.colorClass : ''}"></div>`;
+                   document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
+                   occSecEl.style.display = 'flex';
+                   return; 
+               } else {
+                   delete busStateMap[groupKey];
+               }
+           } else {
+               // Standard Anti-Jump logic for GPS tracked buses
+               const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
+               if (timeSpentAtZero > 45000 || timeSinceLost > 75000) { 
+                   delete busStateMap[groupKey];
+               } else {
+                   let projectedMins = Math.max(0, Math.round(activeState.filter.x - (timeSinceLost / 60000)));
+                   cardEl.dataset.smartMins = projectedMins;
+                   if (cardEl) cardEl.classList.remove('inactive');
+                   if (boxOffEl) boxOffEl.style.display = 'none';
+                   
+                   if (projectedMins === 0) {
+                       lblSmartEl.innerText = getT('arrivingLabel');
+                       smartEl.innerText = getT('arriving');
+                       smartEl.className = 'smart-eta arriving';
+                   } else {
+                       lblSmartEl.innerText = getT('actual');
+                       smartEl.innerText = `${projectedMins}${getT('min')}`;
+                       smartEl.className = 'smart-eta adjusted';
+                       offEl.innerText = '--';
+                   }
+                   
+                   let barHtml = '';
+                   for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeState.activeBars ? activeState.colorClass : ''}"></div>`;
+                   document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
+                   occSecEl.style.display = 'flex';
+                   return; 
+               }
            }
        }
     }
@@ -737,22 +775,30 @@ async function processSmartArrivals(group, matchDetails) {
         smartMins = Math.max(0, Math.floor(rawEtaMins * 0.65)); 
         lblSmartEl.innerText = getT('scheduled');
         smartEl.style.color = 'var(--accent-orange)';
-        delete busStateMap[groupKey]; 
+        
+        // Track the scheduled bus in the map to catch it when API prematurely purges it
+        busStateMap[groupKey] = {
+           isScheduled: true,
+           timestamp: now,
+           pseudoBusId: pseudoBusId, 
+           activeBars: activeBars,
+           colorClass: colorClass
+        };
       } else {
         lblSmartEl.innerText = getT('actual');
         smartEl.style.color = ''; 
 
         let isSameBusForFilter = false;
         if (busStateMap[groupKey]) {
-           const expectedMins = busStateMap[groupKey].filter.x - ((now - busStateMap[groupKey].timestamp) / 60000);
+           const expectedMins = busStateMap[groupKey].filter ? (busStateMap[groupKey].filter.x - ((now - busStateMap[groupKey].timestamp) / 60000)) : 999;
            if (busStateMap[groupKey].pseudoBusId === pseudoBusId) {
                isSameBusForFilter = true;
-           } else if (Math.abs(rawEtaMins - expectedMins) <= 3) {
+           } else if (busStateMap[groupKey].filter && Math.abs(rawEtaMins - expectedMins) <= 3) {
                isSameBusForFilter = true;
            }
         }
 
-        if (!isSameBusForFilter) {
+        if (!isSameBusForFilter || busStateMap[groupKey].isScheduled) {
           busStateMap[groupKey] = {
              filter: new KalmanFilter1D(0.1, 2.0, rawEtaMins, 1.0),
              timestamp: now,
@@ -864,6 +910,9 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else if (hour === 9) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 15; 
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 25;
+    } else if (hour >= 10 && hour <= 16) {
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 45 : 20; 
+      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 20;
     } else if (hour >= 17 && hour <= 19) {
       baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20; 
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 35;
