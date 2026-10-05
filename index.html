@@ -154,7 +154,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1026";
+const APP_VERSION = "v.1028";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -193,7 +193,7 @@ const i18n = {
     to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
     arrivingLabel: "状态", arriving: "即将抵达...",
-    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班路线"
+    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线"
   }
 };
 
@@ -670,20 +670,21 @@ async function processSmartArrivals(group, matchDetails) {
        if (!isBusStillThere) {
            const timeSinceLost = now - activeState.timestamp;
            
+           // THE GAP ANCHOR HEURISTIC (Replaces timetable logic)
+           // If the bus drops off the feed, we check the ETA of the NEXT available bus.
+           let nextBusEta = 999;
+           if (combinedArrivals.length > 0) {
+               let nArr = new Date(combinedArrivals[0].arrival.estimatedArrivalTime.replace(/-/g, '/'));
+               let nSrv = new Date(combinedArrivals[0].arrival.generateTime.replace(/-/g, '/'));
+               let nElapsed = Math.max(0, now - nSrv.getTime());
+               if (nElapsed > 120000) nElapsed = 0;
+               nextBusEta = Math.max(0, Math.floor(((nArr.getTime() - nSrv.getTime()) - nElapsed) / 60000));
+           }
+           
            if (activeState.isScheduled) {
-               // Scheduled Ghost Retention: NLB deletes scheduled buses exactly at departure time,
-               // even if they are running 5-8 minutes late. Protect against this if next bus is far.
-               let nextBusEta = 999;
-               if (combinedArrivals.length > 0) {
-                   let nArr = new Date(combinedArrivals[0].arrival.estimatedArrivalTime.replace(/-/g, '/'));
-                   let nSrv = new Date(combinedArrivals[0].arrival.generateTime.replace(/-/g, '/'));
-                   let nElapsed = Math.max(0, now - nSrv.getTime());
-                   if (nElapsed > 120000) nElapsed = 0;
-                   nextBusEta = Math.max(0, Math.floor(((nArr.getTime() - nSrv.getTime()) - nElapsed) / 60000));
-               }
-               
+               // If it's a scheduled bus that vanished, and the next bus is far away (>10m),
+               // it means the scheduled bus is just late. We hold it for 8 minutes.
                if (timeSinceLost < 480000 && nextBusEta > 10) { 
-                   // Retain for up to 8 minutes (480,000ms)
                    cardEl.dataset.smartMins = 0;
                    if (cardEl) cardEl.classList.remove('inactive');
                    if (boxOffEl) boxOffEl.style.display = 'none';
@@ -702,9 +703,13 @@ async function processSmartArrivals(group, matchDetails) {
                    delete busStateMap[groupKey];
                }
            } else {
-               // Standard Anti-Jump logic for GPS tracked buses
+               // If a GPS-tracked bus dropped at 0m, we also check the gap. 
+               // If next bus is >15m away, hold the current one slightly longer (2.5 mins).
+               // If the next bus is close, drop it instantly.
                const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
-               if (timeSpentAtZero > 45000 || timeSinceLost > 75000) { 
+               const maxMissingTime = (nextBusEta > 15) ? 150000 : 75000;
+               
+               if (timeSpentAtZero > 45000 || timeSinceLost > maxMissingTime) { 
                    delete busStateMap[groupKey];
                } else {
                    let projectedMins = Math.max(0, Math.round(activeState.filter.x - (timeSinceLost / 60000)));
@@ -776,7 +781,6 @@ async function processSmartArrivals(group, matchDetails) {
         lblSmartEl.innerText = getT('scheduled');
         smartEl.style.color = 'var(--accent-orange)';
         
-        // Track the scheduled bus in the map to catch it when API prematurely purges it
         busStateMap[groupKey] = {
            isScheduled: true,
            timestamp: now,
