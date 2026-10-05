@@ -104,6 +104,14 @@
   .segment.active-green { background-color: var(--accent-green); }
   .segment.active-orange { background-color: var(--accent-orange); }
   .segment.active-red { background-color: var(--accent-red); }
+
+  /* Inactive Routes Toggle */
+  .route-card.inactive { display: none; }
+  .show-inactive .route-card.inactive { display: flex; }
+  .toggle-btn {
+    background: transparent; color: var(--accent-secondary, #98989d); border: 1px solid var(--card-border);
+    padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -146,7 +154,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1020";
+const APP_VERSION = "v.1021";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -162,7 +170,8 @@ const i18n = {
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
     to: "To", due: "Due", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
     official: "Official", actual: "Actual ETA", scheduled: "Scheduled (No GPS)",
-    arrivingLabel: "Status", arriving: "Arriving..."
+    arrivingLabel: "Status", arriving: "Arriving...",
+    showInactive: "Show inactive routes", hideInactive: "Hide inactive routes"
   },
   tc: {
     allLines: "所有", loadingIndex: "載入車站索引...",
@@ -172,7 +181,8 @@ const i18n = {
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
     to: "往", due: "即將到達", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "實際預計", scheduled: "預定班次 (無GPS)",
-    arrivingLabel: "狀態", arriving: "即將抵達..."
+    arrivingLabel: "狀態", arriving: "即將抵達...",
+    showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線"
   },
   sc: {
     allLines: "所有", loadingIndex: "载入车站索引...",
@@ -182,7 +192,8 @@ const i18n = {
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
     to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
-    arrivingLabel: "状态", arriving: "即将抵达..."
+    arrivingLabel: "状态", arriving: "即将抵达...",
+    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线"
   }
 };
 
@@ -198,6 +209,16 @@ let rawRoutes = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
 const busStateMap = {}; 
+
+let showInactive = false;
+function toggleInactive() {
+  showInactive = !showInactive;
+  const listEl = document.getElementById('routeList');
+  if (showInactive) listEl.classList.add('show-inactive');
+  else listEl.classList.remove('show-inactive');
+  const btn = document.getElementById('toggleInactiveBtn');
+  if (btn) btn.innerText = showInactive ? getT('hideInactive') : getT('showInactive');
+}
 
 class KalmanFilter1D {
   constructor(processNoise, measurementNoise, initialEstimate, initialError) {
@@ -558,9 +579,24 @@ async function updateNetworkTelemetry() {
 
     await Promise.all(relevantGroups.map(item => processSmartArrivals(item.group, item.matchDetails)));
 
+    // Re-sort and append, then inject toggle button
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
     cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
     cards.forEach(card => listEl.appendChild(card));
+
+    const oldBtn = document.getElementById('inactiveToggleContainer');
+    if (oldBtn) oldBtn.remove();
+
+    const inactiveCards = cards.filter(c => c.classList.contains('inactive'));
+    if (inactiveCards.length > 0) {
+      listEl.insertAdjacentHTML('beforeend', `
+        <div id="inactiveToggleContainer" style="padding: 20px; text-align: center;">
+          <button onclick="toggleInactive()" class="toggle-btn" id="toggleInactiveBtn">
+            ${showInactive ? getT('hideInactive') : getT('showInactive')}
+          </button>
+        </div>
+      `);
+    }
 
   } catch (err) {}
 }
@@ -631,6 +667,7 @@ async function processSmartArrivals(group, matchDetails) {
            const timeSinceLost = now - prevState.timestamp;
            if (timeSinceLost < 300000) { 
                cardEl.dataset.smartMins = 0;
+               if (cardEl) cardEl.classList.remove('inactive');
                offEl.innerText = '--';
                lblSmartEl.innerText = getT('arrivingLabel');
                smartEl.innerText = getT('arriving');
@@ -650,13 +687,18 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     if (combinedArrivals.length === 0) {
-      if(cardEl) cardEl.dataset.smartMins = 9999;
+      if(cardEl) {
+        cardEl.dataset.smartMins = 9999;
+        cardEl.classList.add('inactive');
+      }
       if(offEl) offEl.innerText = '--';
       if(smartEl) smartEl.innerText = '--';
       if(occSecEl) occSecEl.style.display = 'none';
       if(boxOffEl) boxOffEl.style.display = 'none';
       return;
     }
+    
+    if (cardEl) cardEl.classList.remove('inactive');
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
     
@@ -729,7 +771,6 @@ async function processSmartArrivals(group, matchDetails) {
            smartMins = Math.round(state.filter.x);
         }
         
-        // UPSTREAM LATCHING BUG FIX
         if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
           let validUpstreamBus = null;
           let upstreamEtaMins = 0;
@@ -740,7 +781,6 @@ async function processSmartArrivals(group, matchDetails) {
               const uServerTime = new Date(uBus.generateTime.replace(/-/g, '/'));
               const uEtaMins = Math.max(0, Math.floor((uArrTime - uServerTime) / 60000));
               
-              // Only consider upstream buses whose timing aligns with the bus we are tracking
               const diff = rawEtaMins - uEtaMins;
               if (diff >= -2 && diff <= 15) {
                   if (Math.abs(diff) < bestMatchDiff) {
@@ -767,6 +807,9 @@ async function processSmartArrivals(group, matchDetails) {
           }
         }
       }
+    } else {
+      smartMins = 0;
+      delete busStateMap[groupKey]; 
     }
 
     cardEl.dataset.smartMins = smartMins;
@@ -785,7 +828,10 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
   } catch (err) {
-    if (cardEl) cardEl.dataset.smartMins = 9999;
+    if (cardEl) {
+        cardEl.dataset.smartMins = 9999;
+        cardEl.classList.add('inactive');
+    }
   }
 }
 
