@@ -146,7 +146,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1016";
+const APP_VERSION = "v.1020";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -217,9 +217,9 @@ class KalmanFilter1D {
   }
 }
 
-function generateDeterministicNoise(busId, currentStopIndex, timestamp) {
+function generateDeterministicNoise(routeStr, currentStopIndex, timestamp) {
   const timeBlock = Math.floor(timestamp / 300000); 
-  const seed = `${busId}-${currentStopIndex}-${timeBlock}`;
+  const seed = `${routeStr}-${currentStopIndex}-${timeBlock}`;
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     hash = ((hash << 5) - hash) + seed.charCodeAt(i);
@@ -240,7 +240,7 @@ setInterval(() => {
 }, 1000);
 
 async function fetchJSON(endpoint) {
-  const response = await fetch(`${API_BASE}${endpoint}`);
+  const response = await fetch(`${API_BASE}${endpoint}`, { cache: 'no-store' });
   if (!response.ok) throw new Error('API offline');
   return await response.json();
 }
@@ -609,12 +609,26 @@ async function processSmartArrivals(group, matchDetails) {
     if (prevState && prevState.filter.x <= 3) {
        let isBusStillThere = false;
        if (combinedArrivals.length > 0) {
-           isBusStillThere = combinedArrivals.some(c => c.arrival.estimatedArrivalTime.replace(/[^0-9]/g, '') === prevState.pseudoBusId);
+           for (let c of combinedArrivals) {
+               const cPseudoId = c.arrival.estimatedArrivalTime.replace(/[^0-9]/g, '');
+               if (cPseudoId === prevState.pseudoBusId) {
+                   isBusStillThere = true;
+                   break;
+               }
+               
+               const checkArrTime = new Date(c.arrival.estimatedArrivalTime.replace(/-/g, '/'));
+               const checkSrvTime = new Date(c.arrival.generateTime.replace(/-/g, '/'));
+               const checkEta = Math.max(0, Math.floor((checkArrTime - checkSrvTime) / 60000));
+               
+               if (Math.abs(checkEta - prevState.filter.x) <= 3) {
+                   isBusStillThere = true;
+                   break;
+               }
+           }
        }
        
        if (!isBusStillThere) {
            const timeSinceLost = now - prevState.timestamp;
-           // Extended Grace Period to 5 Minutes (300000ms)
            if (timeSinceLost < 300000) { 
                cardEl.dataset.smartMins = 0;
                offEl.innerText = '--';
@@ -659,7 +673,7 @@ async function processSmartArrivals(group, matchDetails) {
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    const { pct, activeBars } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, pseudoBusId, now);
+    const { pct, activeBars } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now);
     
     let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
     let barHtml = '';
@@ -669,7 +683,7 @@ async function processSmartArrivals(group, matchDetails) {
 
     let smartMins = rawEtaMins;
     
-    if (rawEtaMins > 0) {
+    if (rawEtaMins >= 0) {
       if (isNoGPS) {
         smartMins = Math.max(0, Math.floor(rawEtaMins * 0.65)); 
         lblSmartEl.innerText = getT('scheduled');
@@ -679,14 +693,26 @@ async function processSmartArrivals(group, matchDetails) {
         lblSmartEl.innerText = getT('actual');
         smartEl.style.color = ''; 
 
-        if (!busStateMap[groupKey] || busStateMap[groupKey].pseudoBusId !== pseudoBusId) {
+        let isSameBusForFilter = false;
+        if (busStateMap[groupKey]) {
+           const expectedMins = busStateMap[groupKey].filter.x - ((now - busStateMap[groupKey].timestamp) / 60000);
+           if (busStateMap[groupKey].pseudoBusId === pseudoBusId) {
+               isSameBusForFilter = true;
+           } else if (Math.abs(rawEtaMins - expectedMins) <= 3) {
+               isSameBusForFilter = true;
+           }
+        }
+
+        if (!isSameBusForFilter) {
           busStateMap[groupKey] = {
              filter: new KalmanFilter1D(0.1, 2.0, rawEtaMins, 1.0),
              timestamp: now,
-             pseudoBusId: pseudoBusId,
+             pseudoBusId: pseudoBusId, 
              activeBars: activeBars,
              colorClass: colorClass
           };
+        } else {
+          busStateMap[groupKey].pseudoBusId = pseudoBusId; 
         }
         
         const state = busStateMap[groupKey];
@@ -703,29 +729,44 @@ async function processSmartArrivals(group, matchDetails) {
            smartMins = Math.round(state.filter.x);
         }
         
+        // UPSTREAM LATCHING BUG FIX
         if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
-          const upBus = activeItem.upstreamEtaRes.estimatedArrivals[0];
-          const upArrTime = new Date(upBus.estimatedArrivalTime.replace(/-/g, '/'));
-          const upServerTime = new Date(upBus.generateTime.replace(/-/g, '/'));
-          const upstreamEtaMins = Math.max(0, Math.floor((upArrTime - upServerTime) / 60000));
-
-          const distanceKm = calculateDistanceKm(
-            parseFloat(activeItem.upstreamStop.latitude), parseFloat(activeItem.upstreamStop.longitude),
-            parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
-          );
+          let validUpstreamBus = null;
+          let upstreamEtaMins = 0;
+          let bestMatchDiff = Infinity;
           
-          const hour = new Date().getHours();
-          const maxSpeed = (hour >= 19 || hour <= 6) ? 55.0 : 35.0; 
-          const minTransitMins = Math.max(0.5, (distanceKm / maxSpeed) * 60);
+          for (let uBus of activeItem.upstreamEtaRes.estimatedArrivals) {
+              const uArrTime = new Date(uBus.estimatedArrivalTime.replace(/-/g, '/'));
+              const uServerTime = new Date(uBus.generateTime.replace(/-/g, '/'));
+              const uEtaMins = Math.max(0, Math.floor((uArrTime - uServerTime) / 60000));
+              
+              // Only consider upstream buses whose timing aligns with the bus we are tracking
+              const diff = rawEtaMins - uEtaMins;
+              if (diff >= -2 && diff <= 15) {
+                  if (Math.abs(diff) < bestMatchDiff) {
+                      bestMatchDiff = Math.abs(diff);
+                      validUpstreamBus = uBus;
+                      upstreamEtaMins = uEtaMins;
+                  }
+              }
+          }
 
-          if (rawEtaMins < upstreamEtaMins + Math.floor(minTransitMins)) {
-            smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
+          if (validUpstreamBus) {
+              const distanceKm = calculateDistanceKm(
+                parseFloat(activeItem.upstreamStop.latitude), parseFloat(activeItem.upstreamStop.longitude),
+                parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
+              );
+              
+              const hour = new Date().getHours();
+              const maxSpeed = (hour >= 19 || hour <= 6) ? 55.0 : 35.0; 
+              const minTransitMins = Math.max(0.5, (distanceKm / maxSpeed) * 60);
+
+              if (rawEtaMins < upstreamEtaMins + Math.floor(minTransitMins)) {
+                smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
+              }
           }
         }
       }
-    } else {
-      smartMins = 0;
-      delete busStateMap[groupKey]; 
     }
 
     cardEl.dataset.smartMins = smartMins;
@@ -748,7 +789,7 @@ async function processSmartArrivals(group, matchDetails) {
   }
 }
 
-function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, busId, currentTimestamp) {
+function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, currentTimestamp) {
   const date = new Date(currentTimestamp);
   const hour = date.getHours();
   const day = date.getDay(); 
@@ -805,7 +846,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     }
   }
 
-  const stableNoise = generateDeterministicNoise(busId, currentStopIndex, currentTimestamp);
+  const stableNoise = generateDeterministicNoise(routeNo, currentStopIndex, currentTimestamp);
   let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
 
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
