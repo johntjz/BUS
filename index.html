@@ -140,8 +140,15 @@
     50% { opacity: 0.4; color: var(--accent-red); }
     100% { opacity: 1; color: var(--accent-orange); }
   }
+  @keyframes fade-departing {
+    0% { opacity: 0.8; color: var(--text-secondary); }
+    50% { opacity: 0.3; color: var(--text-secondary); }
+    100% { opacity: 0.8; color: var(--text-secondary); }
+  }
+  
   .smart-eta.arriving { color: var(--accent-orange); font-size: 1.25rem; animation: blink-arriving 1.5s infinite; }
   .smart-eta.delayed { animation: blink-delayed 2s infinite; font-size: 1.15rem; font-weight: 700; }
+  .smart-eta.departing { animation: fade-departing 2s infinite; font-size: 1.15rem; font-weight: 700; }
 
   .compact-occupancy { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
   .bar-segments { display: flex; gap: 2px; }
@@ -214,7 +221,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-06 22:12 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-06 22:50 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -228,7 +235,7 @@ const i18n = {
     liveETA: "Fetching live arrivals...", locating: "Locating...", nearest: "Nearest:",
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
-    to: "To", due: "Due", delayed: "Delayed", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
+    to: "To", due: "Due", delayed: "Delayed", departing: "Departing", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
     official: "Official", actual: "Actual ETA", scheduled: "Scheduled (No GPS)",
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
@@ -241,7 +248,7 @@ const i18n = {
     liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
-    to: "往", due: "即將到達", delayed: "延誤", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "實際預計", scheduled: "預定班次 (無GPS)",
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
@@ -254,7 +261,7 @@ const i18n = {
     liveETA: "获取实时班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
-    to: "往", due: "即将到达", delayed: "延误", min: "分钟", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即将到达", delayed: "延误", departing: "刚驶离", min: "分钟", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
@@ -872,6 +879,10 @@ async function processSmartArrivals(group, matchDetails) {
 
     const activeState = busStateMap[groupKey];
     const now = getNow();
+    const currentHour = new Date(now).getHours();
+    
+    // Time-aware retention tuning (aggressive drops at night)
+    const isNight = (currentHour >= 20 || currentHour <= 5);
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
@@ -943,7 +954,7 @@ async function processSmartArrivals(group, matchDetails) {
            }
            
            if (activeState.isScheduled) {
-               if (timeSinceLost < 480000 && nextBusEta > 10) { 
+               if (timeSinceLost < (isNight ? 60000 : 480000) && nextBusEta > 10) { 
                    cardEl.dataset.smartMins = 0;
                    if (cardEl) cardEl.classList.remove('inactive');
                    if (boxOffEl) boxOffEl.style.display = 'none';
@@ -963,9 +974,10 @@ async function processSmartArrivals(group, matchDetails) {
                }
            } else {
                const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
-               const maxMissingTime = (nextBusEta > 15) ? 240000 : 150000; 
+               // If it's night time, heavily slash retention max missing time to 45 seconds to prevent ghost waiting
+               const maxMissingTime = isNight ? 45000 : ((nextBusEta > 15) ? 240000 : 150000); 
                
-               if (timeSpentAtZero > 240000 || timeSinceLost > maxMissingTime) { 
+               if (timeSpentAtZero > (isNight ? 45000 : 240000) || timeSinceLost > maxMissingTime) { 
                    delete busStateMap[groupKey];
                } else {
                    let projectedMins = Math.max(0, Math.round(activeState.filter.x - (timeSinceLost / 60000)));
@@ -974,7 +986,13 @@ async function processSmartArrivals(group, matchDetails) {
                    if (boxOffEl) boxOffEl.style.display = 'none';
                    
                    if (projectedMins === 0) {
-                       if (timeSpentAtZero > 75000) {
+                       if (timeSinceLost > 10000) { 
+                           // Vanished from API: Pulse 'Departing' text
+                           lblSmartEl.innerText = getT('arrivingLabel');
+                           smartEl.innerText = getT('departing');
+                           smartEl.className = 'smart-eta departing';
+                       } else if (timeSpentAtZero > 75000 && !isNight) {
+                           // Lingering at zero for traffic logic (Daytime only)
                            lblSmartEl.innerText = getT('arrivingLabel'); 
                            smartEl.innerText = getT('delayed');
                            smartEl.className = 'smart-eta delayed';
@@ -1056,8 +1074,7 @@ async function processSmartArrivals(group, matchDetails) {
              smartMins = rawEtaMins;
         } else {
              // Time-aware padding reduction for mid-route stops
-             const hour = new Date(now).getHours();
-             const isPeak = (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19);
+             const isPeak = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
              const scheduleMultiplier = isPeak ? 0.90 : 0.70;
              const convergenceFactor = rawEtaMins < 10 ? 1.0 : scheduleMultiplier;
              smartMins = Math.max(0, Math.floor(rawEtaMins * convergenceFactor)); 
@@ -1143,8 +1160,7 @@ async function processSmartArrivals(group, matchDetails) {
                 parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
               );
               
-              const hour = new Date(now).getHours();
-              let effectiveMaxSpeed = (hour >= 19 || hour <= 6) ? 55.0 : 35.0; 
+              let effectiveMaxSpeed = (currentHour >= 19 || currentHour <= 6) ? 55.0 : 35.0; 
 
               const impliedTransitMins = effectiveRawEta - upstreamEtaMins;
               if (impliedTransitMins > 0) {
@@ -1175,7 +1191,7 @@ async function processSmartArrivals(group, matchDetails) {
       const state = busStateMap[groupKey];
       const zeroDuration = (state && state.firstZeroTime) ? (now - state.firstZeroTime) : 0;
       
-      if (zeroDuration > 75000) { 
+      if (zeroDuration > 75000 && !isNight) { 
           lblSmartEl.innerText = getT('arrivingLabel');
           smartEl.innerText = getT('delayed');
           smartEl.className = 'smart-eta delayed';
