@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Pulse NLB</title>
+<title>Pulse NLB & LWB</title>
 <style>
   :root {
     --bg-color: #121214;
@@ -111,6 +111,7 @@
 
   .route-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
   .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; }
+  .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; }
   .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
   
@@ -198,7 +199,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1029";
+const APP_VERSION = "v.1030";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -360,9 +361,9 @@ async function initApp() {
   try {
     document.getElementById('loadingText').innerText = getT('loadingIndex');
     
-    const cachedGrouped = localStorage.getItem('nlb_grouped_routes_v3');
-    const cachedStops = localStorage.getItem('nlb_stops_v3');
-    const cacheTime = localStorage.getItem('nlb_cache_time_v3');
+    const cachedGrouped = localStorage.getItem('nlb_grouped_routes_v4');
+    const cachedStops = localStorage.getItem('nlb_stops_v4');
+    const cacheTime = localStorage.getItem('nlb_cache_time_v4');
     const now = Date.now();
 
     if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
@@ -382,7 +383,7 @@ async function initApp() {
         const key = `${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
         if (!groupedMap.has(key)) {
-          groupedMap.set(key, { key, routeNo: r.routeNo, dest_e, dest_c, dest_s, routeIds: [r.routeId] });
+          groupedMap.set(key, { key, routeNo: r.routeNo, dest_e, dest_c, dest_s, routeIds: [r.routeId], company: 'NLB' });
         } else {
           groupedMap.get(key).routeIds.push(r.routeId);
         }
@@ -403,10 +404,52 @@ async function initApp() {
         document.getElementById('loadingText').innerText = `${getT('building')} (${Math.round((i/rawRoutes.length)*100)}%)`;
       }
       
+      // Inject LWB E36 Data
       try {
-        localStorage.setItem('nlb_grouped_routes_v3', JSON.stringify(groupedRoutes));
-        localStorage.setItem('nlb_stops_v3', JSON.stringify(routeStopsCache));
-        localStorage.setItem('nlb_cache_time_v3', now.toString());
+        const outRes = await fetch('https://data.etabus.gov.hk/v1/transport/kmb/route-stop/LWB/E36/outbound').then(r=>r.json());
+        const inRes = await fetch('https://data.etabus.gov.hk/v1/transport/kmb/route-stop/LWB/E36/inbound').then(r=>r.json());
+        const stopsRes = await fetch('https://data.etabus.gov.hk/v1/transport/kmb/stop').then(r=>r.json());
+        
+        const allKmbStops = {};
+        if (stopsRes && stopsRes.data) stopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
+
+        const formatStopName = (name) => {
+            if (!name) return '';
+            return name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        };
+
+        const mapStop = (s) => {
+            const stopDetail = allKmbStops[s.stop] || { name_en: 'Unknown', name_tc: '未知', name_sc: '未知', lat: '0', long: '0' };
+            return {
+                stopId: s.stop,
+                stopName_e: formatStopName(stopDetail.name_en),
+                stopName_c: stopDetail.name_tc,
+                stopName_s: stopDetail.name_sc || stopDetail.name_tc,
+                latitude: stopDetail.lat,
+                longitude: stopDetail.long,
+                seq: s.seq
+            };
+        };
+
+        routeStopsCache['LWB_E36_O'] = outRes.data.filter(s => s.service_type === '1').map(mapStop);
+        routeStopsCache['LWB_E36_I'] = inRes.data.filter(s => s.service_type === '1').map(mapStop);
+
+        groupedRoutes.push({
+            key: 'LWB_E36_O', routeNo: 'E36',
+            dest_e: 'Airport (GTC)', dest_c: '機場 (地面運輸中心)', dest_s: '机场 (地面运输中心)',
+            routeIds: ['LWB_E36_O'], company: 'LWB'
+        });
+        groupedRoutes.push({
+            key: 'LWB_E36_I', routeNo: 'E36',
+            dest_e: 'Pat Heung Road', dest_c: '八鄉路', dest_s: '八乡路',
+            routeIds: ['LWB_E36_I'], company: 'LWB'
+        });
+      } catch(e) { console.error('LWB Fetch Error', e); }
+
+      try {
+        localStorage.setItem('nlb_grouped_routes_v4', JSON.stringify(groupedRoutes));
+        localStorage.setItem('nlb_stops_v4', JSON.stringify(routeStopsCache));
+        localStorage.setItem('nlb_cache_time_v4', now.toString());
       } catch (e) {}
     }
     
@@ -443,7 +486,8 @@ function populateRouteDropdown() {
   rSelect.innerHTML = `<option value="ALL">${getT('allLines')}</option>`;
   groupedRoutes.forEach(g => {
       const dest = getLocalizedName(g, 'dest');
-      rSelect.insertAdjacentHTML('beforeend', `<option value="${g.key}">${g.routeNo} (${getT('to')} ${dest})</option>`);
+      const prefix = g.company === 'LWB' ? '[LWB] ' : '';
+      rSelect.insertAdjacentHTML('beforeend', `<option value="${g.key}">${prefix}${g.routeNo} (${getT('to')} ${dest})</option>`);
   });
   rSelect.value = currentRouteKey;
 }
@@ -629,7 +673,10 @@ async function updateNetworkTelemetry() {
           <div class="route-card" id="${cardId}" data-smart-mins="9999" onclick="showDetail('${group.key}')">
             <div class="route-main-row">
                 <div class="route-left">
-                <div class="route-no">${group.routeNo}</div>
+                <div style="display:flex; flex-direction:column;">
+                    <div class="route-no">${group.routeNo}</div>
+                    ${group.company === 'LWB' ? '<div class="route-company">LWB</div>' : ''}
+                </div>
                 <div class="route-info">
                     <div class="route-dest">${getT('to')} ${destName}</div>
                     <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
@@ -706,12 +753,42 @@ async function processSmartArrivals(group, matchDetails) {
       const targetStop = m.stops[m.targetIndex];
       const upstreamStop = m.targetIndex > 0 ? m.stops[m.targetIndex - 1] : null;
 
-      const [targetEtaRes, upstreamEtaRes] = await Promise.all([
-        fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`),
-        upstreamStop 
-          ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${upstreamStop.stopId}&language=en`)
-          : Promise.resolve(null)
-      ]);
+      let targetEtaRes = null, upstreamEtaRes = null;
+
+      // KMB / LWB API Integration
+      if (m.routeId.startsWith('LWB_')) {
+        const dir = m.routeId.endsWith('_O') ? 'O' : 'I';
+        const routeNo = m.routeId.split('_')[1];
+        
+        try {
+            const [tResp, uResp] = await Promise.all([
+                fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${targetStop.stopId}/LWB/${routeNo}`).catch(()=>null),
+                upstreamStop ? fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${upstreamStop.stopId}/LWB/${routeNo}`).catch(()=>null) : Promise.resolve(null)
+            ]);
+            
+            const mapKmbEta = (resObj) => {
+                if (!resObj || !resObj.data) return null;
+                const valid = resObj.data.filter(e => e.dir === dir && e.eta);
+                return {
+                    estimatedArrivals: valid.map(e => ({
+                        estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
+                        generateTime: e.data_timestamp.replace('T', ' ').substring(0, 19),
+                        noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                    }))
+                };
+            };
+
+            if (tResp && tResp.ok) targetEtaRes = mapKmbEta(await tResp.json());
+            if (uResp && uResp.ok) upstreamEtaRes = mapKmbEta(await uResp.json());
+        } catch(e) {}
+      } 
+      // Original NLB API
+      else {
+        [targetEtaRes, upstreamEtaRes] = await Promise.all([
+            fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`).catch(()=>null),
+            upstreamStop ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${upstreamStop.stopId}&language=en`).catch(()=>null) : Promise.resolve(null)
+        ]);
+      }
       
       if (targetEtaRes && targetEtaRes.estimatedArrivals) {
         targetEtaRes.estimatedArrivals.forEach(arr => {
@@ -1073,7 +1150,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
 
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
-  const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6', '4']; 
+  const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6', '4', 'E36']; 
   const mixedHeavy = ['3M']; 
 
   let capacityDivider = 1.0; 
