@@ -74,11 +74,41 @@
   .refresh-timer { font-size: 0.8rem; color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; }
   .gps-status { font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-top: 4px; text-align: right; }
   
-  #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
-  .route-card {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px; border-bottom: 1px solid var(--card-border); gap: 8px;
+  #detailControls {
+    display: none;
+    padding: 12px 16px;
+    background: var(--bg-color);
+    border-bottom: 1px solid var(--card-border);
   }
+  .back-btn {
+    width: 100%;
+    background: #2c2c2e;
+    color: var(--accent-blue);
+    border: 1px solid #3a3a3c;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+  .back-btn:active { background: #3a3a3c; }
+
+  #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
+  
+  .route-card {
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 16px; border-bottom: 1px solid var(--card-border); gap: 0;
+    cursor: pointer; transition: background-color 0.2s;
+  }
+  .route-card:active { background-color: #1e1e20; }
+  .route-main-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  }
+
   .route-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
   .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; }
   .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -105,11 +135,21 @@
   .segment.active-orange { background-color: var(--accent-orange); }
   .segment.active-red { background-color: var(--accent-red); }
 
+  /* Subsequent Arrivals Styling */
+  .subsequent-etas {
+    display: none; flex-direction: column; gap: 10px;
+    margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--card-border); width: 100%;
+  }
+  .detail-mode .subsequent-etas { display: flex; }
+  .sub-eta-row { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
+  .sub-eta-label { font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
+  .sub-eta-time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
   /* Inactive Routes Toggle */
   .route-card.inactive { display: none; }
   .show-inactive .route-card.inactive { display: flex; }
   .toggle-btn {
-    background: transparent; color: var(--accent-secondary, #98989d); border: 1px solid var(--card-border);
+    background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border);
     padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
   }
 </style>
@@ -145,6 +185,10 @@
   </div>
 </div>
 
+<div id="detailControls">
+  <button class="back-btn" onclick="hideDetail()" id="backBtn">🔙 Back to all routes</button>
+</div>
+
 <div id="routeList">
   <div style="padding: 20px; color: var(--text-secondary); text-align: center;" id="loadingText">Connecting to network...</div>
 </div>
@@ -154,7 +198,7 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_VERSION = "v.1028";
+const APP_VERSION = "v.1029";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -171,7 +215,8 @@ const i18n = {
     to: "To", due: "Due", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
     official: "Official", actual: "Actual ETA", scheduled: "Scheduled (No GPS)",
     arrivingLabel: "Status", arriving: "Arriving...",
-    showInactive: "Show inactive routes", hideInactive: "Hide inactive routes"
+    showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
+    back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus"
   },
   tc: {
     allLines: "所有", loadingIndex: "載入車站索引...",
@@ -182,7 +227,8 @@ const i18n = {
     to: "往", due: "即將到達", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "實際預計", scheduled: "預定班次 (無GPS)",
     arrivingLabel: "狀態", arriving: "即將抵達...",
-    showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線"
+    showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
+    back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班"
   },
   sc: {
     allLines: "所有", loadingIndex: "载入车站索引...",
@@ -193,7 +239,8 @@ const i18n = {
     to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
     arrivingLabel: "状态", arriving: "即将抵达...",
-    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线"
+    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
+    back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班"
   }
 };
 
@@ -203,6 +250,7 @@ let currentRouteKey = 'ALL';
 let currentStopName_e = '';
 let countdown = REFRESH_INTERVAL;
 let timerInterval;
+let detailModeRouteKey = null;
 
 let allStops = [];
 let rawRoutes = [];
@@ -211,6 +259,7 @@ let routeStopsCache = {};
 const busStateMap = {}; 
 
 let showInactive = false;
+
 function toggleInactive() {
   showInactive = !showInactive;
   const listEl = document.getElementById('routeList');
@@ -218,6 +267,28 @@ function toggleInactive() {
   else listEl.classList.remove('show-inactive');
   const btn = document.getElementById('toggleInactiveBtn');
   if (btn) btn.innerText = showInactive ? getT('hideInactive') : getT('showInactive');
+}
+
+function showDetail(groupKey) {
+  if (detailModeRouteKey === groupKey) {
+    hideDetail();
+    return;
+  }
+  detailModeRouteKey = groupKey;
+  document.getElementById('detailControls').style.display = 'block';
+  document.getElementById('routeList').classList.add('detail-mode');
+  const btn = document.getElementById('backBtn');
+  if (btn) btn.innerText = getT('back');
+  
+  updateNetworkTelemetry();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function hideDetail() {
+  detailModeRouteKey = null;
+  document.getElementById('detailControls').style.display = 'none';
+  document.getElementById('routeList').classList.remove('detail-mode');
+  updateNetworkTelemetry();
 }
 
 class KalmanFilter1D {
@@ -272,6 +343,10 @@ function changeLanguage(lang) {
   populateRouteDropdown();
   const targetGroup = groupedRoutes.find(g => g.key === currentRouteKey);
   populateStopDropdown(targetGroup && currentRouteKey !== 'ALL' ? getStopsForGroup(targetGroup) : allStops);
+  
+  const btn = document.getElementById('backBtn');
+  if (btn) btn.innerText = getT('back');
+  
   updateNetworkTelemetry();
 }
 
@@ -447,6 +522,10 @@ function ensureValidStopAndFetch() {
 }
 
 function resetAndFetch() {
+  detailModeRouteKey = null;
+  document.getElementById('detailControls').style.display = 'none';
+  document.getElementById('routeList').classList.remove('detail-mode');
+
   document.getElementById('gpsStatus').innerText = ''; 
   document.getElementById('routeList').innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
   for (let key in busStateMap) delete busStateMap[key];
@@ -515,8 +594,8 @@ async function updateNetworkTelemetry() {
   if (!currentStopName_e) return;
   
   try {
-    const groupsToCheck = currentRouteKey === 'ALL' ? groupedRoutes : groupedRoutes.filter(g => g.key === currentRouteKey);
-    const relevantGroups = [];
+    let groupsToCheck = currentRouteKey === 'ALL' ? groupedRoutes : groupedRoutes.filter(g => g.key === currentRouteKey);
+    let relevantGroups = [];
     
     for (const group of groupsToCheck) {
       const matchDetails = [];
@@ -526,6 +605,10 @@ async function updateNetworkTelemetry() {
         if (targetIndex !== -1) matchDetails.push({ routeId, stops, targetIndex });
       }
       if (matchDetails.length > 0) relevantGroups.push({ group, matchDetails });
+    }
+
+    if (detailModeRouteKey) {
+        relevantGroups = relevantGroups.filter(i => i.group.key === detailModeRouteKey);
     }
 
     const listEl = document.getElementById('routeList');
@@ -543,28 +626,31 @@ async function updateNetworkTelemetry() {
 
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card" id="${cardId}" data-smart-mins="9999">
-            <div class="route-left">
-              <div class="route-no">${group.routeNo}</div>
-              <div class="route-info">
-                <div class="route-dest">${getT('to')} ${destName}</div>
-                <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
-                  <div class="bar-segments" id="bars-${group.key}">
-                    ${Array(10).fill('<div class="segment"></div>').join('')}
-                  </div>
+          <div class="route-card" id="${cardId}" data-smart-mins="9999" onclick="showDetail('${group.key}')">
+            <div class="route-main-row">
+                <div class="route-left">
+                <div class="route-no">${group.routeNo}</div>
+                <div class="route-info">
+                    <div class="route-dest">${getT('to')} ${destName}</div>
+                    <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
+                    <div class="bar-segments" id="bars-${group.key}">
+                        ${Array(10).fill('<div class="segment"></div>').join('')}
+                    </div>
+                    </div>
                 </div>
-              </div>
+                </div>
+                <div class="eta-container">
+                <div class="eta-box" id="box-off-${group.key}" style="display: none;">
+                    <span class="eta-label" id="lbl-off-${group.key}">${getT('official')}</span>
+                    <span class="official-eta" id="off-${group.key}">--</span>
+                </div>
+                <div class="eta-box" id="box-smart-${group.key}">
+                    <span class="eta-label" id="lbl-smart-${group.key}">${getT('actual')}</span>
+                    <span class="smart-eta" id="smart-${group.key}">--</span>
+                </div>
+                </div>
             </div>
-            <div class="eta-container">
-              <div class="eta-box" id="box-off-${group.key}" style="display: none;">
-                <span class="eta-label" id="lbl-off-${group.key}">${getT('official')}</span>
-                <span class="official-eta" id="off-${group.key}">--</span>
-              </div>
-              <div class="eta-box" id="box-smart-${group.key}">
-                <span class="eta-label" id="lbl-smart-${group.key}">${getT('actual')}</span>
-                <span class="smart-eta" id="smart-${group.key}">--</span>
-              </div>
-            </div>
+            <div class="subsequent-etas" id="subs-${group.key}"></div>
           </div>
         `);
       } else {
@@ -586,15 +672,17 @@ async function updateNetworkTelemetry() {
     const oldBtn = document.getElementById('inactiveToggleContainer');
     if (oldBtn) oldBtn.remove();
 
-    const inactiveCards = cards.filter(c => c.classList.contains('inactive'));
-    if (inactiveCards.length > 0) {
-      listEl.insertAdjacentHTML('beforeend', `
-        <div id="inactiveToggleContainer" style="padding: 20px; text-align: center;">
-          <button onclick="toggleInactive()" class="toggle-btn" id="toggleInactiveBtn">
-            ${showInactive ? getT('hideInactive') : getT('showInactive')}
-          </button>
-        </div>
-      `);
+    if (!detailModeRouteKey) {
+        const inactiveCards = cards.filter(c => c.classList.contains('inactive'));
+        if (inactiveCards.length > 0) {
+        listEl.insertAdjacentHTML('beforeend', `
+            <div id="inactiveToggleContainer" style="padding: 20px; text-align: center;">
+            <button onclick="toggleInactive()" class="toggle-btn" id="toggleInactiveBtn">
+                ${showInactive ? getT('hideInactive') : getT('showInactive')}
+            </button>
+            </div>
+        `);
+        }
     }
 
   } catch (err) {}
@@ -610,6 +698,7 @@ async function processSmartArrivals(group, matchDetails) {
     const occSecEl = document.getElementById(`occ-sec-${groupKey}`);
     const boxOffEl = document.getElementById(`box-off-${groupKey}`);
     const lblSmartEl = document.getElementById(`lbl-smart-${groupKey}`);
+    const subsEl = document.getElementById(`subs-${groupKey}`);
 
     let combinedArrivals = [];
 
@@ -643,7 +732,38 @@ async function processSmartArrivals(group, matchDetails) {
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
-    // Check if the bus we were tracking is still in the API feed or if it dropped off
+    // Build sub-ETAs if applicable (Next and 3rd bus)
+    if (subsEl) {
+        if (combinedArrivals.length > 1) {
+            let subsHtml = '';
+            for (let i = 1; i < combinedArrivals.length && i <= 2; i++) {
+                const cBus = combinedArrivals[i].arrival;
+                const cArr = new Date(cBus.estimatedArrivalTime.replace(/-/g, '/'));
+                const cSrv = new Date(cBus.generateTime.replace(/-/g, '/'));
+                let cElapsed = now - cSrv.getTime();
+                if (cElapsed < 0 || cElapsed > 120000) cElapsed = 0;
+                
+                const cRawMins = Math.max(0, Math.floor(((cArr.getTime() - cSrv.getTime()) - cElapsed) / 60000));
+                const isNoGPS = cBus.noGPS === 1 || cBus.noGPS === '1';
+                
+                const timeText = cRawMins === 0 ? getT('due') : `${cRawMins}${getT('min')}`;
+                const labelText = isNoGPS ? getT('scheduled') : getT('actual');
+                const timeColor = isNoGPS ? 'var(--accent-orange)' : 'var(--text-primary)';
+                const seqName = i === 1 ? getT('next1') : getT('next2');
+                
+                subsHtml += `
+                    <div class="sub-eta-row">
+                        <span class="sub-eta-label">${seqName} <span style="font-size:0.75rem; opacity:0.6; margin-left:4px;">(${labelText})</span></span>
+                        <span class="sub-eta-time" style="color: ${timeColor}">${timeText}</span>
+                    </div>
+                `;
+            }
+            subsEl.innerHTML = subsHtml;
+        } else {
+            subsEl.innerHTML = `<div class="sub-eta-row" style="justify-content:center; color: var(--text-secondary); font-size: 0.9rem;">${getT('noMore')}</div>`;
+        }
+    }
+
     if (activeState && (activeState.isScheduled || (activeState.filter && activeState.filter.x <= 3))) {
        let isBusStillThere = false;
        if (combinedArrivals.length > 0) {
@@ -669,9 +789,6 @@ async function processSmartArrivals(group, matchDetails) {
        
        if (!isBusStillThere) {
            const timeSinceLost = now - activeState.timestamp;
-           
-           // THE GAP ANCHOR HEURISTIC (Replaces timetable logic)
-           // If the bus drops off the feed, we check the ETA of the NEXT available bus.
            let nextBusEta = 999;
            if (combinedArrivals.length > 0) {
                let nArr = new Date(combinedArrivals[0].arrival.estimatedArrivalTime.replace(/-/g, '/'));
@@ -682,8 +799,6 @@ async function processSmartArrivals(group, matchDetails) {
            }
            
            if (activeState.isScheduled) {
-               // If it's a scheduled bus that vanished, and the next bus is far away (>10m),
-               // it means the scheduled bus is just late. We hold it for 8 minutes.
                if (timeSinceLost < 480000 && nextBusEta > 10) { 
                    cardEl.dataset.smartMins = 0;
                    if (cardEl) cardEl.classList.remove('inactive');
@@ -703,9 +818,6 @@ async function processSmartArrivals(group, matchDetails) {
                    delete busStateMap[groupKey];
                }
            } else {
-               // If a GPS-tracked bus dropped at 0m, we also check the gap. 
-               // If next bus is >15m away, hold the current one slightly longer (2.5 mins).
-               // If the next bus is close, drop it instantly.
                const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
                const maxMissingTime = (nextBusEta > 15) ? 150000 : 75000;
                
@@ -782,11 +894,8 @@ async function processSmartArrivals(group, matchDetails) {
         smartEl.style.color = 'var(--accent-orange)';
         
         busStateMap[groupKey] = {
-           isScheduled: true,
-           timestamp: now,
-           pseudoBusId: pseudoBusId, 
-           activeBars: activeBars,
-           colorClass: colorClass
+           isScheduled: true, timestamp: now, pseudoBusId: pseudoBusId, 
+           activeBars: activeBars, colorClass: colorClass
         };
       } else {
         lblSmartEl.innerText = getT('actual');
@@ -805,10 +914,8 @@ async function processSmartArrivals(group, matchDetails) {
         if (!isSameBusForFilter || busStateMap[groupKey].isScheduled) {
           busStateMap[groupKey] = {
              filter: new KalmanFilter1D(0.1, 2.0, rawEtaMins, 1.0),
-             timestamp: now,
-             pseudoBusId: pseudoBusId, 
-             activeBars: activeBars,
-             colorClass: colorClass,
+             timestamp: now, pseudoBusId: pseudoBusId, 
+             activeBars: activeBars, colorClass: colorClass,
              firstZeroTime: (rawEtaMins === 0) ? now : null 
           };
         } else {
