@@ -127,7 +127,13 @@
     50% { opacity: 0.5; }
     100% { opacity: 1; }
   }
+  @keyframes blink-delayed {
+    0% { opacity: 1; color: var(--accent-orange); }
+    50% { opacity: 0.4; color: var(--accent-red); }
+    100% { opacity: 1; color: var(--accent-orange); }
+  }
   .smart-eta.arriving { color: var(--accent-orange); font-size: 1.25rem; animation: blink-arriving 1.5s infinite; }
+  .smart-eta.delayed { animation: blink-delayed 2s infinite; font-size: 1.15rem; font-weight: 700; }
 
   .compact-occupancy { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
   .bar-segments { display: flex; gap: 2px; }
@@ -200,7 +206,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Version bumped to ensure fresh cache execution
-const APP_VERSION = "v.1032";
+const APP_VERSION = "v.1033";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -214,7 +220,7 @@ const i18n = {
     liveETA: "Fetching live arrivals...", locating: "Locating...", nearest: "Nearest:",
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
-    to: "To", due: "Due", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
+    to: "To", due: "Due", delayed: "Delayed", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
     official: "Official", actual: "Actual ETA", scheduled: "Scheduled (No GPS)",
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
@@ -226,7 +232,7 @@ const i18n = {
     liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
-    to: "往", due: "即將到達", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即將到達", delayed: "延誤", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "實際預計", scheduled: "預定班次 (無GPS)",
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
@@ -238,7 +244,7 @@ const i18n = {
     liveETA: "获取实时班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
-    to: "往", due: "即将到达", min: "分钟", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即将到达", delayed: "延误", min: "分钟", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
@@ -914,9 +920,10 @@ async function processSmartArrivals(group, matchDetails) {
                }
            } else {
                const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
-               const maxMissingTime = (nextBusEta > 15) ? 150000 : 75000;
+               // Increased allowance to 4 minutes (240000ms) to allow "Delayed" UI state to function
+               const maxMissingTime = (nextBusEta > 15) ? 240000 : 150000; 
                
-               if (timeSpentAtZero > 45000 || timeSinceLost > maxMissingTime) { 
+               if (timeSpentAtZero > 240000 || timeSinceLost > maxMissingTime) { 
                    delete busStateMap[groupKey];
                } else {
                    let projectedMins = Math.max(0, Math.round(activeState.filter.x - (timeSinceLost / 60000)));
@@ -925,9 +932,15 @@ async function processSmartArrivals(group, matchDetails) {
                    if (boxOffEl) boxOffEl.style.display = 'none';
                    
                    if (projectedMins === 0) {
-                       lblSmartEl.innerText = getT('arrivingLabel');
-                       smartEl.innerText = getT('arriving');
-                       smartEl.className = 'smart-eta arriving';
+                       if (timeSpentAtZero > 75000) {
+                           lblSmartEl.innerText = getT('arrivingLabel'); // Status
+                           smartEl.innerText = getT('delayed');
+                           smartEl.className = 'smart-eta delayed';
+                       } else {
+                           lblSmartEl.innerText = getT('arrivingLabel');
+                           smartEl.innerText = getT('arriving');
+                           smartEl.className = 'smart-eta arriving';
+                       }
                    } else {
                        lblSmartEl.innerText = getT('actual');
                        smartEl.innerText = `${projectedMins}${getT('min')}`;
@@ -1112,8 +1125,18 @@ async function processSmartArrivals(group, matchDetails) {
     offEl.innerText = rawEtaMins === 0 ? getT('due') : `${rawEtaMins}${getT('min')}`;
 
     if (smartMins === 0) {
-      smartEl.innerText = getT('due');
-      smartEl.className = 'smart-eta';
+      const state = busStateMap[groupKey];
+      const zeroDuration = (state && state.firstZeroTime) ? (now - state.firstZeroTime) : 0;
+      
+      if (zeroDuration > 75000) { // 75 seconds threshold for Delayed state
+          lblSmartEl.innerText = getT('arrivingLabel');
+          smartEl.innerText = getT('delayed');
+          smartEl.className = 'smart-eta delayed';
+      } else {
+          lblSmartEl.innerText = getT('arrivingLabel');
+          smartEl.innerText = getT('due');
+          smartEl.className = 'smart-eta arriving';
+      }
     } else {
       smartEl.innerText = `${smartMins}${getT('min')}`;
       smartEl.className = (!isNoGPS && smartMins !== rawEtaMins) ? 'smart-eta adjusted' : 'smart-eta';
@@ -1167,13 +1190,38 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   }
 
   let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
-  let spatialMultiplier = Math.sin(progress * Math.PI); 
+  let spatialMultiplier = 1.0; 
 
-  if (progress > 0.7) {
-      let dropFactor = Math.max(0, (1 - progress) / 0.3);
-      spatialMultiplier = spatialMultiplier * Math.pow(dropFactor, 1.5);
+  // Route Archetypes Definition
+  const feeders = ['37M', '38', '39M', 'B4', 'B6'];
+  const airportLines = ['E36'];
+  const touristBidir = ['3M', '11', '1', '2', '4', '21', 'A35', 'N35'];
+
+  // Apply specific math curves based on Archetype
+  if (feeders.includes(routeNo)) {
+      if (progress < 0.75) {
+          spatialMultiplier = 1.0; 
+      } else {
+          spatialMultiplier = Math.max(0, (1 - progress) / 0.25);
+      }
+  } else if (airportLines.includes(routeNo)) {
+      if (progress < 0.85) {
+          spatialMultiplier = Math.sqrt(Math.max(0.1, progress + 0.1));
+      } else {
+          spatialMultiplier = Math.max(0, (1 - progress) / 0.15);
+      }
+  } else if (touristBidir.includes(routeNo)) {
+      spatialMultiplier = Math.sin(progress * Math.PI);
+      if (progress > 0.7) {
+          let dropFactor = Math.max(0, (1 - progress) / 0.3);
+          spatialMultiplier = spatialMultiplier * Math.pow(dropFactor, 1.5);
+      }
+  } else {
+      // Fallback
+      spatialMultiplier = Math.sin(progress * Math.PI);
   }
 
+  // Prevent starting stops from reading zero if a bus is imminent
   if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
     const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
     if (minToDeparture > 10) spatialMultiplier = 0.1; 
@@ -1193,6 +1241,9 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else {
         headwayMultiplier = gap <= 15 ? 1.0 : 1.2;
     }
+    
+    // Live API Delay Penalty: Massive gaps build massive crowds
+    if (gap > 20) headwayMultiplier *= 1.25; 
   }
 
   const stableNoise = generateDeterministicNoise(routeNo, currentStopIndex, currentTimestamp);
