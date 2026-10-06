@@ -199,8 +199,8 @@ const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Version bumped to 1031 to break the old cache where E36 didn't load
-const APP_VERSION = "v.1031";
+// Version bumped to ensure fresh cache execution
+const APP_VERSION = "v.1032";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_VERSION;
 
@@ -259,8 +259,15 @@ let rawRoutes = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
 const busStateMap = {}; 
-
 let showInactive = false;
+
+// Global Clock Sync Variables
+let serverClockOffset = 0;
+let isClockSynced = false;
+
+function getNow() {
+  return Date.now() + serverClockOffset;
+}
 
 function toggleInactive() {
   showInactive = !showInactive;
@@ -293,17 +300,17 @@ function hideDetail() {
   updateNetworkTelemetry();
 }
 
+// 1D Kalman Filter (Refined with Dynamic R handling)
 class KalmanFilter1D {
-  constructor(processNoise, measurementNoise, initialEstimate, initialError) {
+  constructor(processNoise, initialEstimate, initialError) {
     this.q = processNoise; 
-    this.r = measurementNoise; 
     this.x = initialEstimate; 
     this.p = initialError; 
   }
-  update(measurement, dt, isOptimistic) {
+  update(measurement, dt, isOptimistic, dynamicR) {
     this.x = this.x - dt; 
     this.p = this.p + this.q; 
-    const currentR = isOptimistic ? (this.r * 0.2) : this.r; 
+    const currentR = isOptimistic ? (dynamicR * 0.2) : dynamicR; 
     const k = this.p / (this.p + currentR); 
     this.x = this.x + k * (measurement - this.x); 
     this.p = (1 - k) * this.p; 
@@ -326,7 +333,7 @@ function generateDeterministicNoise(routeStr, currentStopIndex, timestamp) {
 setInterval(() => {
   const clockEl = document.getElementById('liveClock');
   if (clockEl) {
-    clockEl.innerText = new Date().toLocaleTimeString(
+    clockEl.innerText = new Date(getNow()).toLocaleTimeString(
       currentLang === 'en' ? 'en-US' : 'zh-HK', 
       { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: currentLang==='en' }
     );
@@ -336,6 +343,17 @@ setInterval(() => {
 async function fetchJSON(endpoint) {
   const response = await fetch(`${API_BASE}${endpoint}`, { cache: 'no-store' });
   if (!response.ok) throw new Error('API offline');
+  
+  // Client Clock Sync Execution
+  const serverDateStr = response.headers.get('date');
+  if (serverDateStr && !isClockSynced) {
+      const serverTime = new Date(serverDateStr).getTime();
+      if (!isNaN(serverTime)) {
+          serverClockOffset = serverTime - Date.now();
+          isClockSynced = true;
+      }
+  }
+  
   return await response.json();
 }
 
@@ -362,11 +380,10 @@ async function initApp() {
   try {
     document.getElementById('loadingText').innerText = getT('loadingIndex');
     
-    // Bumped cache key to v5
     const cachedGrouped = localStorage.getItem('nlb_grouped_routes_v5');
     const cachedStops = localStorage.getItem('nlb_stops_v5');
     const cacheTime = localStorage.getItem('nlb_cache_time_v5');
-    const now = Date.now();
+    const now = Date.now(); // local now is fine for cache expiry check
 
     if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
       groupedRoutes = JSON.parse(cachedGrouped);
@@ -451,7 +468,7 @@ async function initApp() {
       try {
         localStorage.setItem('nlb_grouped_routes_v5', JSON.stringify(groupedRoutes));
         localStorage.setItem('nlb_stops_v5', JSON.stringify(routeStopsCache));
-        localStorage.setItem('nlb_cache_time_v5', now.toString());
+        localStorage.setItem('nlb_cache_time_v5', Date.now().toString());
       } catch (e) {}
     }
     
@@ -757,7 +774,6 @@ async function processSmartArrivals(group, matchDetails) {
 
       let targetEtaRes = null, upstreamEtaRes = null;
 
-      // KMB / LWB API Integration - Fixed Endpoints
       if (m.routeId.startsWith('LWB_')) {
         const dir = m.routeId.endsWith('_O') ? 'O' : 'I';
         const routeNo = m.routeId.split('_')[1];
@@ -784,7 +800,6 @@ async function processSmartArrivals(group, matchDetails) {
             if (uResp && uResp.ok) upstreamEtaRes = mapKmbEta(await uResp.json());
         } catch(e) {}
       } 
-      // Original NLB API
       else {
         [targetEtaRes, upstreamEtaRes] = await Promise.all([
             fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`).catch(()=>null),
@@ -807,7 +822,7 @@ async function processSmartArrivals(group, matchDetails) {
     }));
 
     const activeState = busStateMap[groupKey];
-    const now = Date.now();
+    const now = getNow();
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
@@ -820,7 +835,8 @@ async function processSmartArrivals(group, matchDetails) {
                 const cArr = new Date(cBus.estimatedArrivalTime.replace(/-/g, '/'));
                 const cSrv = new Date(cBus.generateTime.replace(/-/g, '/'));
                 let cElapsed = now - cSrv.getTime();
-                if (cElapsed < 0 || cElapsed > 120000) cElapsed = 0;
+                if (cElapsed < 0) cElapsed = 0;
+                if (cElapsed > 120000) cElapsed = 0;
                 
                 const cRawMins = Math.max(0, Math.floor(((cArr.getTime() - cSrv.getTime()) - cElapsed) / 60000));
                 const isNoGPS = cBus.noGPS === 1 || cBus.noGPS === '1';
@@ -951,24 +967,42 @@ async function processSmartArrivals(group, matchDetails) {
     const isNoGPS = activeBus.noGPS === 1 || activeBus.noGPS === '1';
 
     let elapsedSinceGenerate = now - serverTime.getTime();
-    if (elapsedSinceGenerate < 0 || elapsedSinceGenerate > 120000) elapsedSinceGenerate = 0; 
+    if (elapsedSinceGenerate < 0) elapsedSinceGenerate = 0;
+    if (elapsedSinceGenerate > 120000) elapsedSinceGenerate = 0; 
 
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
+    // Occupancy (calculate using actual now)
     const { pct, activeBars } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now);
     
+    // Dwell Penalty Logic
+    let dwellPenaltyMins = 0;
+    if (pct > 85) dwellPenaltyMins = 1.5;
+    else if (pct > 65) dwellPenaltyMins = 0.5;
+
+    let effectiveRawEta = rawEtaMins;
+    if (rawEtaMins > 3 && !isNoGPS) {
+        effectiveRawEta += dwellPenaltyMins;
+    }
+
     let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
     let barHtml = '';
     for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
     document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
     occSecEl.style.display = 'flex';
 
-    let smartMins = rawEtaMins;
+    let smartMins = effectiveRawEta;
     
     if (rawEtaMins >= 0) {
       if (isNoGPS) {
-        smartMins = Math.max(0, Math.floor(rawEtaMins * 0.65)); 
+        // Time-aware padding reduction
+        const hour = new Date(now).getHours();
+        const isPeak = (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19);
+        const scheduleMultiplier = isPeak ? 0.90 : 0.70;
+        const convergenceFactor = rawEtaMins < 10 ? 1.0 : scheduleMultiplier;
+
+        smartMins = Math.max(0, Math.floor(rawEtaMins * convergenceFactor)); 
         lblSmartEl.innerText = getT('scheduled');
         smartEl.style.color = 'var(--accent-orange)';
         
@@ -985,14 +1019,15 @@ async function processSmartArrivals(group, matchDetails) {
            const expectedMins = busStateMap[groupKey].filter ? (busStateMap[groupKey].filter.x - ((now - busStateMap[groupKey].timestamp) / 60000)) : 999;
            if (busStateMap[groupKey].pseudoBusId === pseudoBusId) {
                isSameBusForFilter = true;
-           } else if (busStateMap[groupKey].filter && Math.abs(rawEtaMins - expectedMins) <= 3) {
+           } else if (busStateMap[groupKey].filter && Math.abs(effectiveRawEta - expectedMins) <= 3) {
                isSameBusForFilter = true;
            }
         }
 
         if (!isSameBusForFilter || busStateMap[groupKey].isScheduled) {
           busStateMap[groupKey] = {
-             filter: new KalmanFilter1D(0.1, 2.0, rawEtaMins, 1.0),
+             // Re-initialize standard variables (using new 3-param constructor)
+             filter: new KalmanFilter1D(0.1, effectiveRawEta, 1.0),
              timestamp: now, pseudoBusId: pseudoBusId, 
              activeBars: activeBars, colorClass: colorClass,
              firstZeroTime: (rawEtaMins === 0) ? now : null 
@@ -1013,13 +1048,15 @@ async function processSmartArrivals(group, matchDetails) {
         state.colorClass = colorClass;
         
         if (dtMins > 0) {
-           const isOptimistic = (rawEtaMins < state.filter.x);
-           smartMins = Math.round(state.filter.update(rawEtaMins, dtMins, isOptimistic));
+           const isOptimistic = (effectiveRawEta < state.filter.x);
+           const dynamicR = Math.max(1.0, effectiveRawEta * 0.1); 
+           smartMins = Math.round(state.filter.update(effectiveRawEta, dtMins, isOptimistic, dynamicR));
            state.timestamp = now;
         } else {
            smartMins = Math.round(state.filter.x);
         }
         
+        // Dynamic Upstream Speed Boundary
         if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
           let validUpstreamBus = null;
           let upstreamEtaMins = 0;
@@ -1030,7 +1067,7 @@ async function processSmartArrivals(group, matchDetails) {
               const uServerTime = new Date(uBus.generateTime.replace(/-/g, '/'));
               const uEtaMins = Math.max(0, Math.floor((uArrTime - uServerTime) / 60000));
               
-              const diff = rawEtaMins - uEtaMins;
+              const diff = effectiveRawEta - uEtaMins;
               if (diff >= -2 && diff <= 15) {
                   if (Math.abs(diff) < bestMatchDiff) {
                       bestMatchDiff = Math.abs(diff);
@@ -1046,12 +1083,22 @@ async function processSmartArrivals(group, matchDetails) {
                 parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
               );
               
-              const hour = new Date().getHours();
-              const maxSpeed = (hour >= 19 || hour <= 6) ? 55.0 : 35.0; 
-              const minTransitMins = Math.max(0.5, (distanceKm / maxSpeed) * 60);
+              const hour = new Date(now).getHours();
+              let effectiveMaxSpeed = (hour >= 19 || hour <= 6) ? 55.0 : 35.0; 
 
-              if (rawEtaMins < upstreamEtaMins + Math.floor(minTransitMins)) {
+              const impliedTransitMins = effectiveRawEta - upstreamEtaMins;
+              if (impliedTransitMins > 0) {
+                  const impliedSpeedKmH = (distanceKm / (impliedTransitMins / 60));
+                  if (impliedSpeedKmH < effectiveMaxSpeed) {
+                      effectiveMaxSpeed = Math.max(10.0, impliedSpeedKmH); 
+                  }
+              }
+              
+              const minTransitMins = Math.max(0.5, (distanceKm / effectiveMaxSpeed) * 60);
+
+              if (effectiveRawEta < upstreamEtaMins + Math.floor(minTransitMins)) {
                 smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
+                if (state.filter) state.filter.x = smartMins; // Prevent Kalman fighting bound
               }
           }
         }
