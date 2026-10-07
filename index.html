@@ -282,7 +282,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 13:31 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 20:30 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -1067,7 +1067,8 @@ async function processSmartArrivals(group, matchDetails) {
     else if (isPeak) maxZeroTolerance = 480000; 
     else maxZeroTolerance = 300000; 
 
-    combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
+    // Optimized ETA Sorting using lexicographical comparison on ISO-like date strings
+    combinedArrivals.sort((a, b) => a.arrival.estimatedArrivalTime.localeCompare(b.arrival.estimatedArrivalTime));
 
     // Build sub-ETAs
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
@@ -1472,18 +1473,20 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
 
   if (!isWeekend) {
     if (hour >= 7 && hour <= 8) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 15; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 30; 
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 15;
+      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 30;
     } else if (hour === 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 15; 
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 15;
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 25;
     } else if (hour >= 10 && hour <= 16) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry') || dest.includes('tai o')) ? 35 : 20; 
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry') || dest.includes('tai o')) ? 35 : 20;
       if (['2', '4', '21'].includes(routeNo)) baseLoad = 20;
-    } else if (hour >= 17 && hour <= 19) {
-      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20; 
+    } else if (hour >= 17 && hour <= 20) {
+      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20;
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 35;
-    } else if (hour >= 20) {
+      // Boost 3M capacity during the 8 PM "going home" hour to trigger the 'single' / Shared state
+      if (routeNo === '3M' && dest.includes('mui wo')) baseLoad = 75; 
+    } else if (hour >= 21) {
       baseLoad = 10;
     }
   } else {
