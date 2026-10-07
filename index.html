@@ -149,6 +149,7 @@
   @keyframes blink-arriving { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
   @keyframes blink-delayed { 0% { opacity: 1; color: var(--accent-orange); } 50% { opacity: 0.4; color: var(--accent-red); } 100% { opacity: 1; color: var(--accent-orange); } }
   @keyframes fade-departing { 0% { opacity: 0.8; color: var(--text-secondary); } 50% { opacity: 0.3; color: var(--text-secondary); } 100% { opacity: 0.8; color: var(--text-secondary); } }
+  @keyframes pulse-full { 0% { border-color: rgba(227, 24, 55, 0.3); } 50% { border-color: rgba(227, 24, 55, 1); } 100% { border-color: rgba(227, 24, 55, 0.3); } }
   
   .smart-eta.arriving { color: var(--accent-orange); font-size: 1.25rem; animation: blink-arriving 1.5s infinite; }
   .smart-eta.delayed { animation: blink-delayed 2s infinite; font-size: 1.15rem; font-weight: 700; }
@@ -160,9 +161,9 @@
     display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px;
     font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
   }
-  .occ-pair { background: rgba(48, 209, 88, 0.15); color: var(--accent-green); }
-  .occ-single { background: rgba(255, 159, 10, 0.15); color: var(--accent-orange); }
-  .occ-standing { background: rgba(227, 24, 55, 0.15); color: var(--accent-red); }
+  .occ-seating { background: rgba(48, 209, 88, 0.15); color: var(--accent-green); }
+  .occ-standing { background: rgba(255, 159, 10, 0.15); color: var(--accent-orange); }
+  .occ-full { background: rgba(227, 24, 55, 0.15); color: var(--accent-red); border: 1px solid transparent; animation: pulse-full 1.5s infinite; }
 
   /* Sub ETAs */
   .subsequent-etas {
@@ -282,7 +283,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 20:30 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 22:45 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -304,7 +305,7 @@ const i18n = {
     terminatingHere: "Terminating Here", routeStops: "Journey ETA",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
-    pairSeats: "Row-free", singleSeats: "Shared", standing: "Standing Only"
+    seatingAvail: "Seating Available", standing: "Standing Room", busFull: "Bus Full"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -320,7 +321,7 @@ const i18n = {
     terminatingHere: "以此站為終點", routeStops: "車程預計",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
     manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
-    pairSeats: "雙座空置", singleSeats: "旁邊有人", standing: "只限企位"
+    seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -336,7 +337,7 @@ const i18n = {
     terminatingHere: "以此站为终点", routeStops: "车程预计",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
     manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
-    pairSeats: "双人空位", singleSeats: "旁有乘客", standing: "仅限站位"
+    seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满"
   }
 };
 
@@ -1149,7 +1150,7 @@ async function processSmartArrivals(group, matchDetails) {
                    smartEl.innerText = (activeItem && activeItem.targetIndex === 0) ? getT('departingSoon') : getT('due');
                    smartEl.className = 'smart-eta arriving';
                    
-                   const activeOcc = activeState.occState || 'pair';
+                   const activeOcc = activeState.occState || 'seating';
                    const barsEl = document.getElementById(`bars-${groupKey}`);
                    if(barsEl) {
                        barsEl.className = `occ-pill ${getOccData(activeOcc).class}`;
@@ -1196,7 +1197,7 @@ async function processSmartArrivals(group, matchDetails) {
                        offEl.innerText = '--';
                    }
                    
-                   const activeOcc = activeState.occState || 'pair';
+                   const activeOcc = activeState.occState || 'seating';
                    const barsEl = document.getElementById(`bars-${groupKey}`);
                    if(barsEl) {
                        barsEl.className = `occ-pill ${getOccData(activeOcc).class}`;
@@ -1237,14 +1238,15 @@ async function processSmartArrivals(group, matchDetails) {
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    // Text-Based Occupancy Check
+    // Core Occupancy Processing Based on Observation Metrics
     const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now);
     
-    let occState = pct > 75 ? 'standing' : (pct > 45 ? 'single' : 'pair');
+    let occState = pct > 95 ? 'full' : (pct > 75 ? 'standing' : 'seating');
 
     let dwellPenaltyMins = 0;
-    if (pct > 85) dwellPenaltyMins = 1.5;
-    else if (pct > 65) dwellPenaltyMins = 0.5;
+    if (pct > 95) dwellPenaltyMins = 2.0;
+    else if (pct > 75) dwellPenaltyMins = 1.0;
+    else if (pct > 50) dwellPenaltyMins = 0.5;
 
     let effectiveRawEta = rawEtaMins;
     if (rawEtaMins > 3 && !isNoGPS) {
@@ -1455,11 +1457,10 @@ async function processSmartArrivals(group, matchDetails) {
   }
 }
 
-// Occupancy Data Helper
 function getOccData(state) {
+    if (state === 'full') return { class: 'occ-full', key: 'busFull', icon: '⚠️' };
     if (state === 'standing') return { class: 'occ-standing', key: 'standing', icon: '🧍' };
-    if (state === 'single') return { class: 'occ-single', key: 'singleSeats', icon: '💺' };
-    return { class: 'occ-pair', key: 'pairSeats', icon: '💺' };
+    return { class: 'occ-seating', key: 'seatingAvail', icon: '💺' };
 }
 
 function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, currentTimestamp) {
@@ -1469,90 +1470,87 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   const isWeekend = (day === 0 || day === 6);
   const dest = (destName || '').toLowerCase();
   
-  let baseLoad = 30; 
+  // Real-world contextual modifiers
+  // Simulating the user's specific context: e.g. early release days before holidays
+  const isHolidayEve = false; 
+  const isEarlyRelease = isHolidayEve && hour >= 15 && hour <= 18;
 
-  if (!isWeekend) {
-    if (hour >= 7 && hour <= 8) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 15;
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 30;
-    } else if (hour === 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 15;
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 25;
+  let baseLoad = 30; 
+  const isTouristRoute = ['1', '2', '4', '11', '21', '23', 'A35', 'N35'].includes(routeNo);
+  const isE_Route = routeNo.startsWith('E');
+  const isFeeder = ['37M', '38', '39M', 'B4', 'B6'].includes(routeNo);
+
+  // 1. Context-Aware Baseline
+  if (isEarlyRelease) {
+      baseLoad = 85; 
+  } else if (!isWeekend) {
+    if (hour >= 7 && hour <= 9) {
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo') || isE_Route) ? 80 : 30;
+      if (isTouristRoute) baseLoad = 25; 
     } else if (hour >= 10 && hour <= 16) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry') || dest.includes('tai o')) ? 35 : 20;
-      if (['2', '4', '21'].includes(routeNo)) baseLoad = 20;
+      baseLoad = 30;
     } else if (hour >= 17 && hour <= 20) {
-      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20;
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 35;
-      // Boost 3M capacity during the 8 PM "going home" hour to trigger the 'single' / Shared state
+      baseLoad = (!dest.includes('tung chung') || isFeeder || isE_Route) ? 80 : 35;
       if (routeNo === '3M' && dest.includes('mui wo')) baseLoad = 75; 
     } else if (hour >= 21) {
-      baseLoad = 10;
+      baseLoad = 15;
     }
   } else {
     if (hour >= 9 && hour <= 14) {
-      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 80 : 25; 
-    } else if (hour >= 15 && hour <= 18) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 85 : 35; 
-    } else if (hour >= 19) {
+      baseLoad = isTouristRoute ? 85 : 40; 
+    } else if (hour >= 15 && hour <= 19) {
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 90 : 40; 
+    } else {
       baseLoad = 20;
     }
   }
 
+  // 2. High-Density Boarding Funnels (Stop Weighting)
   let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
   let spatialMultiplier = 1.0; 
 
-  const feeders = ['37M', '38', '39M', 'B4', 'B6'];
-  const airportLines = ['E36'];
-  const touristBidir = ['3M', '11', '1', '2', '4', '21', 'A35', 'N35'];
-
-  if (feeders.includes(routeNo)) {
-      if (progress < 0.75) {
-          spatialMultiplier = 1.0; 
+  if (isE_Route) {
+      if (progress < 0.15) {
+          spatialMultiplier = 1.2; 
       } else {
-          spatialMultiplier = Math.max(0, (1 - progress) / 0.25);
+          spatialMultiplier = baseLoad > 60 ? 1.4 : 0.8; 
       }
-  } else if (airportLines.includes(routeNo)) {
-      if (progress < 0.85) {
-          spatialMultiplier = Math.sqrt(Math.max(0.1, progress + 0.1));
-      } else {
-          spatialMultiplier = Math.max(0, (1 - progress) / 0.15);
-      }
-  } else if (touristBidir.includes(routeNo)) {
-      spatialMultiplier = Math.sin(progress * Math.PI);
-      if (progress > 0.7) {
-          let dropFactor = Math.max(0, (1 - progress) / 0.3);
-          spatialMultiplier = spatialMultiplier * Math.pow(dropFactor, 1.5);
-      }
+  } else if (isFeeder) {
+      spatialMultiplier = progress < 0.75 ? 1.0 : Math.max(0, (1 - progress) / 0.25);
+  } else if (isTouristRoute) {
+      spatialMultiplier = progress < 0.1 ? 1.0 : (baseLoad > 60 ? 1.2 : 0.6);
   } else {
       spatialMultiplier = Math.sin(progress * Math.PI);
   }
 
-  if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
-    const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
-    if (minToDeparture > 10) spatialMultiplier = 0.1; 
-    else if (minToDeparture > 5) spatialMultiplier = 0.3; 
-    else spatialMultiplier = 0.6; 
-  }
-
-  let headwayMultiplier = 1.0;
+  // 3. Headway Compression & Bunching Analysis
+  let bunchingMultiplier = 1.0;
+  
   if (estimatedArrivals && estimatedArrivals.length >= 2) {
-    const serverTime = new Date(estimatedArrivals[0].generateTime.replace(/-/g, '/'));
-    const t1 = Math.max(0, (new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000);
-    const t2 = Math.max(0, (new Date(estimatedArrivals[1].estimatedArrivalTime.replace(/-/g, '/')) - serverTime) / 60000);
-    const gap = t2 - t1;
-    
-    if (baseLoad > 40) {
-        headwayMultiplier = gap <= 8 ? 1.4 : 0.5 + (1.5 * (1 - Math.exp(-0.05 * gap)));
-    } else {
-        headwayMultiplier = gap <= 15 ? 1.0 : 1.2;
+    const nowTime = currentTimestamp;
+    const t1 = Math.max(0, (new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - nowTime) / 60000);
+    const t2 = Math.max(0, (new Date(estimatedArrivals[1].estimatedArrivalTime.replace(/-/g, '/')) - nowTime) / 60000);
+    const gap12 = Math.max(1, t2 - t1);
+
+    let gap23 = gap12;
+    if (estimatedArrivals.length >= 3) {
+        const t3 = Math.max(0, (new Date(estimatedArrivals[2].estimatedArrivalTime.replace(/-/g, '/')) - nowTime) / 60000);
+        gap23 = Math.max(1, t3 - t2);
+    }
+
+    if (gap12 < (gap23 * 0.5) && baseLoad > 40) {
+        bunchingMultiplier = 1.6; 
+    } else if (gap12 > (gap23 * 2.0)) {
+        bunchingMultiplier = 0.8; 
     }
     
-    if (gap > 20) headwayMultiplier *= 1.25; 
+    if (t1 <= 5 && baseLoad > 60 && !isTouristRoute) {
+        bunchingMultiplier *= 1.2;
+    }
   }
 
   const stableNoise = generateDeterministicNoise(routeNo, currentStopIndex, currentTimestamp);
-  let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
+  let rawVolume = (baseLoad * spatialMultiplier * bunchingMultiplier) + stableNoise;
 
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
   const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6', '4', 'E36']; 
