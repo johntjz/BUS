@@ -138,7 +138,7 @@
   .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; color: var(--text-primary); }
   .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; background: #2c2c2e; padding: 2px 4px; border-radius: 4px; }
   .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--text-primary); }
+  .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: overflow: hidden; color: var(--text-primary); }
   
   .eta-container { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
   .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; }
@@ -334,7 +334,7 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 Nearby First Sorting Update";
+const APP_TIMESTAMP = "Patch: 2026-10-08 Scheduled ETA Fix";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -1336,14 +1336,7 @@ async function processSmartArrivals(group, matchDetails) {
     
     if (rawEtaMins >= 0) {
       if (isNoGPS) {
-        if (activeItem.targetIndex === 0) {
-             smartMins = rawEtaMins;
-        } else {
-             const isPeakPadding = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
-             const scheduleMultiplier = isPeakPadding ? 0.90 : 0.70;
-             const convergenceFactor = rawEtaMins < 10 ? 1.0 : scheduleMultiplier;
-             smartMins = Math.max(0, Math.floor(rawEtaMins * convergenceFactor)); 
-        }
+        smartMins = rawEtaMins; 
         
         lblSmartEl.innerText = getT('scheduled');
         smartEl.style.color = 'var(--accent-orange)';
@@ -1610,3 +1603,4 @@ initApp();
 </script>
 </body>
 </html>
+
