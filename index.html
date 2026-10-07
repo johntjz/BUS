@@ -108,7 +108,7 @@
     font-size: 0.95rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;
   }
   .modal-item:active { background-color: #1e1e20; }
-  .modal-item-icon { font-size: 1.1rem; }
+  .modal-item-icon { font-size: 1.1rem; flex-shrink: 0; }
   .fav-header { padding: 8px 16px; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); background: #1a1a1c; text-transform: uppercase; }
 
   #detailControls {
@@ -334,7 +334,7 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 Modal Progress Update";
+const APP_TIMESTAMP = "Patch: 2026-10-07 Nearby First Sorting Update";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -356,7 +356,8 @@ const i18n = {
     terminatingHere: "Terminating Here", routeStops: "Journey ETA",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
-    seatingAvail: "Seating Available", standing: "Standing Room", busFull: "Bus Full"
+    seatingAvail: "Seating Available", standing: "Standing Room", busFull: "Bus Full",
+    nearbyStops: "📍 Nearby Stops", allStopsHead: "All Stops"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -372,7 +373,8 @@ const i18n = {
     terminatingHere: "以此站為終點", routeStops: "車程預計",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
     manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
-    seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿"
+    seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿",
+    nearbyStops: "📍 附近車站", allStopsHead: "所有車站"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -388,7 +390,8 @@ const i18n = {
     terminatingHere: "以此站为终点", routeStops: "车程预计",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
     manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
-    seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满"
+    seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满",
+    nearbyStops: "📍 附近车站", allStopsHead: "所有车站"
   }
 };
 
@@ -411,6 +414,7 @@ let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops') || '[]');
 let autoGpsEnabled = true;
 let serverClockOffset = 0;
 let isClockSynced = false;
+let lastKnownPos = null;
 
 let activeModalType = null; 
 
@@ -757,10 +761,22 @@ function renderModalList() {
         
         let favs = sourceStops.filter(s => favStops.includes(s.stopName_e));
         let others = sourceStops.filter(s => !favStops.includes(s.stopName_e));
+        let nearbyStops = [];
 
         if (query) {
             favs = favs.filter(s => getLocalizedName(s, 'stopName').toLowerCase().includes(query) || s.stopName_e.toLowerCase().includes(query));
             others = others.filter(s => getLocalizedName(s, 'stopName').toLowerCase().includes(query) || s.stopName_e.toLowerCase().includes(query));
+        } else if (lastKnownPos) {
+            // "Nearby First" Sorting logic
+            const othersWithDist = others.map(s => {
+                return {
+                    ...s,
+                    distKm: calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, parseFloat(s.latitude), parseFloat(s.longitude))
+                };
+            });
+            othersWithDist.sort((a, b) => a.distKm - b.distKm);
+            nearbyStops = othersWithDist.slice(0, 20);
+            others = othersWithDist.slice(20).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
         }
 
         if (favs.length > 0) {
@@ -768,17 +784,36 @@ function renderModalList() {
             favs.forEach(s => {
                 listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon" style="color:#ffd60a">★</span> ${getLocalizedName(s, 'stopName')}</div>`);
             });
-            if (others.length > 0) listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
         }
 
-        const renderLimit = 300;
-        others.slice(0, renderLimit).forEach(s => {
-            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🚏</span> ${getLocalizedName(s, 'stopName')}</div>`);
-        });
+        if (nearbyStops.length > 0 && !query) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('nearbyStops')}</div>`);
+            nearbyStops.forEach(s => {
+                const distStr = s.distKm < 1 ? `${Math.round(s.distKm * 1000)}m` : `${s.distKm.toFixed(1)}km`;
+                listEl.insertAdjacentHTML('beforeend', `
+                    <div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')">
+                        <span class="modal-item-icon">📍</span> 
+                        <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</span>
+                            <span style="font-size:0.75rem; color:var(--accent-green); margin-top:2px;">${distStr} away</span>
+                        </div>
+                    </div>
+                `);
+            });
+        }
 
-        // Add a prompt if the list gets heavily truncated so users don't think it's broken
-        if (others.length > renderLimit && !query) {
-            listEl.insertAdjacentHTML('beforeend', `<div style="padding: 24px 16px; text-align: center; color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;">Type in the search bar above to view ${others.length - renderLimit} more stops...</div>`);
+        if (others.length > 0) {
+            if (nearbyStops.length > 0 || favs.length > 0) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('allStopsHead')}</div>`);
+            }
+            const renderLimit = 150;
+            others.slice(0, renderLimit).forEach(s => {
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🚏</span> <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</div></div>`);
+            });
+
+            if (others.length > renderLimit && !query) {
+                listEl.insertAdjacentHTML('beforeend', `<div style="padding: 24px 16px; text-align: center; color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;">Type in the search bar above to view ${others.length - renderLimit} more stops...</div>`);
+            }
         }
     }
 }
@@ -846,6 +881,8 @@ function resetAndFetch() {
   document.getElementById('routeList').classList.remove('detail-mode');
 
   document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
+  // Do not delete busStateMap elements completely, just clear out pseudo logic if needed, 
+  // but to prevent stale data we can clear it safely on full manual refresh.
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
   updateNetworkTelemetry();
@@ -866,6 +903,8 @@ function locateNearestStopPromise(isManualClick = false) {
         if (isManualClick) document.getElementById('gpsStatus').innerText = getT('locating');
 
         navigator.geolocation.getCurrentPosition((pos) => {
+            lastKnownPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            
             let closest = null, minDistance = Infinity;
             let stopsToCheck = (currentRouteKey === 'ALL' || !currentRouteKey) ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
             if (!stopsToCheck || stopsToCheck.length === 0) stopsToCheck = allStops;
