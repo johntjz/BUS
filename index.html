@@ -248,7 +248,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-07 10:14 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 12:31 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -1361,7 +1361,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 15; 
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 25;
     } else if (hour >= 10 && hour <= 16) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 45 : 20; 
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 35 : 20; 
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 20;
     } else if (hour >= 17 && hour <= 19) {
       baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20; 
