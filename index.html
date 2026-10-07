@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Pulse HK - Transport Network</title>
+<!-- Load external routing profiles -->
+<script src="profiles.js"></script>
 <style>
   :root {
     /* Status Colors */
@@ -282,7 +284,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 19:38 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 19:49 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -938,7 +940,7 @@ async function updateNetworkTelemetry() {
 
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
     
-    // SMART SORTING LOGIC (Isolates terminating routes at the bottom)
+    // SMART SORTING LOGIC 
     cards.sort((a, b) => {
         const aTerm = a.classList.contains('terminating');
         const bTerm = b.classList.contains('terminating');
@@ -1069,7 +1071,6 @@ async function processSmartArrivals(group, matchDetails) {
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
-    // Build sub-ETAs
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
     if (subsEl && activeItem) {
@@ -1236,7 +1237,7 @@ async function processSmartArrivals(group, matchDetails) {
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    // Text-Based Occupancy Check
+    // NEW: Pull from Profile-Based Occupancy API
     const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now);
     
     let occState = pct > 75 ? 'standing' : (pct > 45 ? 'single' : 'pair');
@@ -1454,86 +1455,68 @@ async function processSmartArrivals(group, matchDetails) {
   }
 }
 
-// Occupancy Data Helper
-function getOccData(state) {
-    if (state === 'standing') return { class: 'occ-standing', key: 'standing', icon: '🧍' };
-    if (state === 'single') return { class: 'occ-single', key: 'singleSeats', icon: '💺' };
-    return { class: 'occ-pair', key: 'pairSeats', icon: '💺' };
-}
-
+// Data-Driven Occupancy Logic
 function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, currentTimestamp) {
+  const cfg = window.PULSE_NETWORK_PROFILES;
   const date = new Date(currentTimestamp);
   const hour = date.getHours();
-  const day = date.getDay(); 
-  const isWeekend = (day === 0 || day === 6);
-  const dest = (destName || '').toLowerCase();
-  
-  let baseLoad = 30; 
+  const ymd = date.toISOString().slice(0, 10);
 
-  if (!isWeekend) {
-    if (hour >= 7 && hour <= 8) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 90 : 25; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 40; 
-    } else if (hour === 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 65 : 25; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 35;
-    } else if (hour >= 10 && hour <= 16) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry') || dest.includes('tai o')) ? 35 : 20; 
-      if (['2', '4', '21'].includes(routeNo)) baseLoad = 20;
-    } else if (hour >= 17 && hour <= 20) {
-      // Evening commute: leaving Tung Chung to go home (Mui Wo, Tai O, Tong Fuk)
-      baseLoad = (!dest.includes('tung chung')) ? 100 : 35; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = (!dest.includes('tung chung')) ? 80 : 35;
-    } else if (hour >= 21) {
-      baseLoad = 15;
+  let baseLoad = 30;
+  let spatialMultiplier = 1.0;
+
+  if (cfg && cfg.custom && cfg.archetypes) {
+    const isPH = cfg.holidays.includes(ymd) || date.getDay() === 0;
+    const dayType = isPH ? 'PH' : (date.getDay() === 6 ? 'SAT' : 'WD');
+
+    const dest = (destName || '').toLowerCase();
+    let dir = 'OUTBOUND';
+    if (dest.includes('tung chung') || dest.includes('kowloon') || dest.includes('macao') || dest.includes('tsim sha tsui')) {
+        dir = 'INBOUND';
+    }
+    
+    const customKey = `${routeNo}_${dir}`;
+    const profile = cfg.custom[customKey] || cfg.archetypes.CROSS_DISTRICT;
+    
+    baseLoad = profile[dayType][hour] !== undefined ? profile[dayType][hour] : 30;
+
+    const progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
+    const curve = profile.curve || cfg.archetypes.CROSS_DISTRICT.curve;
+
+    // Linear Interpolation for Spatial Curve
+    spatialMultiplier = curve[0].factor;
+    for (let i = 0; i < curve.length - 1; i++) {
+      if (progress >= curve[i].progress && progress <= curve[i+1].progress) {
+        const range = curve[i+1].progress - curve[i].progress;
+        const pct = (progress - curve[i].progress) / range;
+        spatialMultiplier = curve[i].factor + pct * (curve[i+1].factor - curve[i].factor);
+        break;
+      }
+    }
+    if (progress >= curve[curve.length - 1].progress) {
+        spatialMultiplier = curve[curve.length - 1].factor;
     }
   } else {
-    if (hour >= 9 && hour <= 14) {
-      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 80 : 25; 
-    } else if (hour >= 15 && hour <= 18) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 85 : 35; 
-    } else if (hour >= 19) {
-      baseLoad = 20;
+    // Failsafe Heuristic if profiles.js fails to load
+    const isWeekend = (date.getDay() === 0 || date.getDay() === 6);
+    if (!isWeekend) {
+        if (hour >= 17 && hour <= 20) baseLoad = 65;
+        else if (hour >= 7 && hour <= 9) baseLoad = 55;
+    } else {
+        if (hour >= 10 && hour <= 18) baseLoad = 75;
     }
+    const progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
+    spatialMultiplier = Math.sin(progress * Math.PI);
   }
 
-  let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
-  let spatialMultiplier = 1.0; 
-
-  const feeders = ['37M', '38', '39M', 'B4', 'B6'];
-  const airportLines = ['E36'];
-
-  if (feeders.includes(routeNo)) {
-      if (progress < 0.75) {
-          spatialMultiplier = 1.0; 
-      } else {
-          spatialMultiplier = Math.max(0, (1 - progress) / 0.25);
-      }
-  } else if (airportLines.includes(routeNo)) {
-      if (progress < 0.85) {
-          spatialMultiplier = Math.sqrt(Math.max(0.1, progress + 0.1));
-      } else {
-          spatialMultiplier = Math.max(0, (1 - progress) / 0.15);
-      }
-  } else {
-      // Trapezoid curve: Fills quickly at terminus, plateaus for majority of route, empties at end.
-      if (progress < 0.1) {
-          spatialMultiplier = 0.5 + (progress / 0.1) * 0.5;
-      } else if (progress > 0.8) {
-          spatialMultiplier = Math.max(0, (1 - progress) / 0.2);
-      } else {
-          spatialMultiplier = 1.0;
-      }
-  }
-
-  // Override for vehicles physically waiting at the terminus to leave.
+  // Override for vehicles physically waiting at the terminus to leave
   if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
     const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
-    if (minToDeparture > 10) spatialMultiplier = 0.1; 
-    else if (minToDeparture > 5) spatialMultiplier = 0.3; 
-    else spatialMultiplier = 0.6; 
+    if (minToDeparture > 10) spatialMultiplier *= 0.2; 
+    else if (minToDeparture > 5) spatialMultiplier *= 0.5; 
   }
 
+  // Real-Time Headway Gap Correction
   let headwayMultiplier = 1.0;
   if (estimatedArrivals && estimatedArrivals.length >= 2) {
     const serverTime = new Date(estimatedArrivals[0].generateTime.replace(/-/g, '/'));
@@ -1546,7 +1529,6 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else {
         headwayMultiplier = gap <= 15 ? 1.0 : 1.2;
     }
-    
     if (gap > 20) headwayMultiplier *= 1.25; 
   }
 
@@ -1554,7 +1536,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   let rawVolume = (baseLoad * spatialMultiplier * headwayMultiplier) + stableNoise;
 
   const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
-  const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6', '4', 'E36']; 
+  const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6', '4', 'E36', 'E31', 'E32']; 
   const mixedHeavy = ['3M']; 
 
   let capacityDivider = 1.0; 
