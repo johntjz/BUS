@@ -6,6 +6,7 @@
 <title>Pulse NLB & LWB</title>
 <style>
   :root {
+    /* Status Colors */
     --bg-color: #121214;
     --card-bg: #1c1c1e;
     --card-border: #2c2c2e;
@@ -14,10 +15,13 @@
     --accent-red: #e31837;
     --accent-green: #30d158;
     --accent-orange: #ff9f0a;
-    --accent-blue: #0a84ff;
-    --accent-purple: #bf5af2;
-    --accent-indigo: #5e5ce6;
-    --accent-pink: #ff375f;
+    
+    /* Directional Colors (Non-overlapping with Status) */
+    --dir-blue: #0a84ff;    /* Tung Chung */
+    --dir-purple: #bf5af2;  /* Mui Wo */
+    --dir-cyan: #32ade6;    /* Tai O */
+    --dir-indigo: #5e5ce6;  /* Airport/Port */
+    --dir-pink: #ff375f;    /* Tong Fuk */
   }
   
   * { box-sizing: border-box; }
@@ -94,7 +98,7 @@
   .back-btn {
     width: 100%;
     background: #2c2c2e;
-    color: var(--accent-blue);
+    color: var(--dir-blue);
     border: 1px solid #3a3a3c;
     border-radius: 8px;
     padding: 12px;
@@ -133,7 +137,6 @@
   .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; text-align: right; }
   .official-eta { font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); text-decoration: line-through; opacity: 0.7; font-variant-numeric: tabular-nums; }
   .smart-eta { font-size: 1.45rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; transition: color 0.3s; }
-  .smart-eta.adjusted { color: var(--accent-blue); }
   
   @keyframes blink-arriving {
     0% { opacity: 1; }
@@ -229,7 +232,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-07 08:29 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 08:52 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -338,15 +341,15 @@ function hideDetail() {
   updateNetworkTelemetry();
 }
 
-// Visual Directional Grouping Based on Destination
+// Visual Directional Grouping Based on Destination (Strictly Cool/Unique Colors)
 function getDirectionColor(dest) {
   const d = dest.toLowerCase();
-  if (d.includes('tung chung')) return 'var(--accent-blue)';
-  if (d.includes('mui wo')) return 'var(--accent-orange)';
-  if (d.includes('tai o')) return 'var(--accent-green)';
-  if (d.includes('airport') || d.includes('gtc')) return 'var(--accent-purple)';
-  if (d.includes('hzmb') || d.includes('macao')) return 'var(--accent-indigo)';
-  if (d.includes('tong fuk')) return 'var(--accent-pink)';
+  if (d.includes('tung chung')) return 'var(--dir-blue)';
+  if (d.includes('mui wo')) return 'var(--dir-purple)';
+  if (d.includes('tai o')) return 'var(--dir-cyan)';
+  if (d.includes('airport') || d.includes('gtc')) return 'var(--dir-indigo)';
+  if (d.includes('hzmb') || d.includes('macao')) return 'var(--dir-indigo)';
+  if (d.includes('tong fuk')) return 'var(--dir-pink)';
   return 'var(--card-border)';
 }
 
@@ -1040,7 +1043,8 @@ async function processSmartArrivals(group, matchDetails) {
                    } else {
                        lblSmartEl.innerText = getT('actual');
                        smartEl.innerText = `${projectedMins}${getT('min')}`;
-                       smartEl.className = 'smart-eta adjusted';
+                       // Stripped blue color overlay to prevent border confusion
+                       smartEl.className = 'smart-eta'; 
                        offEl.innerText = '--';
                    }
                    
@@ -1113,11 +1117,9 @@ async function processSmartArrivals(group, matchDetails) {
     
     if (rawEtaMins >= 0) {
       if (isNoGPS) {
-        // FIX: If the bus is at the start station (terminus), it will adhere strictly to the scheduled departure time. 
         if (activeItem.targetIndex === 0) {
              smartMins = rawEtaMins;
         } else {
-             // Time-aware padding reduction for mid-route stops
              const isPeakPadding = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
              const scheduleMultiplier = isPeakPadding ? 0.90 : 0.70;
              const convergenceFactor = rawEtaMins < 10 ? 1.0 : scheduleMultiplier;
@@ -1147,7 +1149,6 @@ async function processSmartArrivals(group, matchDetails) {
 
         if (!isSameBusForFilter || busStateMap[groupKey].isScheduled) {
           busStateMap[groupKey] = {
-             // Re-initialize standard variables (using new 3-param constructor)
              filter: new KalmanFilter1D(0.1, effectiveRawEta, 1.0),
              timestamp: now, pseudoBusId: pseudoBusId, 
              occState: occState,
@@ -1176,7 +1177,6 @@ async function processSmartArrivals(group, matchDetails) {
            smartMins = Math.round(state.filter.x);
         }
         
-        // Dynamic Upstream Speed Boundary
         if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
           let validUpstreamBus = null;
           let upstreamEtaMins = 0;
@@ -1217,7 +1217,7 @@ async function processSmartArrivals(group, matchDetails) {
 
               if (effectiveRawEta < upstreamEtaMins + Math.floor(minTransitMins)) {
                 smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
-                if (state.filter) state.filter.x = smartMins; // Prevent Kalman fighting bound
+                if (state.filter) state.filter.x = smartMins; 
               }
           }
         }
@@ -1245,7 +1245,7 @@ async function processSmartArrivals(group, matchDetails) {
       }
     } else {
       smartEl.innerText = `${smartMins}${getT('min')}`;
-      smartEl.className = (!isNoGPS && smartMins !== rawEtaMins) ? 'smart-eta adjusted' : 'smart-eta';
+      smartEl.className = 'smart-eta';
     }
 
     if (boxOffEl) {
