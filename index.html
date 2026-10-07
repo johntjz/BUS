@@ -219,6 +219,13 @@
     background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border);
     padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: auto; display: block;
   }
+
+  /* Initial Loader UI */
+  .init-loader-container { padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .init-loader-text { color: var(--text-secondary); font-size: 1.05rem; font-weight: 600; }
+  .init-loader-bar-bg { width: 100%; max-width: 280px; height: 6px; background: var(--card-border); border-radius: 4px; overflow: hidden; }
+  .init-loader-bar { width: 0%; height: 100%; background: var(--accent-green); transition: width 0.3s ease-out; }
+  .init-loader-pct { color: var(--accent-green); font-size: 0.9rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -265,7 +272,13 @@
 </div>
 
 <div id="routeList">
-  <div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">Connecting to network...</div>
+  <div id="initLoader" class="init-loader-container">
+    <div id="loadingText" class="init-loader-text">Connecting to network...</div>
+    <div class="init-loader-bar-bg">
+        <div id="loadingBar" class="init-loader-bar"></div>
+    </div>
+    <div id="loadingPercent" class="init-loader-pct">0%</div>
+  </div>
 </div>
 
 <!-- Search Modal -->
@@ -321,7 +334,7 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 Telemetry Drift Update";
+const APP_TIMESTAMP = "Patch: 2026-10-07 Modal Progress Update";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -402,6 +415,15 @@ let isClockSynced = false;
 let activeModalType = null; 
 
 function getNow() { return Date.now() + serverClockOffset; }
+
+function setLoadProgress(pct, text) {
+  const bar = document.getElementById('loadingBar');
+  const pctText = document.getElementById('loadingPercent');
+  const txt = document.getElementById('loadingText');
+  if (bar) bar.style.width = `${pct}%`;
+  if (pctText) pctText.innerText = `${Math.round(pct)}%`;
+  if (txt && text) txt.innerText = text;
+}
 
 function toggleInactive() {
   showInactive = !showInactive;
@@ -500,18 +522,17 @@ function getLocalizedName(obj, prefix) {
 
 async function initApp() {
   try {
-    document.getElementById('loadingText').innerText = getT('loadingIndex');
-    
     const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v7');
     const cachedStops = localStorage.getItem('pulse_stops_v7');
     const cacheTime = localStorage.getItem('pulse_cache_time_v7');
     const now = Date.now(); 
 
     if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
+      setLoadProgress(100, "Loading from cache...");
       groupedRoutes = JSON.parse(cachedGrouped);
       routeStopsCache = JSON.parse(cachedStops);
     } else {
-      document.getElementById('loadingText').innerText = "Syncing Network Mappings (This takes a few seconds)...";
+      setLoadProgress(5, "Fetching NLB Routes...");
       
       const groupedMap = new Map();
       routeStopsCache = {};
@@ -543,15 +564,24 @@ async function initApp() {
                 routeStopsCache[`NLB_${r.routeId}`] = res.stops || [];
               } catch(e) { routeStopsCache[`NLB_${r.routeId}`] = []; }
             }));
+            
+            // Advance progress from 5% to 35% during NLB fetch
+            const progress = 5 + ((i / rawNlbRoutes.length) * 30);
+            setLoadProgress(progress, `Fetching NLB Stops (${Math.round(progress)}%)...`);
           }
       } catch(e) { console.error("NLB Fetch failed", e); }
 
       try {
-          const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
-              fetch(`${KMB_API_BASE}/route/`).then(r=>r.json()).catch(()=>null),
-              fetch(`${KMB_API_BASE}/stop/`).then(r=>r.json()).catch(()=>null),
-              fetch(`${KMB_API_BASE}/route-stop/`).then(r=>r.json()).catch(()=>null)
-          ]);
+          setLoadProgress(35, "Fetching KMB Network...");
+          let kmbProg = 35;
+          
+          const p1 = fetch(`${KMB_API_BASE}/route/`).then(r => { kmbProg += 15; setLoadProgress(kmbProg, "Syncing KMB Routes..."); return r.json(); }).catch(()=>null);
+          const p2 = fetch(`${KMB_API_BASE}/stop/`).then(r => { kmbProg += 15; setLoadProgress(kmbProg, "Syncing KMB Stops..."); return r.json(); }).catch(()=>null);
+          const p3 = fetch(`${KMB_API_BASE}/route-stop/`).then(r => { kmbProg += 15; setLoadProgress(kmbProg, "Syncing KMB Mappings..."); return r.json(); }).catch(()=>null);
+
+          const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([p1, p2, p3]);
+
+          setLoadProgress(85, "Building System Index...");
 
           const allKmbStops = {};
           if (kmbStopsRes && kmbStopsRes.data) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
@@ -614,6 +644,8 @@ async function initApp() {
         localStorage.setItem('pulse_stops_v7', JSON.stringify(routeStopsCache));
         localStorage.setItem('pulse_cache_time_v7', Date.now().toString());
       } catch (e) {}
+      
+      setLoadProgress(100, "Network Sync Complete");
     }
     
     buildAllStopsList();
@@ -644,7 +676,7 @@ async function initApp() {
     startAppLoop();
 
   } catch (err) {
-    document.getElementById('loadingText').innerText = "Network Error: Could not connect to API.";
+    setLoadProgress(0, "Network Error: Could not connect to API.");
   }
 }
 
@@ -739,9 +771,15 @@ function renderModalList() {
             if (others.length > 0) listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
         }
 
-        others.slice(0, 150).forEach(s => {
+        const renderLimit = 300;
+        others.slice(0, renderLimit).forEach(s => {
             listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🚏</span> ${getLocalizedName(s, 'stopName')}</div>`);
         });
+
+        // Add a prompt if the list gets heavily truncated so users don't think it's broken
+        if (others.length > renderLimit && !query) {
+            listEl.insertAdjacentHTML('beforeend', `<div style="padding: 24px 16px; text-align: center; color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;">Type in the search bar above to view ${others.length - renderLimit} more stops...</div>`);
+        }
     }
 }
 
@@ -808,8 +846,6 @@ function resetAndFetch() {
   document.getElementById('routeList').classList.remove('detail-mode');
 
   document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
-  // Do not delete busStateMap elements completely, just clear out pseudo logic if needed, 
-  // but to prevent stale data we can clear it safely on full manual refresh.
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
   updateNetworkTelemetry();
