@@ -130,7 +130,7 @@
   .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; }
   .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; }
   .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+  .route-dest { font-size: 1.05rem; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
   
   .eta-container { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
   .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; }
@@ -232,7 +232,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-07 08:52 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 09:05 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -343,7 +343,7 @@ function hideDetail() {
 
 // Visual Directional Grouping Based on Destination (Strictly Cool/Unique Colors)
 function getDirectionColor(dest) {
-  const d = dest.toLowerCase();
+  const d = (dest || '').toLowerCase();
   if (d.includes('tung chung')) return 'var(--dir-blue)';
   if (d.includes('mui wo')) return 'var(--dir-purple)';
   if (d.includes('tai o')) return 'var(--dir-cyan)';
@@ -667,7 +667,8 @@ function resetAndFetch() {
   document.getElementById('detailControls').style.display = 'none';
   document.getElementById('routeList').classList.remove('detail-mode');
 
-  document.getElementById('routeList').innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
+  // Explicitly give id="loadingText" so updateNetworkTelemetry can purge it reliably
+  document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
   updateNetworkTelemetry();
@@ -757,7 +758,10 @@ async function updateNetworkTelemetry() {
     }
 
     const listEl = document.getElementById('routeList');
-    if (document.getElementById('loadingText')) document.getElementById('loadingText').remove();
+    
+    // Purge any existing loading text/placeholder immediately
+    const loadingEl = document.getElementById('loadingText');
+    if (loadingEl) loadingEl.remove();
 
     if (relevantGroups.length === 0) {
       listEl.innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('noBuses')}</div>`;
@@ -776,11 +780,11 @@ async function updateNetworkTelemetry() {
             <div class="route-main-row">
                 <div class="route-left">
                 <div style="display:flex; flex-direction:column;">
-                    <div class="route-no">${group.routeNo}</div>
+                    <div class="route-no" id="no-${group.key}" style="color: ${dirColor};">${group.routeNo}</div>
                     ${group.company === 'LWB' ? '<div class="route-company">LWB</div>' : ''}
                 </div>
                 <div class="route-info">
-                    <div class="route-dest">${getT('to')} ${destName}</div>
+                    <div class="route-dest" id="dest-${group.key}" style="color: ${dirColor};">${getT('to')} ${destName}</div>
                     <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
                        <span id="bars-${group.key}" class="occ-pill"></span>
                     </div>
@@ -801,7 +805,13 @@ async function updateNetworkTelemetry() {
           </div>
         `);
       } else {
-         document.querySelector(`#${cardId} .route-dest`).innerText = `${getT('to')} ${destName}`;
+         const dEl = document.getElementById(`dest-${group.key}`);
+         if (dEl) {
+             dEl.innerText = `${getT('to')} ${destName}`;
+             dEl.style.color = dirColor;
+         }
+         const noEl = document.getElementById(`no-${group.key}`);
+         if (noEl) noEl.style.color = dirColor;
          document.getElementById(cardId).style.borderLeftColor = dirColor;
       }
     }
@@ -997,7 +1007,6 @@ async function processSmartArrivals(group, matchDetails) {
                    smartEl.className = 'smart-eta arriving';
                    smartEl.style.color = 'var(--accent-orange)';
                    
-                   // Retain last occupancy state
                    const activeOcc = activeState.occState || 'pair';
                    const barsEl = document.getElementById(`bars-${groupKey}`);
                    if(barsEl) {
@@ -1011,7 +1020,6 @@ async function processSmartArrivals(group, matchDetails) {
                }
            } else {
                const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
-               // Slashing retention at night, extending strictly during peak traffic bottlenecks
                const maxMissingTime = isNight ? 45000 : ((nextBusEta > 15) ? maxZeroTolerance : 150000); 
                
                if (timeSpentAtZero > maxZeroTolerance || timeSinceLost > maxMissingTime) { 
@@ -1025,13 +1033,11 @@ async function processSmartArrivals(group, matchDetails) {
                    if (projectedMins === 0) {
                        const remainingTolerance = maxZeroTolerance - timeSpentAtZero;
                        
-                       // Only show departing in the final 40 seconds of tolerance to avoid false positives during traffic jams
                        if (remainingTolerance < 40000 || (isNight && timeSinceLost > 10000)) { 
                            lblSmartEl.innerText = getT('arrivingLabel');
                            smartEl.innerText = getT('departing');
                            smartEl.className = 'smart-eta departing';
                        } else if (timeSpentAtZero > 75000 && !isNight) {
-                           // Lingering at zero for traffic logic
                            lblSmartEl.innerText = getT('arrivingLabel'); 
                            smartEl.innerText = getT('delayed');
                            smartEl.className = 'smart-eta delayed';
@@ -1043,7 +1049,6 @@ async function processSmartArrivals(group, matchDetails) {
                    } else {
                        lblSmartEl.innerText = getT('actual');
                        smartEl.innerText = `${projectedMins}${getT('min')}`;
-                       // Stripped blue color overlay to prevent border confusion
                        smartEl.className = 'smart-eta'; 
                        offEl.innerText = '--';
                    }
@@ -1092,10 +1097,8 @@ async function processSmartArrivals(group, matchDetails) {
     // Text-Based Occupancy Check
     const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now);
     
-    // Practical Outcome Mapping
     let occState = pct > 75 ? 'standing' : (pct > 45 ? 'single' : 'pair');
 
-    // Dwell Penalty Logic
     let dwellPenaltyMins = 0;
     if (pct > 85) dwellPenaltyMins = 1.5;
     else if (pct > 65) dwellPenaltyMins = 0.5;
@@ -1272,7 +1275,7 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   const hour = date.getHours();
   const day = date.getDay(); 
   const isWeekend = (day === 0 || day === 6);
-  const dest = destName.toLowerCase();
+  const dest = (destName || '').toLowerCase();
   
   let baseLoad = 30; 
 
