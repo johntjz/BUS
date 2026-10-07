@@ -122,7 +122,7 @@
   }
   .back-btn:active { background: #3a3a3c; }
 
-  #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
+  #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 120px; }
   
   /* Directional Color-Coding Anchor */
   .route-card {
@@ -191,6 +191,22 @@
     background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border);
     padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: auto; display: block;
   }
+
+  /* Journey Bar Styles */
+  #journeyBar {
+    display: none; 
+    position: fixed; 
+    bottom: 0; 
+    left: 0; 
+    width: 100%; 
+    background: rgba(28, 28, 30, 0.95); 
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--card-border); 
+    padding: 16px 20px 24px 20px; 
+    z-index: 50; 
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+  }
 </style>
 </head>
 <body>
@@ -224,6 +240,10 @@
       <div class="search-input" onclick="openModal('stop')">
         <span class="search-input-text" id="stopSelectText">Select Stop...</span>
       </div>
+      <!-- New Destination Selector (Hidden when "All Routes" is selected) -->
+      <div class="search-input" id="destSelector" onclick="openModal('dest')" style="display: none; margin-top: 2px;">
+        <span class="search-input-text" id="destSelectText" style="color: var(--accent-cyan);">Where to? (Optional)</span>
+      </div>
     </div>
   </div>
   <div class="gps-status">
@@ -238,6 +258,25 @@
 
 <div id="routeList">
   <div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">Connecting to network...</div>
+</div>
+
+<!-- Bottom Journey Planner Bar -->
+<div id="journeyBar">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+      <span id="journeyArriveLabel" style="color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; text-transform: uppercase;">Arriving At</span>
+      <button id="journeyClearBtn" onclick="clearDest()" style="background: none; border: none; color: var(--accent-red); font-size: 0.8rem; font-weight: 600; cursor: pointer; padding: 0;">Clear</button>
+  </div>
+  <div id="journeyDestName" style="font-size: 1.15rem; font-weight: 800; color: #fff; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px;">--</div>
+  <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+      <div style="display: flex; flex-direction: column;">
+          <span id="journeyTravelLabel" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-bottom: 2px;">Travel Time</span>
+          <span id="journeyDuration" style="font-size: 1.25rem; font-weight: 800; color: var(--accent-blue);">-- min</span>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end;">
+          <span id="journeyEtaLabel" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; margin-bottom: 2px;">ETA</span>
+          <span id="journeyClock" style="font-size: 1.7rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; letter-spacing: -0.5px;">--:--</span>
+      </div>
+  </div>
 </div>
 
 <!-- Search Modal -->
@@ -255,7 +294,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 12:59 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 13:05 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -270,14 +309,15 @@ const i18n = {
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
     to: "To", due: "Due", delayed: "Delayed", departing: "Departing", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
-    official: "Official", actual: "Actual ETA", scheduled: "Scheduled (No GPS)",
+    official: "Official", actual: "Actual ETA", scheduled: "Scheduled", // Cleaner UI string
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
     showTerminating: "Show arriving buses", hideTerminating: "Hide arriving buses",
     terminatingHere: "Terminating Here",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
-    pairSeats: "Row-free", singleSeats: "Shared", standing: "Standing Only"
+    pairSeats: "Row-free", singleSeats: "Shared", standing: "Standing Only",
+    whereTo: "Where to? (Optional)", arrivingAt: "Arriving At", clear: "Clear", travelTime: "Travel Time", eta: "ETA"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -286,14 +326,15 @@ const i18n = {
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
     to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
-    official: "官方", actual: "實際預計", scheduled: "預定班次 (無GPS)",
+    official: "官方", actual: "實際預計", scheduled: "預定班次",
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
     showTerminating: "顯示抵達本站巴士", hideTerminating: "隱藏抵達本站巴士",
     terminatingHere: "以此站為終點",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
     manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
-    pairSeats: "雙座空置", singleSeats: "旁邊有人", standing: "只限企位"
+    pairSeats: "雙座空置", singleSeats: "旁邊有人", standing: "只限企位",
+    whereTo: "前往哪裡？ (選填)", arrivingAt: "抵達車站", clear: "清除", travelTime: "車程時間", eta: "預計到達"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -302,14 +343,15 @@ const i18n = {
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
     to: "往", due: "即将到达", delayed: "延误", departing: "刚驶离", min: "分钟", refresh: "更新:", refreshing: "更新中...",
-    official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
+    official: "官方", actual: "实际预计", scheduled: "预定班次",
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
     showTerminating: "显示抵达本站巴士", hideTerminating: "隐藏抵达本站巴士",
     terminatingHere: "以此站为终点",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
     manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
-    pairSeats: "双人空位", singleSeats: "旁有乘客", standing: "仅限站位"
+    pairSeats: "双人空位", singleSeats: "旁有乘客", standing: "仅限站位",
+    whereTo: "前往哪里？ (选填)", arrivingAt: "抵达车站", clear: "清除", travelTime: "车程时间", eta: "预计到达"
   }
 };
 
@@ -317,6 +359,7 @@ const getT = (key) => i18n[currentLang][key];
 
 let currentRouteKey = 'ALL';
 let currentStopName_e = '';
+let currentDestName_e = ''; // Track Destination User Input
 let countdown = REFRESH_INTERVAL;
 let timerInterval;
 let detailModeRouteKey = null;
@@ -436,7 +479,6 @@ async function initApp() {
   try {
     document.getElementById('loadingText').innerText = getT('loadingIndex');
     
-    // Bumped cache key to v7 to force bulk KMB reload
     const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v7');
     const cachedStops = localStorage.getItem('pulse_stops_v7');
     const cacheTime = localStorage.getItem('pulse_cache_time_v7');
@@ -451,7 +493,6 @@ async function initApp() {
       const groupedMap = new Map();
       routeStopsCache = {};
 
-      // 1. Fetch NLB Data
       try {
           const nlbRData = await fetchJSON(`${NLB_API_BASE}/route.php?action=list`);
           const rawNlbRoutes = nlbRData.routes || [];
@@ -482,7 +523,6 @@ async function initApp() {
           }
       } catch(e) { console.error("NLB Fetch failed", e); }
 
-      // 2. Fetch Massive KMB/LWB Data Concurrently
       try {
           const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
               fetch(`${KMB_API_BASE}/route/`).then(r=>r.json()).catch(()=>null),
@@ -526,7 +566,6 @@ async function initApp() {
                   });
                   routeStopsCache[rId] = mappedStops;
 
-                  // Basic KMB/LWB heuristic (LWB mostly uses E, A, NA, S prefixes)
                   const isLWB = r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S');
                   const company = isLWB ? 'LWB' : 'KMB';
                   const cleanDestE = formatStopName(r.dest_en);
@@ -561,9 +600,9 @@ async function initApp() {
     
     if (savedRoute) currentRouteKey = savedRoute;
     updateRouteSelectText();
+    updateDestSelectText();
     updateFavButtonUI();
     
-    // Enable Auto-GPS on Initial Load
     autoGpsEnabled = true;
     document.getElementById('gpsBtn').classList.add('active-gps');
     
@@ -572,10 +611,8 @@ async function initApp() {
       updateStopSelectText();
     } 
     
-    // Perform initial location lock then start loop
     await locateNearestStopPromise(false);
     
-    // Failsafe default
     if (!currentStopName_e && allStops.length > 0) {
         currentStopName_e = 'Tung Chung Station Bus Terminus';
         updateStopSelectText();
@@ -630,6 +667,33 @@ function updateStopSelectText() {
     updateFavButtonUI();
 }
 
+function updateDestSelectText() {
+    const el = document.getElementById('destSelectText');
+    const destContainer = document.getElementById('destSelector');
+    
+    if (currentRouteKey === 'ALL') {
+        destContainer.style.display = 'none';
+        clearDest();
+    } else {
+        destContainer.style.display = 'flex';
+        if (currentDestName_e) {
+            const stopObj = allStops.find(s => s.stopName_e === currentDestName_e);
+            el.innerText = stopObj ? getLocalizedName(stopObj, 'stopName') : currentDestName_e;
+            el.style.color = '#fff';
+        } else {
+            el.innerText = getT('whereTo');
+            el.style.color = 'var(--accent-cyan)';
+        }
+    }
+}
+
+function clearDest() {
+    currentDestName_e = '';
+    document.getElementById('journeyBar').style.display = 'none';
+    const el = document.getElementById('destSelectText');
+    if (el) { el.innerText = getT('whereTo'); el.style.color = 'var(--accent-cyan)'; }
+}
+
 function openModal(type) {
     activeModalType = type;
     const modal = document.getElementById('searchModal');
@@ -660,7 +724,6 @@ function renderModalList() {
             g.routeNo.toLowerCase().includes(query) || 
             getLocalizedName(g, 'dest').toLowerCase().includes(query)
         );
-        // Limit rendering to 100 items to prevent DOM lag
         matches.slice(0, 100).forEach(g => {
             const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
             listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> ${prefix}${g.routeNo} (${getT('to')} ${getLocalizedName(g, 'dest')})</div>`);
@@ -687,6 +750,32 @@ function renderModalList() {
         others.slice(0, 150).forEach(s => {
             listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🚏</span> ${getLocalizedName(s, 'stopName')}</div>`);
         });
+    } else if (activeModalType === 'dest') {
+        const targetGroup = groupedRoutes.find(g => g.key === currentRouteKey);
+        if (!targetGroup) return;
+        
+        let downstreamStops = [];
+        for (const routeId of targetGroup.routeIds) {
+            const stops = routeStopsCache[routeId] || [];
+            const idx = stops.findIndex(s => s.stopName_e === currentStopName_e);
+            if (idx !== -1 && idx < stops.length - 1) {
+                // Collect only stops occurring AFTER the current origin stop
+                downstreamStops = stops.slice(idx + 1);
+                break; 
+            }
+        }
+        
+        if (query) {
+            downstreamStops = downstreamStops.filter(s => getLocalizedName(s, 'stopName').toLowerCase().includes(query) || s.stopName_e.toLowerCase().includes(query));
+        }
+
+        if (downstreamStops.length === 0) {
+            listEl.insertAdjacentHTML('beforeend', `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">No subsequent stops available</div>`);
+        } else {
+            downstreamStops.forEach(s => {
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('dest', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🏁</span> ${getLocalizedName(s, 'stopName')}</div>`);
+            });
+        }
     }
 }
 
@@ -695,8 +784,8 @@ function selectModalItem(type, value) {
         currentRouteKey = value;
         localStorage.setItem('pulse_route', currentRouteKey);
         updateRouteSelectText();
+        updateDestSelectText();
         
-        // Ensure valid stop for new route
         const targetStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
         if (targetStops.length > 0 && !targetStops.some(s => s.stopName_e === currentStopName_e)) {
             currentStopName_e = targetStops[0].stopName_e;
@@ -715,7 +804,14 @@ function selectModalItem(type, value) {
         currentStopName_e = value;
         localStorage.setItem('pulse_stop', currentStopName_e);
         updateStopSelectText();
+        
+        // Clear destination if origin changes
+        clearDest();
         resetAndFetch();
+    } else if (type === 'dest') {
+        currentDestName_e = value;
+        updateDestSelectText();
+        resetAndFetch(); 
     }
     closeModal();
 }
@@ -734,8 +830,6 @@ function toggleFavorite() {
     }
     localStorage.setItem('pulse_fav_stops', JSON.stringify(favStops));
     updateFavButtonUI();
-    
-    // Clear flash message after 3s
     setTimeout(() => { if (msgEl.innerText) msgEl.innerText = ''; }, 3000);
 }
 
@@ -757,10 +851,11 @@ function resetAndFetch() {
   document.getElementById('detailControls').style.display = 'none';
   document.getElementById('routeList').classList.remove('detail-mode');
 
-  // Explicitly give id="loadingText" so updateNetworkTelemetry can purge it reliably
   document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
+  
+  if (currentDestName_e) document.getElementById('journeyBar').style.display = 'block';
   updateNetworkTelemetry();
 }
 
@@ -776,7 +871,6 @@ function locateNearestStopPromise(isManualClick = false) {
             if (isManualClick) document.getElementById('gpsStatus').innerText = getT('gpsNotSupported');
             return resolve(false);
         }
-        
         if (isManualClick) document.getElementById('gpsStatus').innerText = getT('locating');
 
         navigator.geolocation.getCurrentPosition((pos) => {
@@ -797,6 +891,7 @@ function locateNearestStopPromise(isManualClick = false) {
                     currentStopName_e = closest.stopName_e;
                     localStorage.setItem('pulse_stop', currentStopName_e);
                     updateStopSelectText();
+                    clearDest(); // Distance to destination changes if origin changes
                     for (let key in busStateMap) delete busStateMap[key];
                     resolve(true); 
                 } else {
@@ -826,8 +921,16 @@ function changeLanguage(lang) {
   localStorage.setItem('pulse_lang', lang);
   updateRouteSelectText();
   updateStopSelectText();
+  updateDestSelectText();
   const btn = document.getElementById('backBtn');
   if (btn) btn.innerText = getT('back');
+  
+  // Update static UI text dynamically
+  document.getElementById('journeyArriveLabel').innerText = getT('arrivingAt');
+  document.getElementById('journeyClearBtn').innerText = getT('clear');
+  document.getElementById('journeyTravelLabel').innerText = getT('travelTime');
+  document.getElementById('journeyEtaLabel').innerText = getT('eta');
+  
   updateNetworkTelemetry();
 }
 
@@ -851,7 +954,6 @@ async function updateNetworkTelemetry() {
         
         if (targetIndex !== -1) {
           const isLastStop = (targetIndex === stops.length - 1);
-          // Restore the route, but pass the isLastStop flag for later processing
           matchDetails.push({ routeId, stops, targetIndex, isLastStop });
         }
       }
@@ -864,7 +966,6 @@ async function updateNetworkTelemetry() {
 
     const listEl = document.getElementById('routeList');
     
-    // Purge any existing loading text/placeholder immediately
     const loadingEl = document.getElementById('loadingText');
     if (loadingEl) loadingEl.remove();
 
@@ -875,16 +976,10 @@ async function updateNetworkTelemetry() {
 
     for (const item of relevantGroups) {
       const group = item.group;
-      
-      // Determine if the ENTIRE group consists of terminating buses
       const isGroupTerminating = item.matchDetails.every(m => m.isLastStop);
-      
       const cardId = `route-${group.key}`;
-      
-      // Change destination text dynamically if terminating
       const destName = isGroupTerminating ? getT('terminatingHere') : getLocalizedName(group, 'dest');
       const terminatingClass = isGroupTerminating ? 'terminating' : '';
-      
       const dirColor = getDirectionColor(group.dest_e);
 
       if (!document.getElementById(cardId)) {
@@ -936,17 +1031,25 @@ async function updateNetworkTelemetry() {
     await Promise.all(relevantGroups.map(item => processSmartArrivals(item.group, item.matchDetails)));
 
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
-    cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
+    
+    // SMART SORTING LOGIC (Isolates terminating routes at the bottom)
+    cards.sort((a, b) => {
+        const aTerm = a.classList.contains('terminating');
+        const bTerm = b.classList.contains('terminating');
+        if (aTerm && !bTerm) return 1;  // 'a' goes to bottom
+        if (!aTerm && bTerm) return -1; // 'b' goes to bottom
+        // Otherwise, standard chronological sort
+        return parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10);
+    });
+    
     cards.forEach(card => listEl.appendChild(card));
 
-    // Clear old toggles
     const oldTermBtn = document.getElementById('terminatingToggleContainer');
     if (oldTermBtn) oldTermBtn.remove();
     const oldInacBtn = document.getElementById('inactiveToggleContainer');
     if (oldInacBtn) oldInacBtn.remove();
 
     if (!detailModeRouteKey) {
-        // 1. Terminating Toggle
         const terminatingCards = cards.filter(c => c.classList.contains('terminating'));
         if (terminatingCards.length > 0) {
             listEl.insertAdjacentHTML('beforeend', `
@@ -958,7 +1061,6 @@ async function updateNetworkTelemetry() {
             `);
         }
         
-        // 2. Inactive Toggle (excluding purely terminating buses to avoid confusion)
         const inactiveCards = cards.filter(c => c.classList.contains('inactive') && !c.classList.contains('terminating'));
         if (inactiveCards.length > 0) {
             listEl.insertAdjacentHTML('beforeend', `
@@ -1040,7 +1142,8 @@ async function processSmartArrivals(group, matchDetails) {
             upstreamStop,
             upstreamEtaRes,
             targetIndex: m.targetIndex,
-            totalStops: m.stops.length
+            totalStops: m.stops.length,
+            stops: m.stops // Required for distance/ETA projections
           });
         });
       }
@@ -1208,6 +1311,11 @@ async function processSmartArrivals(group, matchDetails) {
       if(smartEl) smartEl.innerText = '--';
       if(occSecEl) occSecEl.style.display = 'none';
       if(boxOffEl) boxOffEl.style.display = 'none';
+      
+      // Edge Case: Make sure to hide journey planner if bus vanishes
+      if (currentDestName_e && groupKey === currentRouteKey && !isGroupTerminating) {
+          document.getElementById('journeyBar').style.display = 'none';
+      }
       return;
     }
     
@@ -1391,7 +1499,37 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     if (boxOffEl) {
-      boxOffEl.style.display = (smartMins === rawEtaMins && !isNoGPS) ? 'none' : 'flex';
+      // Hides redundant official ETA box completely if times match or if it's the first departure point
+      boxOffEl.style.display = (smartMins === rawEtaMins) ? 'none' : 'flex';
+    }
+    
+    // JOURNEY PLANNER RENDER LOGIC
+    if (currentDestName_e && groupKey === currentRouteKey && !isGroupTerminating) {
+        const destStopIndex = activeItem.stops.findIndex(s => s.stopName_e === currentDestName_e);
+        if (destStopIndex > activeItem.targetIndex) {
+            let totalDist = 0;
+            for (let i = activeItem.targetIndex; i < destStopIndex; i++) {
+                totalDist += calculateDistanceKm(
+                    parseFloat(activeItem.stops[i].latitude), parseFloat(activeItem.stops[i].longitude),
+                    parseFloat(activeItem.stops[i+1].latitude), parseFloat(activeItem.stops[i+1].longitude)
+                );
+            }
+            
+            // Distance-based heuristic: 2.2 mins per km + 0.6 mins dwell time per intermediate stop
+            const stopsDiff = destStopIndex - activeItem.targetIndex;
+            const travelMins = Math.round((totalDist * 2.2) + (stopsDiff * 0.6));
+            
+            const arrivalDate = new Date(now + ((smartMins + travelMins) * 60000));
+            const timeString = arrivalDate.toLocaleTimeString(
+                currentLang === 'en' ? 'en-US' : 'zh-HK', 
+                { hour: 'numeric', minute: '2-digit', hour12: currentLang==='en' }
+            );
+
+            document.getElementById('journeyDestName').innerText = getLocalizedName(activeItem.stops[destStopIndex], 'stopName');
+            document.getElementById('journeyDuration').innerText = `${travelMins} ${getT('min')}`;
+            document.getElementById('journeyClock').innerText = timeString;
+            document.getElementById('journeyBar').style.display = 'block';
+        }
     }
 
   } catch (err) {
