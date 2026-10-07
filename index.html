@@ -15,6 +15,9 @@
     --accent-green: #30d158;
     --accent-orange: #ff9f0a;
     --accent-blue: #0a84ff;
+    --accent-purple: #bf5af2;
+    --accent-indigo: #5e5ce6;
+    --accent-pink: #ff375f;
   }
   
   * { box-sizing: border-box; }
@@ -107,9 +110,11 @@
 
   #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
   
+  /* Directional Color-Coding Anchor */
   .route-card {
     display: flex; flex-direction: column; align-items: stretch;
-    padding: 16px; border-bottom: 1px solid var(--card-border); gap: 0;
+    padding: 16px 16px 16px 12px; border-bottom: 1px solid var(--card-border); gap: 0;
+    border-left: 6px solid var(--card-border);
     cursor: pointer; transition: background-color 0.2s;
   }
   .route-card:active { background-color: #1e1e20; }
@@ -150,12 +155,15 @@
   .smart-eta.delayed { animation: blink-delayed 2s infinite; font-size: 1.15rem; font-weight: 700; }
   .smart-eta.departing { animation: fade-departing 2s infinite; font-size: 1.15rem; font-weight: 700; }
 
+  /* Practical Text-Based Occupancy Pills */
   .compact-occupancy { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
-  .bar-segments { display: flex; gap: 2px; }
-  .segment { width: 7px; height: 12px; border-radius: 2px; background-color: #2c2c2e; }
-  .segment.active-green { background-color: var(--accent-green); }
-  .segment.active-orange { background-color: var(--accent-orange); }
-  .segment.active-red { background-color: var(--accent-red); }
+  .occ-pill {
+    display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px;
+    font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .occ-pair { background: rgba(48, 209, 88, 0.15); color: var(--accent-green); }
+  .occ-single { background: rgba(255, 159, 10, 0.15); color: var(--accent-orange); }
+  .occ-standing { background: rgba(227, 24, 55, 0.15); color: var(--accent-red); }
 
   /* Subsequent Arrivals Styling */
   .subsequent-etas {
@@ -221,7 +229,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-06 22:50 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 08:29 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -240,7 +248,8 @@ const i18n = {
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
-    manual: "Manual Override"
+    manual: "Manual Override",
+    pairSeats: "Pair Seats", singleSeats: "Single Seats", standing: "Standing Only"
   },
   tc: {
     allLines: "所有", loadingIndex: "載入車站索引...",
@@ -253,7 +262,8 @@ const i18n = {
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
-    manual: "手動選擇"
+    manual: "手動選擇",
+    pairSeats: "雙人吉位", singleSeats: "單人位", standing: "只限企位"
   },
   sc: {
     allLines: "所有", loadingIndex: "载入车站索引...",
@@ -266,7 +276,8 @@ const i18n = {
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
-    manual: "手动选择"
+    manual: "手动选择",
+    pairSeats: "双人空位", singleSeats: "单人位", standing: "仅限站位"
   }
 };
 
@@ -325,6 +336,18 @@ function hideDetail() {
   document.getElementById('detailControls').style.display = 'none';
   document.getElementById('routeList').classList.remove('detail-mode');
   updateNetworkTelemetry();
+}
+
+// Visual Directional Grouping Based on Destination
+function getDirectionColor(dest) {
+  const d = dest.toLowerCase();
+  if (d.includes('tung chung')) return 'var(--accent-blue)';
+  if (d.includes('mui wo')) return 'var(--accent-orange)';
+  if (d.includes('tai o')) return 'var(--accent-green)';
+  if (d.includes('airport') || d.includes('gtc')) return 'var(--accent-purple)';
+  if (d.includes('hzmb') || d.includes('macao')) return 'var(--accent-indigo)';
+  if (d.includes('tong fuk')) return 'var(--accent-pink)';
+  return 'var(--card-border)';
 }
 
 // 1D Kalman Filter (Refined with Dynamic R handling)
@@ -742,10 +765,11 @@ async function updateNetworkTelemetry() {
       const group = item.group;
       const cardId = `route-${group.key}`;
       const destName = getLocalizedName(group, 'dest');
+      const dirColor = getDirectionColor(group.dest_e);
 
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card" id="${cardId}" data-smart-mins="9999" onclick="showDetail('${group.key}')">
+          <div class="route-card" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
             <div class="route-main-row">
                 <div class="route-left">
                 <div style="display:flex; flex-direction:column;">
@@ -755,9 +779,7 @@ async function updateNetworkTelemetry() {
                 <div class="route-info">
                     <div class="route-dest">${getT('to')} ${destName}</div>
                     <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
-                    <div class="bar-segments" id="bars-${group.key}">
-                        ${Array(10).fill('<div class="segment"></div>').join('')}
-                    </div>
+                       <span id="bars-${group.key}" class="occ-pill"></span>
                     </div>
                 </div>
                 </div>
@@ -777,6 +799,7 @@ async function updateNetworkTelemetry() {
         `);
       } else {
          document.querySelector(`#${cardId} .route-dest`).innerText = `${getT('to')} ${destName}`;
+         document.getElementById(cardId).style.borderLeftColor = dirColor;
       }
     }
 
@@ -881,8 +904,15 @@ async function processSmartArrivals(group, matchDetails) {
     const now = getNow();
     const currentHour = new Date(now).getHours();
     
-    // Time-aware retention tuning (aggressive drops at night)
+    // Time-aware retention tuning (aggressive drops at night, high patience in morning/evening rush)
     const isNight = (currentHour >= 20 || currentHour <= 5);
+    const isPeak = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
+    
+    // Peak Rush Hour Traffic Tolerance Tuning
+    let maxZeroTolerance = 240000; // 4 mins default
+    if (isNight) maxZeroTolerance = 45000;
+    else if (isPeak) maxZeroTolerance = 480000; // 8 mins tolerance for rush hour traffic lights
+    else maxZeroTolerance = 300000; // 5 mins standard day
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
@@ -964,9 +994,13 @@ async function processSmartArrivals(group, matchDetails) {
                    smartEl.className = 'smart-eta arriving';
                    smartEl.style.color = 'var(--accent-orange)';
                    
-                   let barHtml = '';
-                   for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeState.activeBars ? activeState.colorClass : ''}"></div>`;
-                   document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
+                   // Retain last occupancy state
+                   const activeOcc = activeState.occState || 'pair';
+                   const barsEl = document.getElementById(`bars-${groupKey}`);
+                   if(barsEl) {
+                       barsEl.className = `occ-pill ${getOccData(activeOcc).class}`;
+                       barsEl.innerText = `${getOccData(activeOcc).icon} ${getT(getOccData(activeOcc).key)}`;
+                   }
                    occSecEl.style.display = 'flex';
                    return; 
                } else {
@@ -974,10 +1008,10 @@ async function processSmartArrivals(group, matchDetails) {
                }
            } else {
                const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
-               // If it's night time, heavily slash retention max missing time to 45 seconds to prevent ghost waiting
-               const maxMissingTime = isNight ? 45000 : ((nextBusEta > 15) ? 240000 : 150000); 
+               // Slashing retention at night, extending strictly during peak traffic bottlenecks
+               const maxMissingTime = isNight ? 45000 : ((nextBusEta > 15) ? maxZeroTolerance : 150000); 
                
-               if (timeSpentAtZero > (isNight ? 45000 : 240000) || timeSinceLost > maxMissingTime) { 
+               if (timeSpentAtZero > maxZeroTolerance || timeSinceLost > maxMissingTime) { 
                    delete busStateMap[groupKey];
                } else {
                    let projectedMins = Math.max(0, Math.round(activeState.filter.x - (timeSinceLost / 60000)));
@@ -986,19 +1020,21 @@ async function processSmartArrivals(group, matchDetails) {
                    if (boxOffEl) boxOffEl.style.display = 'none';
                    
                    if (projectedMins === 0) {
-                       if (timeSinceLost > 10000) { 
-                           // Vanished from API: Pulse 'Departing' text
+                       const remainingTolerance = maxZeroTolerance - timeSpentAtZero;
+                       
+                       // Only show departing in the final 40 seconds of tolerance to avoid false positives during traffic jams
+                       if (remainingTolerance < 40000 || (isNight && timeSinceLost > 10000)) { 
                            lblSmartEl.innerText = getT('arrivingLabel');
                            smartEl.innerText = getT('departing');
                            smartEl.className = 'smart-eta departing';
                        } else if (timeSpentAtZero > 75000 && !isNight) {
-                           // Lingering at zero for traffic logic (Daytime only)
+                           // Lingering at zero for traffic logic
                            lblSmartEl.innerText = getT('arrivingLabel'); 
                            smartEl.innerText = getT('delayed');
                            smartEl.className = 'smart-eta delayed';
                        } else {
                            lblSmartEl.innerText = getT('arrivingLabel');
-                           smartEl.innerText = getT('arriving');
+                           smartEl.innerText = getT('due');
                            smartEl.className = 'smart-eta arriving';
                        }
                    } else {
@@ -1008,9 +1044,12 @@ async function processSmartArrivals(group, matchDetails) {
                        offEl.innerText = '--';
                    }
                    
-                   let barHtml = '';
-                   for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeState.activeBars ? activeState.colorClass : ''}"></div>`;
-                   document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
+                   const activeOcc = activeState.occState || 'pair';
+                   const barsEl = document.getElementById(`bars-${groupKey}`);
+                   if(barsEl) {
+                       barsEl.className = `occ-pill ${getOccData(activeOcc).class}`;
+                       barsEl.innerText = `${getOccData(activeOcc).icon} ${getT(getOccData(activeOcc).key)}`;
+                   }
                    occSecEl.style.display = 'flex';
                    return; 
                }
@@ -1046,9 +1085,12 @@ async function processSmartArrivals(group, matchDetails) {
     const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
     
-    // Occupancy (calculate using actual now)
-    const { pct, activeBars } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now);
+    // Text-Based Occupancy Check
+    const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now);
     
+    // Practical Outcome Mapping
+    let occState = pct > 75 ? 'standing' : (pct > 45 ? 'single' : 'pair');
+
     // Dwell Penalty Logic
     let dwellPenaltyMins = 0;
     if (pct > 85) dwellPenaltyMins = 1.5;
@@ -1059,10 +1101,12 @@ async function processSmartArrivals(group, matchDetails) {
         effectiveRawEta += dwellPenaltyMins;
     }
 
-    let colorClass = pct > 85 ? 'active-red' : (pct > 65 ? 'active-orange' : 'active-green');
-    let barHtml = '';
-    for (let i = 1; i <= 10; i++) barHtml += `<div class="segment ${i <= activeBars ? colorClass : ''}"></div>`;
-    document.getElementById(`bars-${groupKey}`).innerHTML = barHtml;
+    const barsEl = document.getElementById(`bars-${groupKey}`);
+    const occInfo = getOccData(occState);
+    if(barsEl) {
+        barsEl.className = `occ-pill ${occInfo.class}`;
+        barsEl.innerText = `${occInfo.icon} ${getT(occInfo.key)}`;
+    }
     occSecEl.style.display = 'flex';
 
     let smartMins = effectiveRawEta;
@@ -1074,8 +1118,8 @@ async function processSmartArrivals(group, matchDetails) {
              smartMins = rawEtaMins;
         } else {
              // Time-aware padding reduction for mid-route stops
-             const isPeak = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
-             const scheduleMultiplier = isPeak ? 0.90 : 0.70;
+             const isPeakPadding = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
+             const scheduleMultiplier = isPeakPadding ? 0.90 : 0.70;
              const convergenceFactor = rawEtaMins < 10 ? 1.0 : scheduleMultiplier;
              smartMins = Math.max(0, Math.floor(rawEtaMins * convergenceFactor)); 
         }
@@ -1085,7 +1129,7 @@ async function processSmartArrivals(group, matchDetails) {
         
         busStateMap[groupKey] = {
            isScheduled: true, timestamp: now, pseudoBusId: pseudoBusId, 
-           activeBars: activeBars, colorClass: colorClass
+           occState: occState
         };
       } else {
         lblSmartEl.innerText = getT('actual');
@@ -1106,7 +1150,7 @@ async function processSmartArrivals(group, matchDetails) {
              // Re-initialize standard variables (using new 3-param constructor)
              filter: new KalmanFilter1D(0.1, effectiveRawEta, 1.0),
              timestamp: now, pseudoBusId: pseudoBusId, 
-             activeBars: activeBars, colorClass: colorClass,
+             occState: occState,
              firstZeroTime: (rawEtaMins === 0) ? now : null 
           };
         } else {
@@ -1121,8 +1165,7 @@ async function processSmartArrivals(group, matchDetails) {
         const state = busStateMap[groupKey];
         const dtMins = (now - state.timestamp) / 60000;
         
-        state.activeBars = activeBars;
-        state.colorClass = colorClass;
+        state.occState = occState;
         
         if (dtMins > 0) {
            const isOptimistic = (effectiveRawEta < state.filter.x);
@@ -1215,6 +1258,13 @@ async function processSmartArrivals(group, matchDetails) {
         cardEl.classList.add('inactive');
     }
   }
+}
+
+// Occupancy Data Helper
+function getOccData(state) {
+    if (state === 'standing') return { class: 'occ-standing', key: 'standing', icon: '🧍' };
+    if (state === 'single') return { class: 'occ-single', key: 'singleSeats', icon: '💺' };
+    return { class: 'occ-pair', key: 'pairSeats', icon: '💺' };
 }
 
 function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, currentTimestamp) {
@@ -1317,9 +1367,8 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   else if (mixedHeavy.includes(routeNo)) capacityDivider = 1.25; 
 
   let pct = Math.min(100, Math.max(0, Math.round(rawVolume / capacityDivider)));
-  const activeBars = Math.min(10, Math.max(1, Math.ceil(pct / 10)));
   
-  return { pct, activeBars };
+  return { pct };
 }
 
 let isSyncing = false;
