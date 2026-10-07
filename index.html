@@ -15,6 +15,7 @@
     --accent-red: #e31837;
     --accent-green: #30d158;
     --accent-orange: #ff9f0a;
+    --accent-blue: #0a84ff;
     
     /* Directional Colors (Subtle Left Border Only) */
     --dir-blue: #0a84ff;    /* Tung Chung */
@@ -250,7 +251,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-07 10:14 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 10:13 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -414,16 +415,21 @@ async function initApp() {
   try {
     document.getElementById('loadingText').innerText = getT('loadingIndex');
     
-    // Bumped cache key to v8 for Full Network Integration
-    const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v8');
-    const cachedStops = localStorage.getItem('pulse_stops_v8');
-    const cacheTime = localStorage.getItem('pulse_cache_time_v8');
+    const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v9');
+    const cachedStops = localStorage.getItem('pulse_stops_v9');
+    const cacheTime = localStorage.getItem('pulse_cache_time_v9');
     const now = Date.now(); 
 
-    if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
-      groupedRoutes = JSON.parse(cachedGrouped);
-      routeStopsCache = JSON.parse(cachedStops);
-    } else {
+    let loadedFromCache = false;
+    try {
+        if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
+          groupedRoutes = JSON.parse(cachedGrouped);
+          routeStopsCache = JSON.parse(cachedStops);
+          loadedFromCache = true;
+        }
+    } catch(e) { console.warn("Cache parsing error, resetting.", e); }
+
+    if (!loadedFromCache) {
       document.getElementById('loadingText').innerText = getT('syncing');
       
       const groupedMap = new Map();
@@ -432,7 +438,7 @@ async function initApp() {
       // 1. Fetch NLB Data
       try {
           const nlbRData = await fetchJSON(`${NLB_API_BASE}/route.php?action=list`);
-          const rawNlbRoutes = nlbRData.routes || [];
+          const rawNlbRoutes = Array.isArray(nlbRData.routes) ? nlbRData.routes : [];
           
           rawNlbRoutes.forEach(r => {
             const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
@@ -454,15 +460,15 @@ async function initApp() {
             await Promise.all(chunk.map(async (r) => {
               try {
                 const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
-                routeStopsCache[`NLB_${r.routeId}`] = res.stops || [];
+                routeStopsCache[`NLB_${r.routeId}`] = Array.isArray(res.stops) ? res.stops : [];
               } catch(e) { routeStopsCache[`NLB_${r.routeId}`] = []; }
             }));
           }
-      } catch(e) { console.error("NLB Fetch failed", e); }
+      } catch(e) { console.warn("NLB Fetch failed", e); }
 
       document.getElementById('loadingText').innerText = getT('building');
 
-      // 2. Fetch Mass KMB/LWB Data
+      // 2. Fetch Mass KMB/LWB Data Safely
       try {
           const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
               fetch(`${KMB_API_BASE}/route/`).then(r=>r.json()).catch(()=>null),
@@ -471,9 +477,9 @@ async function initApp() {
           ]);
 
           const allKmbStops = {};
-          if (kmbStopsRes && kmbStopsRes.data) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
+          if (kmbStopsRes && Array.isArray(kmbStopsRes.data)) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
 
-          if (kmbRoutesRes && kmbRoutesRes.data && kmbRouteStopsRes && kmbRouteStopsRes.data) {
+          if (kmbRoutesRes && Array.isArray(kmbRoutesRes.data) && kmbRouteStopsRes && Array.isArray(kmbRouteStopsRes.data)) {
               const kmbRouteStopsMap = {};
               kmbRouteStopsRes.data.forEach(rs => {
                   const key = `KMB_${rs.route}_${rs.bound}_${rs.service_type}`;
@@ -484,7 +490,7 @@ async function initApp() {
               kmbRoutesRes.data.forEach(r => {
                   const rId = `KMB_${r.route}_${r.bound}_${r.service_type}`;
                   const rsData = kmbRouteStopsMap[rId];
-                  if (!rsData) return;
+                  if (!rsData || !Array.isArray(rsData)) return;
 
                   rsData.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
                   const mappedStops = rsData.map(rs => {
@@ -512,7 +518,7 @@ async function initApp() {
                   }
               });
           }
-      } catch(e) { console.error("KMB Fetch failed", e); }
+      } catch(e) { console.warn("KMB Fetch failed", e); }
 
       // 3. Fetch Citybus (CTB) & GMB Route Index ONLY (Lazy Loaded GPS Data)
       try {
@@ -523,21 +529,27 @@ async function initApp() {
               fetch(`${GMB_API_BASE}/route/3`).then(r=>r.json()).catch(()=>null)
           ]);
 
-          if (ctbRes && ctbRes.data) {
+          if (ctbRes && Array.isArray(ctbRes.data)) {
               ctbRes.data.forEach(r => {
-                  const cleanDestE = formatStopName(r.dest_en);
-                  const groupKey = `CTB_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-                  groupedMap.set(groupKey, {
-                      key: groupKey, routeNo: r.route, dest_e: cleanDestE, dest_c: r.dest_tc, dest_s: r.dest_sc,
+                  const destE = formatStopName(r.dest_en);
+                  const origE = formatStopName(r.orig_en);
+                  
+                  groupedMap.set(`CTB_${r.route}___${destE}`, {
+                      key: `CTB_${r.route}___${destE}`, routeNo: r.route, dest_e: destE, dest_c: r.dest_tc, dest_s: r.dest_sc,
                       routeIds: [`CTB_OUT_${r.route}`], company: 'CTB', isLazyLoad: true
+                  });
+                  groupedMap.set(`CTB_${r.route}___${origE}`, {
+                      key: `CTB_${r.route}___${origE}`, routeNo: r.route, dest_e: origE, dest_c: r.orig_tc, dest_s: r.orig_sc,
+                      routeIds: [`CTB_IN_${r.route}`], company: 'CTB', isLazyLoad: true
                   });
               });
           }
 
           const gmbProcess = (res) => {
-              if (!res || !res.data) return;
+              if (!res || !Array.isArray(res.data)) return;
               res.data.forEach(r => {
-                  const cleanDestE = formatStopName(r.description_en.split(' to ')[1] || r.description_en);
+                  const destText = r.description_en || '';
+                  const cleanDestE = formatStopName(destText.split(' to ')[1] || destText);
                   const groupKey = `GMB_${r.route_code}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
                   groupedMap.set(groupKey, {
                       key: groupKey, routeNo: r.route_code, dest_e: cleanDestE, dest_c: r.description_tc, dest_s: r.description_tc,
@@ -547,14 +559,14 @@ async function initApp() {
           };
           [gmbHki, gmbKln, gmbNt].forEach(gmbProcess);
 
-      } catch(e) { console.error("CTB/GMB Indexing failed", e); }
+      } catch(e) { console.warn("CTB/GMB Indexing failed", e); }
 
       groupedRoutes = Array.from(groupedMap.values());
 
       try {
-        localStorage.setItem('pulse_grouped_routes_v8', JSON.stringify(groupedRoutes));
-        localStorage.setItem('pulse_stops_v8', JSON.stringify(routeStopsCache));
-        localStorage.setItem('pulse_cache_time_v8', Date.now().toString());
+        localStorage.setItem('pulse_grouped_routes_v9', JSON.stringify(groupedRoutes));
+        localStorage.setItem('pulse_stops_v9', JSON.stringify(routeStopsCache));
+        localStorage.setItem('pulse_cache_time_v9', Date.now().toString());
       } catch (e) {}
     }
     
@@ -568,7 +580,8 @@ async function initApp() {
     updateFavButtonUI();
     
     autoGpsEnabled = true;
-    document.getElementById('gpsBtn').classList.add('active-gps');
+    const gpsBtn = document.getElementById('gpsBtn');
+    if (gpsBtn) gpsBtn.classList.add('active-gps');
     
     if (savedStop && allStops.some(s => s.stopName_e === savedStop)) {
       currentStopName_e = savedStop;
@@ -586,7 +599,9 @@ async function initApp() {
     startAppLoop();
 
   } catch (err) {
-    document.getElementById('loadingText').innerText = "Network Error: Could not connect to API.";
+    const loadingEl = document.getElementById('loadingText');
+    if (loadingEl) loadingEl.innerText = "Network Error: Could not connect to API.";
+    console.error(err);
   }
 }
 
@@ -599,7 +614,7 @@ function buildAllStopsList() {
 }
 
 function getStopsForGroup(group) {
-  if (group.isLazyLoad) return allStops; // Lazy loaded routes show global stops until fetched
+  if (group.isLazyLoad) return allStops; 
   const uniqueMap = new Map();
   group.routeIds.forEach(id => {
     (routeStopsCache[id] || []).forEach(s => {
@@ -613,24 +628,67 @@ function getStopsForGroup(group) {
 async function lazyLoadRoute(group) {
     if (!group.isLazyLoad) return;
     
-    document.getElementById('loadingText').innerText = `Fetching ${group.company} ${group.routeNo} GPS paths...`;
-    document.getElementById('loadingText').style.display = 'block';
+    const loadingEl = document.getElementById('loadingText');
+    if (loadingEl) {
+        loadingEl.innerText = `Fetching ${group.company} ${group.routeNo} GPS paths...`;
+        loadingEl.style.display = 'block';
+    }
 
     if (group.company === 'CTB') {
         const routeNo = group.routeNo;
         try {
-            const [outbound, inbound] = await Promise.all([
-                fetch(`${CTB_API_BASE}/route-stop/ctb/${routeNo}/outbound`).then(r=>r.json()).catch(()=>null),
-                fetch(`${CTB_API_BASE}/route-stop/ctb/${routeNo}/inbound`).then(r=>r.json()).catch(()=>null)
-            ]);
-            // Simplified lazy mapping (using global stops as fallback for CTB)
+            const isOut = group.routeIds[0].includes('_OUT_');
+            const targetDir = isOut ? 'outbound' : 'inbound';
+            
+            const routeData = await fetch(`${CTB_API_BASE}/route-stop/ctb/${routeNo}/${targetDir}`).then(r=>r.json()).catch(()=>null);
+            
+            if (routeData && Array.isArray(routeData.data)) {
+                const stopPromises = routeData.data.map(async rs => {
+                    const stopInfo = await fetch(`${CTB_API_BASE}/stop/${rs.stop}`).then(r=>r.json()).catch(()=>null);
+                    if (stopInfo && stopInfo.data) {
+                        return {
+                            stopId: rs.stop, stopName_e: formatStopName(stopInfo.data.name_en),
+                            stopName_c: stopInfo.data.name_tc, stopName_s: stopInfo.data.name_sc || stopInfo.data.name_tc,
+                            latitude: stopInfo.data.lat, longitude: stopInfo.data.long, seq: rs.seq
+                        };
+                    }
+                    return null;
+                });
+                const newStops = (await Promise.all(stopPromises)).filter(s => s !== null);
+                newStops.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
+                routeStopsCache[group.routeIds[0]] = newStops;
+            }
             group.isLazyLoad = false;
         } catch(e){}
     } else if (group.company === 'GMB') {
-        // GMB implementation
-        group.isLazyLoad = false;
+        try {
+            const rawGmbId = group.routeIds[0].replace('GMB_', '');
+            const gmbStopsRes = await fetch(`${GMB_API_BASE}/route-stop/${rawGmbId}/1`).then(r=>r.json()).catch(()=>null);
+            
+            let newStops = [];
+            if (gmbStopsRes && Array.isArray(gmbStopsRes.data)) {
+                gmbStopsRes.data.forEach(rs => {
+                    newStops.push({
+                        stopId: rs.stop_id, stopName_e: formatStopName(rs.name_en),
+                        stopName_c: rs.name_tc, stopName_s: rs.name_sc || rs.name_tc,
+                        latitude: rs.location.coordinates[1], longitude: rs.location.coordinates[0], seq: rs.stop_seq
+                    });
+                });
+            }
+            routeStopsCache[group.routeIds[0]] = newStops;
+            group.isLazyLoad = false;
+        } catch(e){}
     }
-    document.getElementById('loadingText').style.display = 'none';
+    
+    if (!group.isLazyLoad) {
+        buildAllStopsList();
+        try {
+            localStorage.setItem('pulse_stops_v9', JSON.stringify(routeStopsCache));
+            localStorage.setItem('pulse_grouped_routes_v9', JSON.stringify(groupedRoutes));
+        } catch(e){}
+    }
+
+    if (loadingEl) loadingEl.style.display = 'none';
 }
 
 // --- Custom Search Modal Logic ---
@@ -739,8 +797,10 @@ async function selectModalItem(type, value) {
         
     } else if (type === 'stop') {
         autoGpsEnabled = false;
-        document.getElementById('gpsBtn').classList.remove('active-gps');
-        document.getElementById('gpsStatus').innerText = getT('manual');
+        const gpsBtn = document.getElementById('gpsBtn');
+        if (gpsBtn) gpsBtn.classList.remove('active-gps');
+        const gpsStatusEl = document.getElementById('gpsStatus');
+        if (gpsStatusEl) gpsStatusEl.innerText = getT('manual');
         
         currentStopName_e = value;
         localStorage.setItem('pulse_stop', currentStopName_e);
@@ -757,19 +817,20 @@ function toggleFavorite() {
     
     if (idx > -1) {
         favStops.splice(idx, 1);
-        msgEl.innerText = getT('favRemoved');
+        if (msgEl) msgEl.innerText = getT('favRemoved');
     } else {
         favStops.push(currentStopName_e);
-        msgEl.innerText = getT('favAdded');
+        if (msgEl) msgEl.innerText = getT('favAdded');
     }
     localStorage.setItem('pulse_fav_stops', JSON.stringify(favStops));
     updateFavButtonUI();
     
-    setTimeout(() => { if (msgEl.innerText) msgEl.innerText = ''; }, 3000);
+    setTimeout(() => { if (msgEl && msgEl.innerText) msgEl.innerText = ''; }, 3000);
 }
 
 function updateFavButtonUI() {
     const btn = document.getElementById('favBtn');
+    if (!btn) return;
     if (currentStopName_e && favStops.includes(currentStopName_e)) {
         btn.classList.add('active-fav');
         btn.innerText = '★';
@@ -782,9 +843,13 @@ function updateFavButtonUI() {
 
 function resetAndFetch() {
   detailModeRouteKey = null;
-  document.getElementById('detailControls').style.display = 'none';
-  document.getElementById('routeList').classList.remove('detail-mode');
-  document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
+  const detailControls = document.getElementById('detailControls');
+  if (detailControls) detailControls.style.display = 'none';
+  const routeList = document.getElementById('routeList');
+  if (routeList) {
+      routeList.classList.remove('detail-mode');
+      routeList.innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
+  }
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
   updateNetworkTelemetry();
@@ -799,11 +864,13 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
 function locateNearestStopPromise(isManualClick = false) {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
-            if (isManualClick) document.getElementById('gpsStatus').innerText = getT('gpsNotSupported');
+            const el = document.getElementById('gpsStatus');
+            if (isManualClick && el) el.innerText = getT('gpsNotSupported');
             return resolve(false);
         }
         
-        if (isManualClick) document.getElementById('gpsStatus').innerText = getT('locating');
+        const el = document.getElementById('gpsStatus');
+        if (isManualClick && el) el.innerText = getT('locating');
 
         navigator.geolocation.getCurrentPosition((pos) => {
             let closest = null, minDistance = Infinity;
@@ -817,7 +884,8 @@ function locateNearestStopPromise(isManualClick = false) {
 
             if (closest) {
                 const distMeters = Math.round(minDistance * 1000);
-                document.getElementById('gpsStatus').innerText = `${getT('nearest')} ${distMeters}m`;
+                const statusEl = document.getElementById('gpsStatus');
+                if (statusEl) statusEl.innerText = `${getT('nearest')} ${distMeters}m`;
                 
                 if (closest.stopName_e !== currentStopName_e) {
                     currentStopName_e = closest.stopName_e;
@@ -829,11 +897,13 @@ function locateNearestStopPromise(isManualClick = false) {
                     resolve(false); 
                 }
             } else {
-                if (isManualClick) document.getElementById('gpsStatus').innerText = getT('noStops');
+                const statusEl = document.getElementById('gpsStatus');
+                if (isManualClick && statusEl) statusEl.innerText = getT('noStops');
                 resolve(false);
             }
         }, () => {
-            if (isManualClick) document.getElementById('gpsStatus').innerText = getT('gpsDenied');
+            const statusEl = document.getElementById('gpsStatus');
+            if (isManualClick && statusEl) statusEl.innerText = getT('gpsDenied');
             resolve(false);
         }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 });
     });
@@ -841,8 +911,10 @@ function locateNearestStopPromise(isManualClick = false) {
 
 async function manualGpsSync() {
     autoGpsEnabled = true;
-    document.getElementById('gpsBtn').classList.add('active-gps');
-    document.getElementById('gpsStatus').style.color = 'var(--accent-green)';
+    const btn = document.getElementById('gpsBtn');
+    if (btn) btn.classList.add('active-gps');
+    const statusEl = document.getElementById('gpsStatus');
+    if (statusEl) statusEl.style.color = 'var(--accent-green)';
     await locateNearestStopPromise(true);
     resetAndFetch();
 }
@@ -872,8 +944,7 @@ async function updateNetworkTelemetry() {
     for (const group of groupsToCheck) {
       const matchDetails = [];
       
-      // Fallback for lazy loaded APIs that couldn't map stops perfectly
-      if (group.isLazyLoad || (group.company === 'CTB') || (group.company === 'GMB')) {
+      if (group.isLazyLoad || group.company === 'CTB' || group.company === 'GMB') {
           const pseudoTarget = allStops.find(s => s.stopName_e === currentStopName_e);
           if (pseudoTarget) matchDetails.push({ routeId: group.routeIds[0], stops: [pseudoTarget], targetIndex: 0 });
       } else {
@@ -892,6 +963,7 @@ async function updateNetworkTelemetry() {
     }
 
     const listEl = document.getElementById('routeList');
+    if (!listEl) return;
     
     const loadingEl = document.getElementById('loadingText');
     if (loadingEl) loadingEl.remove();
@@ -1000,37 +1072,37 @@ async function processSmartArrivals(group, matchDetails) {
         const routeNo = parts[1]; const dir = parts[2]; const serviceType = parts[3];
         try {
             const [tResp, uResp] = await Promise.all([
-                fetch(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null),
-                upstreamStop ? fetch(`${KMB_API_BASE}/eta/${upstreamStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null) : Promise.resolve(null)
+                fetch(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`).then(r=>r.json()).catch(()=>null),
+                upstreamStop ? fetch(`${KMB_API_BASE}/eta/${upstreamStop.stopId}/${routeNo}/${serviceType}`).then(r=>r.json()).catch(()=>null) : Promise.resolve(null)
             ]);
             const mapKmbEta = (resObj) => {
-                if (!resObj || !resObj.data) return null;
+                if (!resObj || !Array.isArray(resObj.data)) return null;
                 const valid = resObj.data.filter(e => e.dir === dir && e.eta);
                 return { estimatedArrivals: valid.map(e => ({ estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19), generateTime: e.data_timestamp.replace('T', ' ').substring(0, 19), noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0 })) };
             };
-            if (tResp && tResp.ok) targetEtaRes = mapKmbEta(await tResp.json());
-            if (uResp && uResp.ok) upstreamEtaRes = mapKmbEta(await uResp.json());
+            if (tResp) targetEtaRes = mapKmbEta(tResp);
+            if (uResp) upstreamEtaRes = mapKmbEta(uResp);
         } catch(e) {}
       } 
       else if (group.company === 'CTB') {
         try {
-            const tResp = await fetch(`${CTB_API_BASE}/eta/ctb/${targetStop.stopId}/${group.routeNo}`).catch(()=>null);
+            const tResp = await fetch(`${CTB_API_BASE}/eta/ctb/${targetStop.stopId}/${group.routeNo}`).then(r=>r.json()).catch(()=>null);
             const mapCtbEta = (resObj) => {
-                if (!resObj || !resObj.data) return null;
-                return { estimatedArrivals: resObj.data.map(e => ({ estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19), generateTime: e.data_timestamp.replace('T', ' ').substring(0, 19), noGPS: 0 })) };
+                if (!resObj || !Array.isArray(resObj.data)) return null;
+                return { estimatedArrivals: resObj.data.filter(e=>e.dir==='O'||e.dir==='I').map(e => ({ estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19), generateTime: e.data_timestamp.replace('T', ' ').substring(0, 19), noGPS: 0 })) };
             };
-            if (tResp && tResp.ok) targetEtaRes = mapCtbEta(await tResp.json());
+            if (tResp) targetEtaRes = mapCtbEta(tResp);
         } catch(e) {}
       }
       else if (group.company === 'GMB') {
         try {
             const rawGmbId = m.routeId.replace('GMB_', '');
-            const tResp = await fetch(`${GMB_API_BASE}/eta/${rawGmbId}/${targetStop.stopId}`).catch(()=>null);
+            const tResp = await fetch(`${GMB_API_BASE}/eta/${rawGmbId}/${targetStop.stopId}`).then(r=>r.json()).catch(()=>null);
             const mapGmbEta = (resObj) => {
-                if (!resObj || !resObj.data || !resObj.data[0] || !resObj.data[0].eta) return null;
+                if (!resObj || !Array.isArray(resObj.data) || !resObj.data[0] || !Array.isArray(resObj.data[0].eta)) return null;
                 return { estimatedArrivals: resObj.data[0].eta.map(e => ({ estimatedArrivalTime: e.timestamp.replace('T', ' ').substring(0, 19), generateTime: new Date().toISOString().replace('T', ' ').substring(0, 19), noGPS: 0 })) };
             };
-            if (tResp && tResp.ok) targetEtaRes = mapGmbEta(await tResp.json());
+            if (tResp) targetEtaRes = mapGmbEta(tResp);
         } catch(e) {}
       }
       else {
@@ -1129,7 +1201,7 @@ async function processSmartArrivals(group, matchDetails) {
                    const activeOcc = activeState.occState || 'pair';
                    const barsEl = document.getElementById(`bars-${groupKey}`);
                    if(barsEl) { barsEl.className = `occ-pill ${getOccData(activeOcc).class}`; barsEl.innerText = `${getOccData(activeOcc).icon} ${getT(getOccData(activeOcc).key)}`; }
-                   occSecEl.style.display = 'flex'; return; 
+                   if (occSecEl) occSecEl.style.display = 'flex'; return; 
                } else { delete busStateMap[groupKey]; }
            } else {
                const timeSpentAtZero = activeState.firstZeroTime ? (now - activeState.firstZeroTime) : 0;
@@ -1159,7 +1231,7 @@ async function processSmartArrivals(group, matchDetails) {
                    const activeOcc = activeState.occState || 'pair';
                    const barsEl = document.getElementById(`bars-${groupKey}`);
                    if(barsEl) { barsEl.className = `occ-pill ${getOccData(activeOcc).class}`; barsEl.innerText = `${getOccData(activeOcc).icon} ${getT(getOccData(activeOcc).key)}`; }
-                   occSecEl.style.display = 'flex'; return; 
+                   if (occSecEl) occSecEl.style.display = 'flex'; return; 
                }
            }
        }
@@ -1201,7 +1273,7 @@ async function processSmartArrivals(group, matchDetails) {
     const barsEl = document.getElementById(`bars-${groupKey}`);
     const occInfo = getOccData(occState);
     if(barsEl) { barsEl.className = `occ-pill ${occInfo.class}`; barsEl.innerText = `${occInfo.icon} ${getT(occInfo.key)}`; }
-    occSecEl.style.display = 'flex';
+    if (occSecEl) occSecEl.style.display = 'flex';
 
     let smartMins = effectiveRawEta;
     
@@ -1276,7 +1348,7 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     cardEl.dataset.smartMins = smartMins;
-    offEl.innerText = rawEtaMins === 0 ? getT('due') : `${rawEtaMins}${getT('min')}`;
+    if (offEl) offEl.innerText = rawEtaMins === 0 ? getT('due') : `${rawEtaMins}${getT('min')}`;
 
     if (smartMins === 0) {
       const state = busStateMap[groupKey];
@@ -1372,19 +1444,22 @@ let isSyncing = false;
 function startTimer() {
   clearInterval(timerInterval);
   countdown = REFRESH_INTERVAL;
-  document.getElementById('refreshTimer').innerText = `${getT('refresh')} ${countdown}s`;
+  const timerEl = document.getElementById('refreshTimer');
+  if (timerEl) timerEl.innerText = `${getT('refresh')} ${countdown}s`;
   
   timerInterval = setInterval(async () => {
     if (isSyncing) return;
     countdown--;
     if (countdown <= 0) {
       isSyncing = true; countdown = REFRESH_INTERVAL;
-      document.getElementById('refreshTimer').innerText = getT('refreshing');
+      const el = document.getElementById('refreshTimer');
+      if (el) el.innerText = getT('refreshing');
       if (autoGpsEnabled) await locateNearestStopPromise(false); 
       await updateNetworkTelemetry();
       isSyncing = false;
     } else {
-      document.getElementById('refreshTimer').innerText = `${getT('refresh')} ${countdown}s`;
+      const el = document.getElementById('refreshTimer');
+      if (el) el.innerText = `${getT('refresh')} ${countdown}s`;
     }
   }, 1000);
 }
