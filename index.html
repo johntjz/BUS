@@ -248,7 +248,7 @@ const REFRESH_INTERVAL = 15;
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-07 09:45 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 10:14 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -319,7 +319,6 @@ let autoGpsEnabled = true;
 let serverClockOffset = 0;
 let isClockSynced = false;
 
-// Modal State
 let activeModalType = null; 
 
 function getNow() { return Date.now() + serverClockOffset; }
@@ -735,6 +734,7 @@ function resetAndFetch() {
   document.getElementById('detailControls').style.display = 'none';
   document.getElementById('routeList').classList.remove('detail-mode');
 
+  // Explicitly give id="loadingText" so updateNetworkTelemetry can purge it reliably
   document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
