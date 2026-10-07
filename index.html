@@ -282,7 +282,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 13:17 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 13:31 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -296,7 +296,7 @@ const i18n = {
     liveETA: "Fetching live arrivals...", locating: "Locating...", nearest: "Nearest:",
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
     gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
-    to: "To", due: "Due", delayed: "Delayed", departing: "Departing", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
+    to: "To", due: "Due", delayed: "Delayed", departing: "Departing", departingSoon: "Departing soon", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
     official: "Official", actual: "Actual ETA", scheduled: "Scheduled", 
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
@@ -312,7 +312,7 @@ const i18n = {
     liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
-    to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", departingSoon: "即將開出", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "實際預計", scheduled: "預定班次",
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
@@ -328,7 +328,7 @@ const i18n = {
     liveETA: "获取实时班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
     gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
-    to: "往", due: "即将到达", delayed: "延误", departing: "刚驶离", min: "分钟", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即将到达", delayed: "延误", departing: "刚驶离", departingSoon: "即将开出", min: "分钟", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "实际预计", scheduled: "预定班次",
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
@@ -1070,7 +1070,9 @@ async function processSmartArrivals(group, matchDetails) {
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
     // Build sub-ETAs
-    if (subsEl) {
+    const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
+
+    if (subsEl && activeItem) {
         if (combinedArrivals.length > 1) {
             let subsHtml = '';
             for (let i = 1; i < combinedArrivals.length && i <= 2; i++) {
@@ -1084,7 +1086,7 @@ async function processSmartArrivals(group, matchDetails) {
                 const cRawMins = Math.max(0, Math.floor(((cArr.getTime() - cSrv.getTime()) - cElapsed) / 60000));
                 const isNoGPS = cBus.noGPS === 1 || cBus.noGPS === '1';
                 
-                const timeText = cRawMins === 0 ? getT('due') : `${cRawMins}${getT('min')}`;
+                const timeText = cRawMins === 0 ? (activeItem.targetIndex === 0 ? getT('departingSoon') : getT('due')) : `${cRawMins}${getT('min')}`;
                 const labelText = isNoGPS ? getT('scheduled') : getT('actual');
                 const timeColor = isNoGPS ? 'var(--accent-orange)' : 'var(--text-primary)';
                 const seqName = i === 1 ? getT('next1') : getT('next2');
@@ -1143,7 +1145,7 @@ async function processSmartArrivals(group, matchDetails) {
                    if (boxOffEl) boxOffEl.style.display = 'none';
                    
                    lblSmartEl.innerText = getT('scheduled');
-                   smartEl.innerText = getT('due');
+                   smartEl.innerText = (activeItem && activeItem.targetIndex === 0) ? getT('departingSoon') : getT('due');
                    smartEl.className = 'smart-eta arriving';
                    
                    const activeOcc = activeState.occState || 'pair';
@@ -1183,7 +1185,7 @@ async function processSmartArrivals(group, matchDetails) {
                            smartEl.className = 'smart-eta delayed';
                        } else {
                            lblSmartEl.innerText = getT('arrivingLabel');
-                           smartEl.innerText = getT('due');
+                           smartEl.innerText = (activeItem && activeItem.targetIndex === 0) ? getT('departingSoon') : getT('due');
                            smartEl.className = 'smart-eta arriving';
                        }
                    } else {
@@ -1221,7 +1223,6 @@ async function processSmartArrivals(group, matchDetails) {
     
     if (cardEl) cardEl.classList.remove('inactive');
     
-    const activeItem = combinedArrivals[0];
     const activeBus = activeItem.arrival;
     const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
     const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
@@ -1377,7 +1378,7 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     cardEl.dataset.smartMins = smartMins;
-    offEl.innerText = rawEtaMins === 0 ? getT('due') : `${rawEtaMins}${getT('min')}`;
+    offEl.innerText = rawEtaMins === 0 ? (activeItem.targetIndex === 0 ? getT('departingSoon') : getT('due')) : `${rawEtaMins}${getT('min')}`;
 
     if (smartMins === 0) {
       const state = busStateMap[groupKey];
@@ -1389,7 +1390,7 @@ async function processSmartArrivals(group, matchDetails) {
           smartEl.className = 'smart-eta delayed';
       } else {
           lblSmartEl.innerText = getT('arrivingLabel');
-          smartEl.innerText = getT('due');
+          smartEl.innerText = (activeItem.targetIndex === 0) ? getT('departingSoon') : getT('due');
           smartEl.className = 'smart-eta arriving';
       }
     } else {
@@ -1477,8 +1478,8 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 15; 
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 25;
     } else if (hour >= 10 && hour <= 16) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 35 : 20; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 20;
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry') || dest.includes('tai o')) ? 35 : 20; 
+      if (['2', '4', '21'].includes(routeNo)) baseLoad = 20;
     } else if (hour >= 17 && hour <= 19) {
       baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20; 
       if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 35;
