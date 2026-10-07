@@ -176,9 +176,17 @@
   .sub-eta-label { font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
   .sub-eta-time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
-  /* Inactive Routes Toggle */
+  /* Route Filtering CSS Logic */
   .route-card.inactive { display: none; }
+  .route-card.terminating { display: none; }
+  
   .show-inactive .route-card.inactive { display: flex; }
+  .show-terminating .route-card.terminating { display: flex; opacity: 0.7; }
+  
+  /* Prevents a terminating card with no buses from showing up unless BOTH toggles are active */
+  .route-card.inactive.terminating { display: none !important; }
+  .show-inactive.show-terminating .route-card.inactive.terminating { display: flex !important; }
+
   .toggle-btn {
     background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border);
     padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: auto; display: block;
@@ -247,7 +255,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 12:49 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 12:59 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -265,6 +273,8 @@ const i18n = {
     official: "Official", actual: "Actual ETA", scheduled: "Scheduled (No GPS)",
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
+    showTerminating: "Show arriving buses", hideTerminating: "Hide arriving buses",
+    terminatingHere: "Terminating Here",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
     pairSeats: "Row-free", singleSeats: "Shared", standing: "Standing Only"
@@ -279,6 +289,8 @@ const i18n = {
     official: "官方", actual: "實際預計", scheduled: "預定班次 (無GPS)",
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
+    showTerminating: "顯示抵達本站巴士", hideTerminating: "隱藏抵達本站巴士",
+    terminatingHere: "以此站為終點",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
     manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
     pairSeats: "雙座空置", singleSeats: "旁邊有人", standing: "只限企位"
@@ -293,6 +305,8 @@ const i18n = {
     official: "官方", actual: "实际预计", scheduled: "预定班次 (无GPS)",
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
+    showTerminating: "显示抵达本站巴士", hideTerminating: "隐藏抵达本站巴士",
+    terminatingHere: "以此站为终点",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
     manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
     pairSeats: "双人空位", singleSeats: "旁有乘客", standing: "仅限站位"
@@ -312,6 +326,7 @@ let groupedRoutes = [];
 let routeStopsCache = {};
 const busStateMap = {}; 
 let showInactive = false;
+let showTerminating = false;
 let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops') || '[]');
 
 let autoGpsEnabled = true;
@@ -329,6 +344,15 @@ function toggleInactive() {
   else listEl.classList.remove('show-inactive');
   const btn = document.getElementById('toggleInactiveBtn');
   if (btn) btn.innerText = showInactive ? getT('hideInactive') : getT('showInactive');
+}
+
+function toggleTerminating() {
+  showTerminating = !showTerminating;
+  const listEl = document.getElementById('routeList');
+  if (showTerminating) listEl.classList.add('show-terminating');
+  else listEl.classList.remove('show-terminating');
+  const btn = document.getElementById('toggleTerminatingBtn');
+  if (btn) btn.innerText = showTerminating ? getT('hideTerminating') : getT('showTerminating');
 }
 
 function showDetail(groupKey) {
@@ -826,11 +850,9 @@ async function updateNetworkTelemetry() {
         const targetIndex = stops.findIndex(s => s.stopName_e === currentStopName_e);
         
         if (targetIndex !== -1) {
-          // UX Enhancement: Filter out buses terminating at this exact stop.
           const isLastStop = (targetIndex === stops.length - 1);
-          if (!isLastStop) {
-            matchDetails.push({ routeId, stops, targetIndex });
-          }
+          // Restore the route, but pass the isLastStop flag for later processing
+          matchDetails.push({ routeId, stops, targetIndex, isLastStop });
         }
       }
       if (matchDetails.length > 0) relevantGroups.push({ group, matchDetails });
@@ -853,13 +875,21 @@ async function updateNetworkTelemetry() {
 
     for (const item of relevantGroups) {
       const group = item.group;
+      
+      // Determine if the ENTIRE group consists of terminating buses
+      const isGroupTerminating = item.matchDetails.every(m => m.isLastStop);
+      
       const cardId = `route-${group.key}`;
-      const destName = getLocalizedName(group, 'dest');
+      
+      // Change destination text dynamically if terminating
+      const destName = isGroupTerminating ? getT('terminatingHere') : getLocalizedName(group, 'dest');
+      const terminatingClass = isGroupTerminating ? 'terminating' : '';
+      
       const dirColor = getDirectionColor(group.dest_e);
 
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
+          <div class="route-card ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
             <div class="route-main-row">
                 <div class="route-left">
                 <div style="display:flex; flex-direction:column;">
@@ -867,7 +897,7 @@ async function updateNetworkTelemetry() {
                     ${group.company !== 'NLB' ? `<div class="route-company">${group.company}</div>` : ''}
                 </div>
                 <div class="route-info">
-                    <div class="route-dest" id="dest-${group.key}">${getT('to')} ${destName}</div>
+                    <div class="route-dest" id="dest-${group.key}">${isGroupTerminating ? '' : getT('to') + ' '}${destName}</div>
                     <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
                        <span id="bars-${group.key}" class="occ-pill"></span>
                     </div>
@@ -889,8 +919,12 @@ async function updateNetworkTelemetry() {
         `);
       } else {
          const dEl = document.getElementById(`dest-${group.key}`);
-         if (dEl) dEl.innerText = `${getT('to')} ${destName}`;
-         document.getElementById(cardId).style.borderLeftColor = dirColor;
+         if (dEl) dEl.innerText = `${isGroupTerminating ? '' : getT('to') + ' '}${destName}`;
+         
+         const cEl = document.getElementById(cardId);
+         cEl.style.borderLeftColor = dirColor;
+         if (isGroupTerminating) cEl.classList.add('terminating');
+         else cEl.classList.remove('terminating');
       }
     }
 
@@ -905,19 +939,35 @@ async function updateNetworkTelemetry() {
     cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
     cards.forEach(card => listEl.appendChild(card));
 
-    const oldBtn = document.getElementById('inactiveToggleContainer');
-    if (oldBtn) oldBtn.remove();
+    // Clear old toggles
+    const oldTermBtn = document.getElementById('terminatingToggleContainer');
+    if (oldTermBtn) oldTermBtn.remove();
+    const oldInacBtn = document.getElementById('inactiveToggleContainer');
+    if (oldInacBtn) oldInacBtn.remove();
 
     if (!detailModeRouteKey) {
-        const inactiveCards = cards.filter(c => c.classList.contains('inactive'));
+        // 1. Terminating Toggle
+        const terminatingCards = cards.filter(c => c.classList.contains('terminating'));
+        if (terminatingCards.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `
+                <div id="terminatingToggleContainer" style="padding: 15px 20px 0px 20px; text-align: center;">
+                    <button onclick="toggleTerminating()" class="toggle-btn" id="toggleTerminatingBtn">
+                        ${showTerminating ? getT('hideTerminating') : getT('showTerminating')}
+                    </button>
+                </div>
+            `);
+        }
+        
+        // 2. Inactive Toggle (excluding purely terminating buses to avoid confusion)
+        const inactiveCards = cards.filter(c => c.classList.contains('inactive') && !c.classList.contains('terminating'));
         if (inactiveCards.length > 0) {
-        listEl.insertAdjacentHTML('beforeend', `
-            <div id="inactiveToggleContainer" style="padding: 20px; text-align: center;">
-            <button onclick="toggleInactive()" class="toggle-btn" id="toggleInactiveBtn">
-                ${showInactive ? getT('hideInactive') : getT('showInactive')}
-            </button>
-            </div>
-        `);
+            listEl.insertAdjacentHTML('beforeend', `
+                <div id="inactiveToggleContainer" style="padding: 15px 20px 20px 20px; text-align: center;">
+                    <button onclick="toggleInactive()" class="toggle-btn" id="toggleInactiveBtn">
+                        ${showInactive ? getT('hideInactive') : getT('showInactive')}
+                    </button>
+                </div>
+            `);
         }
     }
 
@@ -927,6 +977,7 @@ async function updateNetworkTelemetry() {
 async function processSmartArrivals(group, matchDetails) {
   const groupKey = group.key;
   const cardEl = document.getElementById(`route-${groupKey}`);
+  const isGroupTerminating = cardEl && cardEl.classList.contains('terminating');
   
   try {
     const offEl = document.getElementById(`off-${groupKey}`);
@@ -1093,7 +1144,8 @@ async function processSmartArrivals(group, matchDetails) {
                        barsEl.className = `occ-pill ${getOccData(activeOcc).class}`;
                        barsEl.innerText = `${getOccData(activeOcc).icon} ${getT(getOccData(activeOcc).key)}`;
                    }
-                   occSecEl.style.display = 'flex';
+                   if (isGroupTerminating && occSecEl) { occSecEl.style.display = 'none'; }
+                   else if (occSecEl) { occSecEl.style.display = 'flex'; }
                    return; 
                } else {
                    delete busStateMap[groupKey];
@@ -1139,7 +1191,8 @@ async function processSmartArrivals(group, matchDetails) {
                        barsEl.className = `occ-pill ${getOccData(activeOcc).class}`;
                        barsEl.innerText = `${getOccData(activeOcc).icon} ${getT(getOccData(activeOcc).key)}`;
                    }
-                   occSecEl.style.display = 'flex';
+                   if (isGroupTerminating && occSecEl) { occSecEl.style.display = 'none'; }
+                   else if (occSecEl) { occSecEl.style.display = 'flex'; }
                    return; 
                }
            }
@@ -1194,7 +1247,13 @@ async function processSmartArrivals(group, matchDetails) {
         barsEl.className = `occ-pill ${occInfo.class}`;
         barsEl.innerText = `${occInfo.icon} ${getT(occInfo.key)}`;
     }
-    occSecEl.style.display = 'flex';
+    
+    // Hide occupancy specifically for terminating buses
+    if (isGroupTerminating && occSecEl) {
+       occSecEl.style.display = 'none';
+    } else if (occSecEl) {
+       occSecEl.style.display = 'flex';
+    }
 
     let smartMins = effectiveRawEta;
     
@@ -1494,4 +1553,3 @@ initApp();
 </script>
 </body>
 </html>
-
