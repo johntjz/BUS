@@ -282,7 +282,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-const APP_TIMESTAMP = "Patch: 2026-10-07 13:31 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 19:38 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -1472,19 +1472,20 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
 
   if (!isWeekend) {
     if (hour >= 7 && hour <= 8) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 75 : 15; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 30; 
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 90 : 25; 
+      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 40; 
     } else if (hour === 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo')) ? 55 : 15; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 25;
+      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry')) ? 65 : 25; 
+      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 35;
     } else if (hour >= 10 && hour <= 16) {
       baseLoad = (dest.includes('tung chung') || dest.includes('mui wo ferry') || dest.includes('tai o')) ? 35 : 20; 
       if (['2', '4', '21'].includes(routeNo)) baseLoad = 20;
-    } else if (hour >= 17 && hour <= 19) {
-      baseLoad = (!dest.includes('tung chung') && !dest.includes('mui wo ferry')) ? 75 : 20; 
-      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = 35;
-    } else if (hour >= 20) {
-      baseLoad = 10;
+    } else if (hour >= 17 && hour <= 20) {
+      // Evening commute: leaving Tung Chung to go home (Mui Wo, Tai O, Tong Fuk)
+      baseLoad = (!dest.includes('tung chung')) ? 100 : 35; 
+      if (['1', '2', '4', '21'].includes(routeNo)) baseLoad = (!dest.includes('tung chung')) ? 80 : 35;
+    } else if (hour >= 21) {
+      baseLoad = 15;
     }
   } else {
     if (hour >= 9 && hour <= 14) {
@@ -1501,7 +1502,6 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
 
   const feeders = ['37M', '38', '39M', 'B4', 'B6'];
   const airportLines = ['E36'];
-  const touristBidir = ['3M', '11', '1', '2', '4', '21', 'A35', 'N35'];
 
   if (feeders.includes(routeNo)) {
       if (progress < 0.75) {
@@ -1515,16 +1515,18 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
       } else {
           spatialMultiplier = Math.max(0, (1 - progress) / 0.15);
       }
-  } else if (touristBidir.includes(routeNo)) {
-      spatialMultiplier = Math.sin(progress * Math.PI);
-      if (progress > 0.7) {
-          let dropFactor = Math.max(0, (1 - progress) / 0.3);
-          spatialMultiplier = spatialMultiplier * Math.pow(dropFactor, 1.5);
-      }
   } else {
-      spatialMultiplier = Math.sin(progress * Math.PI);
+      // Trapezoid curve: Fills quickly at terminus, plateaus for majority of route, empties at end.
+      if (progress < 0.1) {
+          spatialMultiplier = 0.5 + (progress / 0.1) * 0.5;
+      } else if (progress > 0.8) {
+          spatialMultiplier = Math.max(0, (1 - progress) / 0.2);
+      } else {
+          spatialMultiplier = 1.0;
+      }
   }
 
+  // Override for vehicles physically waiting at the terminus to leave.
   if (currentStopIndex === 0 && estimatedArrivals && estimatedArrivals.length > 0) {
     const minToDeparture = Math.floor((new Date(estimatedArrivals[0].estimatedArrivalTime.replace(/-/g, '/')) - currentTimestamp) / 60000);
     if (minToDeparture > 10) spatialMultiplier = 0.1; 
