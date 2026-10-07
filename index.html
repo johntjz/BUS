@@ -124,7 +124,7 @@
 
   #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
   
-  /* Directional Color-Coding Anchor - Restored White Text for Clean UI */
+  /* Directional Color-Coding Anchor */
   .route-card {
     display: flex; flex-direction: column; align-items: stretch;
     padding: 16px 16px 16px 12px; border-bottom: 1px solid var(--card-border); gap: 0;
@@ -247,8 +247,7 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-// AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-07 12:31 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 12:49 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -825,7 +824,14 @@ async function updateNetworkTelemetry() {
       for (const routeId of group.routeIds) {
         const stops = routeStopsCache[routeId] || [];
         const targetIndex = stops.findIndex(s => s.stopName_e === currentStopName_e);
-        if (targetIndex !== -1) matchDetails.push({ routeId, stops, targetIndex });
+        
+        if (targetIndex !== -1) {
+          // UX Enhancement: Filter out buses terminating at this exact stop.
+          const isLastStop = (targetIndex === stops.length - 1);
+          if (!isLastStop) {
+            matchDetails.push({ routeId, stops, targetIndex });
+          }
+        }
       }
       if (matchDetails.length > 0) relevantGroups.push({ group, matchDetails });
     }
@@ -1488,3 +1494,4 @@ initApp();
 </script>
 </body>
 </html>
+
