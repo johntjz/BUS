@@ -412,13 +412,14 @@ let showTerminating = false;
 let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops') || '[]');
 
 let autoGpsEnabled = true;
-let serverClockOffset = 0;
+let serverClockOffset = 0; 
 let isClockSynced = false;
 let lastKnownPos = null;
 
 let activeModalType = null; 
 
-function getNow() { return Date.now() + serverClockOffset; }
+// Removed the clock synchronization logic that pushed Date.now() out of sync with device time
+function getNow() { return Date.now(); }
 
 function setLoadProgress(pct, text) {
   const bar = document.getElementById('loadingBar');
@@ -510,11 +511,8 @@ setInterval(() => {
 async function fetchJSON(url) {
   const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error('API offline');
-  const serverDateStr = response.headers.get('date');
-  if (serverDateStr && !isClockSynced) {
-      const serverTime = new Date(serverDateStr).getTime();
-      if (!isNaN(serverTime)) { serverClockOffset = serverTime - Date.now(); isClockSynced = true; }
-  }
+  // NOTE: Removed previous logic that synchronized device clock with the HTTP Date header. 
+  // API edge caching caused the Date header to be artificially older than real time, forcing a +1 minute lag.
   return await response.json();
 }
 
@@ -881,8 +879,7 @@ function resetAndFetch() {
   document.getElementById('routeList').classList.remove('detail-mode');
 
   document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
-  // Do not delete busStateMap elements completely, just clear out pseudo logic if needed, 
-  // but to prevent stale data we can clear it safely on full manual refresh.
+  
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
   updateNetworkTelemetry();
@@ -1195,12 +1192,8 @@ async function processSmartArrivals(group, matchDetails) {
             for (let i = 1; i < combinedArrivals.length && i <= 2; i++) {
                 const cBus = combinedArrivals[i].arrival;
                 const cArr = new Date(cBus.estimatedArrivalTime.replace(/-/g, '/'));
-                const cSrv = new Date(cBus.generateTime.replace(/-/g, '/'));
-                let cElapsed = now - cSrv.getTime();
-                if (cElapsed < 0) cElapsed = 0;
-                if (cElapsed > 120000) cElapsed = 0;
                 
-                const cRawMins = Math.max(0, Math.floor(((cArr.getTime() - cSrv.getTime()) - cElapsed) / 60000));
+                const cRawMins = Math.max(0, Math.floor((cArr.getTime() - now) / 60000));
                 const isNoGPS = cBus.noGPS === 1 || cBus.noGPS === '1';
                 
                 const timeText = cRawMins === 0 ? (activeItem.targetIndex === 0 ? getT('departingSoon') : getT('due')) : `${cRawMins}${getT('min')}`;
@@ -1234,16 +1227,11 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     const activeBus = activeItem.arrival;
-    const serverTime = new Date(activeBus.generateTime.replace(/-/g, '/'));
     const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
     const pseudoBusId = activeBus.estimatedArrivalTime.replace(/[^0-9]/g, ''); 
     const isNoGPS = activeBus.noGPS === 1 || activeBus.noGPS === '1';
 
-    let elapsedSinceGenerate = now - serverTime.getTime();
-    if (elapsedSinceGenerate < 0) elapsedSinceGenerate = 0;
-    if (elapsedSinceGenerate > 120000) elapsedSinceGenerate = 0; 
-
-    const remainingMs = (arrivalTime.getTime() - serverTime.getTime()) - elapsedSinceGenerate;
+    const remainingMs = arrivalTime.getTime() - now;
     const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
 
     // ==========================================
@@ -1366,8 +1354,7 @@ async function processSmartArrivals(group, matchDetails) {
           
           for (let uBus of activeItem.upstreamEtaRes.estimatedArrivals) {
               const uArrTime = new Date(uBus.estimatedArrivalTime.replace(/-/g, '/'));
-              const uServerTime = new Date(uBus.generateTime.replace(/-/g, '/'));
-              const uEtaMins = Math.max(0, Math.floor((uArrTime - uServerTime) / 60000));
+              const uEtaMins = Math.max(0, Math.floor((uArrTime - now) / 60000));
               
               const diff = effectiveRawEta - uEtaMins;
               if (diff >= -2 && diff <= 15) {
@@ -1603,4 +1590,3 @@ initApp();
 </script>
 </body>
 </html>
-
