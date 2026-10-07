@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Pulse NLB & LWB</title>
+<title>Pulse HK - Transport Network</title>
 <style>
   :root {
     /* Status Colors */
@@ -15,13 +15,14 @@
     --accent-red: #e31837;
     --accent-green: #30d158;
     --accent-orange: #ff9f0a;
+    --accent-blue: #0a84ff;
     
-    /* Directional Colors (Non-overlapping with Status) */
+    /* Directional Colors (Subtle Left Border Only) */
     --dir-blue: #0a84ff;    /* Tung Chung */
     --dir-purple: #bf5af2;  /* Mui Wo */
-    --dir-cyan: #32ade6;    /* Tai O */
-    --dir-indigo: #5e5ce6;  /* Airport/Port */
-    --dir-pink: #ff375f;    /* Tong Fuk */
+    --dir-cyan: #32ade6;    /* Tai O / Kowloon */
+    --dir-indigo: #5e5ce6;  /* Airport/Port / NT */
+    --dir-pink: #ff375f;    /* Tong Fuk / HK Island */
   }
   
   * { box-sizing: border-box; }
@@ -60,61 +61,70 @@
   .stop-header {
     padding: 12px 16px; border-bottom: 1px solid var(--card-border);
     display: flex; flex-direction: column; background-color: var(--bg-color); gap: 4px;
+    position: sticky; top: 58px; z-index: 9;
   }
   .controls-container { display: flex; gap: 10px; width: 100%; min-width: 0; }
   
-  .gps-btn {
+  .action-btn {
     background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
     width: 44px; height: 72px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
     font-size: 1.2rem; cursor: pointer; transition: all 0.2s; flex-shrink: 0;
   }
-  .gps-btn:active { background: #3a3a3c; }
-  .gps-btn.active-gps {
-    border-color: var(--accent-green);
-    color: var(--accent-green);
-    background: rgba(48, 209, 88, 0.1);
-  }
+  .action-btn:active { background: #3a3a3c; }
+  .action-btn.active-gps { border-color: var(--accent-green); color: var(--accent-green); background: rgba(48, 209, 88, 0.1); }
+  .action-btn.active-fav { border-color: #ffd60a; color: #ffd60a; background: rgba(255, 214, 10, 0.1); }
 
   .selectors { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
-  select.stop-input {
+  
+  /* Searchable Pseudo-Select Inputs */
+  .search-input {
     background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
     padding: 8px 32px 8px 12px; border-radius: 8px;
-    font-size: 0.9rem; font-weight: 600; outline: none;
-    width: 100%; appearance: none; -webkit-appearance: none;
+    font-size: 0.9rem; font-weight: 600; outline: none; cursor: pointer;
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
     background-image: url('data:image/svg+xml;utf8,<svg fill="%2398989d" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>');
     background-repeat: no-repeat; background-position: right 8px center;
-    text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
   }
+  .search-input-text { text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+
+  .gps-status { font-size: 0.75rem; color: var(--accent-green); font-weight: 600; text-align: right; padding-right: 4px; display: flex; justify-content: space-between; align-items: center; }
   
-  .gps-status { font-size: 0.75rem; color: var(--accent-green); font-weight: 600; text-align: right; padding-right: 4px; }
-  
+  /* Search Modal */
+  .search-modal {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: var(--bg-color); z-index: 100; flex-direction: column;
+    animation: slideUp 0.2s ease-out;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal-header { display: flex; padding: 12px 16px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); gap: 12px; align-items: center; }
+  .modal-search-bar {
+    flex: 1; background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
+    padding: 10px 12px; border-radius: 8px; font-size: 1rem; outline: none;
+  }
+  .modal-close { color: var(--accent-blue); background: none; border: none; font-size: 1.05rem; font-weight: 600; cursor: pointer; }
+  .modal-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+  .modal-item {
+    padding: 14px 16px; border-bottom: 1px solid var(--card-border);
+    font-size: 0.95rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
+  .modal-item:active { background-color: #1e1e20; }
+  .modal-item-icon { font-size: 1.1rem; }
+  .fav-header { padding: 8px 16px; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); background: #1a1a1c; text-transform: uppercase; }
+
   #detailControls {
-    display: none;
-    padding: 12px 16px;
-    background: var(--bg-color);
-    border-bottom: 1px solid var(--card-border);
+    display: none; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border);
   }
   .back-btn {
-    width: 100%;
-    background: #2c2c2e;
-    color: var(--dir-blue);
-    border: 1px solid #3a3a3c;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 1.05rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.2s;
+    width: 100%; background: #2c2c2e; color: var(--dir-blue); border: 1px solid #3a3a3c;
+    border-radius: 8px; padding: 12px; font-size: 1.05rem; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background 0.2s;
   }
   .back-btn:active { background: #3a3a3c; }
 
   #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
   
-  /* Directional Color-Coding Anchor */
+  /* Directional Color-Coding Anchor - Restored White Text for Clean UI */
   .route-card {
     display: flex; flex-direction: column; align-items: stretch;
     padding: 16px 16px 16px 12px; border-bottom: 1px solid var(--card-border); gap: 0;
@@ -127,10 +137,10 @@
   }
 
   .route-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-  .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; }
-  .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; }
+  .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; color: var(--text-primary); }
+  .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; background: #2c2c2e; padding: 2px 4px; border-radius: 4px; }
   .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .route-dest { font-size: 1.05rem; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+  .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--text-primary); }
   
   .eta-container { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
   .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; }
@@ -138,21 +148,9 @@
   .official-eta { font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); text-decoration: line-through; opacity: 0.7; font-variant-numeric: tabular-nums; }
   .smart-eta { font-size: 1.45rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; transition: color 0.3s; }
   
-  @keyframes blink-arriving {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-  }
-  @keyframes blink-delayed {
-    0% { opacity: 1; color: var(--accent-orange); }
-    50% { opacity: 0.4; color: var(--accent-red); }
-    100% { opacity: 1; color: var(--accent-orange); }
-  }
-  @keyframes fade-departing {
-    0% { opacity: 0.8; color: var(--text-secondary); }
-    50% { opacity: 0.3; color: var(--text-secondary); }
-    100% { opacity: 0.8; color: var(--text-secondary); }
-  }
+  @keyframes blink-arriving { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+  @keyframes blink-delayed { 0% { opacity: 1; color: var(--accent-orange); } 50% { opacity: 0.4; color: var(--accent-red); } 100% { opacity: 1; color: var(--accent-orange); } }
+  @keyframes fade-departing { 0% { opacity: 0.8; color: var(--text-secondary); } 50% { opacity: 0.3; color: var(--text-secondary); } 100% { opacity: 0.8; color: var(--text-secondary); } }
   
   .smart-eta.arriving { color: var(--accent-orange); font-size: 1.25rem; animation: blink-arriving 1.5s infinite; }
   .smart-eta.delayed { animation: blink-delayed 2s infinite; font-size: 1.15rem; font-weight: 700; }
@@ -183,7 +181,7 @@
   .show-inactive .route-card.inactive { display: flex; }
   .toggle-btn {
     background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border);
-    padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: auto; display: block;
   }
 </style>
 </head>
@@ -192,7 +190,7 @@
 <div class="header">
   <div class="header-left">
     <div class="title-row">
-      <h1>Pulse NLB</h1>
+      <h1>Pulse HK</h1>
       <span class="build-badge" id="buildVersion"></span>
     </div>
     <div class="time-row">
@@ -209,13 +207,21 @@
 
 <div class="stop-header">
   <div class="controls-container">
-    <button id="gpsBtn" class="gps-btn active-gps" onclick="manualGpsSync()">📍</button>
+    <button id="gpsBtn" class="action-btn active-gps" onclick="manualGpsSync()">📍</button>
+    <button id="favBtn" class="action-btn" onclick="toggleFavorite()">☆</button>
     <div class="selectors">
-      <select id="routeSelect" class="stop-input" onchange="handleRouteChange(this.value)"></select>
-      <select id="stopSelect" class="stop-input" onchange="handleStopChange(this.value)"></select>
+      <div class="search-input" onclick="openModal('route')">
+        <span class="search-input-text" id="routeSelectText">All Routes</span>
+      </div>
+      <div class="search-input" onclick="openModal('stop')">
+        <span class="search-input-text" id="stopSelectText">Select Stop...</span>
+      </div>
     </div>
   </div>
-  <div class="gps-status" id="gpsStatus"></div>
+  <div class="gps-status">
+      <span id="favStatusText" style="color: var(--text-secondary);"></span>
+      <span id="gpsStatus"></span>
+  </div>
 </div>
 
 <div id="detailControls">
@@ -223,16 +229,26 @@
 </div>
 
 <div id="routeList">
-  <div style="padding: 20px; color: var(--text-secondary); text-align: center;" id="loadingText">Connecting to network...</div>
+  <div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">Connecting to network...</div>
+</div>
+
+<!-- Search Modal -->
+<div id="searchModal" class="search-modal">
+  <div class="modal-header">
+    <input type="text" id="searchInput" class="modal-search-bar" placeholder="Search..." oninput="renderModalList()" autocomplete="off">
+    <button class="modal-close" onclick="closeModal()">Cancel</button>
+  </div>
+  <div id="searchList" class="modal-list"></div>
 </div>
 
 <script>
-const API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
+const NLB_API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
+const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // AI INSTRUCTION: ALWAYS UPDATE THIS APP_TIMESTAMP VARIABLE WITH THE CURRENT TIME (YYYY-MM-DD HH:MM HKT) WHEN REGENERATING THIS FILE.
-const APP_TIMESTAMP = "Patch: 2026-10-07 09:05 HKT";
+const APP_TIMESTAMP = "Patch: 2026-10-07 09:45 HKT";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -241,7 +257,7 @@ if (document.getElementById('langSelect')) document.getElementById('langSelect')
 
 const i18n = {
   en: {
-    allLines: "All", loadingIndex: "Loading station index...",
+    allLines: "All Routes", loadingIndex: "Loading station index...",
     syncing: "Syncing Network Mappings...", building: "Building Station Index...",
     liveETA: "Fetching live arrivals...", locating: "Locating...", nearest: "Nearest:",
     noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
@@ -251,11 +267,11 @@ const i18n = {
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
-    manual: "Manual Override",
+    manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
     pairSeats: "Pair Seats", singleSeats: "Single Seats", standing: "Standing Only"
   },
   tc: {
-    allLines: "所有", loadingIndex: "載入車站索引...",
+    allLines: "所有路線", loadingIndex: "載入車站索引...",
     syncing: "同步網絡數據...", building: "建立車站索引...",
     liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
@@ -265,11 +281,11 @@ const i18n = {
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
-    manual: "手動選擇",
+    manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
     pairSeats: "雙人吉位", singleSeats: "單人位", standing: "只限企位"
   },
   sc: {
-    allLines: "所有", loadingIndex: "载入车站索引...",
+    allLines: "所有路线", loadingIndex: "载入车站索引...",
     syncing: "同步网络数据...", building: "建立车站索引...",
     liveETA: "获取实时班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
@@ -279,7 +295,7 @@ const i18n = {
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
-    manual: "手动选择",
+    manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
     pairSeats: "双人空位", singleSeats: "单人位", standing: "仅限站位"
   }
 };
@@ -293,22 +309,20 @@ let timerInterval;
 let detailModeRouteKey = null;
 
 let allStops = [];
-let rawRoutes = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
 const busStateMap = {}; 
 let showInactive = false;
+let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops') || '[]');
 
-// Auto GPS Tracking Flag
 let autoGpsEnabled = true;
-
-// Global Clock Sync Variables
 let serverClockOffset = 0;
 let isClockSynced = false;
 
-function getNow() {
-  return Date.now() + serverClockOffset;
-}
+// Modal State
+let activeModalType = null; 
+
+function getNow() { return Date.now() + serverClockOffset; }
 
 function toggleInactive() {
   showInactive = !showInactive;
@@ -320,16 +334,12 @@ function toggleInactive() {
 }
 
 function showDetail(groupKey) {
-  if (detailModeRouteKey === groupKey) {
-    hideDetail();
-    return;
-  }
+  if (detailModeRouteKey === groupKey) { hideDetail(); return; }
   detailModeRouteKey = groupKey;
   document.getElementById('detailControls').style.display = 'block';
   document.getElementById('routeList').classList.add('detail-mode');
   const btn = document.getElementById('backBtn');
   if (btn) btn.innerText = getT('back');
-  
   updateNetworkTelemetry();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -341,28 +351,22 @@ function hideDetail() {
   updateNetworkTelemetry();
 }
 
-// Visual Directional Grouping Based on Destination (Strictly Cool/Unique Colors)
 function getDirectionColor(dest) {
   const d = (dest || '').toLowerCase();
   if (d.includes('tung chung')) return 'var(--dir-blue)';
   if (d.includes('mui wo')) return 'var(--dir-purple)';
-  if (d.includes('tai o')) return 'var(--dir-cyan)';
-  if (d.includes('airport') || d.includes('gtc')) return 'var(--dir-indigo)';
-  if (d.includes('hzmb') || d.includes('macao')) return 'var(--dir-indigo)';
-  if (d.includes('tong fuk')) return 'var(--dir-pink)';
+  if (d.includes('tai o') || d.includes('kowloon') || d.includes('tsim sha tsui')) return 'var(--dir-cyan)';
+  if (d.includes('airport') || d.includes('gtc') || d.includes('hzmb') || d.includes('macao') || d.includes('yuen long') || d.includes('tuen mun')) return 'var(--dir-indigo)';
+  if (d.includes('tong fuk') || d.includes('causeway bay') || d.includes('tin hau')) return 'var(--dir-pink)';
   return 'var(--card-border)';
 }
 
-// 1D Kalman Filter (Refined with Dynamic R handling)
 class KalmanFilter1D {
   constructor(processNoise, initialEstimate, initialError) {
-    this.q = processNoise; 
-    this.x = initialEstimate; 
-    this.p = initialError; 
+    this.q = processNoise; this.x = initialEstimate; this.p = initialError; 
   }
   update(measurement, dt, isOptimistic, dynamicR) {
-    this.x = this.x - dt; 
-    this.p = this.p + this.q; 
+    this.x = this.x - dt; this.p = this.p + this.q; 
     const currentR = isOptimistic ? (dynamicR * 0.2) : dynamicR; 
     const k = this.p / (this.p + currentR); 
     this.x = this.x + k * (measurement - this.x); 
@@ -375,12 +379,8 @@ function generateDeterministicNoise(routeStr, currentStopIndex, timestamp) {
   const timeBlock = Math.floor(timestamp / 300000); 
   const seed = `${routeStr}-${currentStopIndex}-${timeBlock}`;
   let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
-    hash |= 0; 
-  }
-  const normalized = (Math.abs(hash) % 100) / 100;
-  return (normalized * 6) - 3;
+  for (let i = 0; i < seed.length; i++) { hash = ((hash << 5) - hash) + seed.charCodeAt(i); hash |= 0; }
+  return ((Math.abs(hash) % 100) / 100 * 6) - 3;
 }
 
 setInterval(() => {
@@ -393,32 +393,15 @@ setInterval(() => {
   }
 }, 1000);
 
-async function fetchJSON(endpoint) {
-  const response = await fetch(`${API_BASE}${endpoint}`, { cache: 'no-store' });
+async function fetchJSON(url) {
+  const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error('API offline');
-  
   const serverDateStr = response.headers.get('date');
   if (serverDateStr && !isClockSynced) {
       const serverTime = new Date(serverDateStr).getTime();
-      if (!isNaN(serverTime)) {
-          serverClockOffset = serverTime - Date.now();
-          isClockSynced = true;
-      }
+      if (!isNaN(serverTime)) { serverClockOffset = serverTime - Date.now(); isClockSynced = true; }
   }
   return await response.json();
-}
-
-function changeLanguage(lang) {
-  currentLang = lang;
-  localStorage.setItem('pulse_lang', lang);
-  populateRouteDropdown();
-  const targetGroup = groupedRoutes.find(g => g.key === currentRouteKey);
-  populateStopDropdown(targetGroup && currentRouteKey !== 'ALL' ? getStopsForGroup(targetGroup) : allStops);
-  
-  const btn = document.getElementById('backBtn');
-  if (btn) btn.innerText = getT('back');
-  
-  updateNetworkTelemetry();
 }
 
 function getLocalizedName(obj, prefix) {
@@ -431,130 +414,149 @@ async function initApp() {
   try {
     document.getElementById('loadingText').innerText = getT('loadingIndex');
     
-    const cachedGrouped = localStorage.getItem('nlb_grouped_routes_v5');
-    const cachedStops = localStorage.getItem('nlb_stops_v5');
-    const cacheTime = localStorage.getItem('nlb_cache_time_v5');
+    // Bumped cache key to v7 to force bulk KMB reload
+    const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v7');
+    const cachedStops = localStorage.getItem('pulse_stops_v7');
+    const cacheTime = localStorage.getItem('pulse_cache_time_v7');
     const now = Date.now(); 
 
     if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
       groupedRoutes = JSON.parse(cachedGrouped);
       routeStopsCache = JSON.parse(cachedStops);
     } else {
-      document.getElementById('loadingText').innerText = getT('syncing');
-      const rData = await fetchJSON('/route.php?action=list');
-      rawRoutes = rData.routes || [];
+      document.getElementById('loadingText').innerText = "Syncing Network Mappings (This takes a few seconds)...";
       
       const groupedMap = new Map();
-      rawRoutes.forEach(r => {
-        const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
-        const dest_c = r.routeName_c ? r.routeName_c.split(/[>＞]/).pop().trim() : '';
-        const dest_s = r.routeName_s ? r.routeName_s.split(/[>＞]/).pop().trim() : '';
-        const cleanDest = dest_e.replace(/\s*\([^)]*\)/g, '').trim(); 
-        const key = `${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+      routeStopsCache = {};
 
-        if (!groupedMap.has(key)) {
-          groupedMap.set(key, { key, routeNo: r.routeNo, dest_e, dest_c, dest_s, routeIds: [r.routeId], company: 'NLB' });
-        } else {
-          groupedMap.get(key).routeIds.push(r.routeId);
-        }
-      });
+      // 1. Fetch NLB Data
+      try {
+          const nlbRData = await fetchJSON(`${NLB_API_BASE}/route.php?action=list`);
+          const rawNlbRoutes = nlbRData.routes || [];
+          
+          rawNlbRoutes.forEach(r => {
+            const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
+            const dest_c = r.routeName_c ? r.routeName_c.split(/[>＞]/).pop().trim() : '';
+            const dest_s = r.routeName_s ? r.routeName_s.split(/[>＞]/).pop().trim() : '';
+            const cleanDest = dest_e.replace(/\s*\([^)]*\)/g, '').trim(); 
+            const key = `NLB_${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+            if (!groupedMap.has(key)) {
+              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, dest_c, dest_s, routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
+            } else {
+              groupedMap.get(key).routeIds.push(`NLB_${r.routeId}`);
+            }
+          });
+
+          const chunkSize = 10;
+          for (let i = 0; i < rawNlbRoutes.length; i += chunkSize) {
+            const chunk = rawNlbRoutes.slice(i, i + chunkSize);
+            await Promise.all(chunk.map(async (r) => {
+              try {
+                const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
+                routeStopsCache[`NLB_${r.routeId}`] = res.stops || [];
+              } catch(e) { routeStopsCache[`NLB_${r.routeId}`] = []; }
+            }));
+          }
+      } catch(e) { console.error("NLB Fetch failed", e); }
+
+      // 2. Fetch Massive KMB/LWB Data Concurrently
+      try {
+          const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
+              fetch(`${KMB_API_BASE}/route/`).then(r=>r.json()).catch(()=>null),
+              fetch(`${KMB_API_BASE}/stop/`).then(r=>r.json()).catch(()=>null),
+              fetch(`${KMB_API_BASE}/route-stop/`).then(r=>r.json()).catch(()=>null)
+          ]);
+
+          const allKmbStops = {};
+          if (kmbStopsRes && kmbStopsRes.data) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
+
+          const formatStopName = (name) => {
+              if (!name) return '';
+              return name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+          };
+
+          if (kmbRoutesRes && kmbRoutesRes.data && kmbRouteStopsRes && kmbRouteStopsRes.data) {
+              const kmbRouteStopsMap = {};
+              kmbRouteStopsRes.data.forEach(rs => {
+                  const key = `KMB_${rs.route}_${rs.bound}_${rs.service_type}`;
+                  if (!kmbRouteStopsMap[key]) kmbRouteStopsMap[key] = [];
+                  kmbRouteStopsMap[key].push(rs);
+              });
+
+              kmbRoutesRes.data.forEach(r => {
+                  const rId = `KMB_${r.route}_${r.bound}_${r.service_type}`;
+                  const rsData = kmbRouteStopsMap[rId];
+                  if (!rsData) return;
+
+                  rsData.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
+                  const mappedStops = rsData.map(rs => {
+                      const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', name_tc: '未知', name_sc: '未知', lat: '0', long: '0' };
+                      return {
+                          stopId: rs.stop,
+                          stopName_e: formatStopName(stopDetail.name_en),
+                          stopName_c: stopDetail.name_tc,
+                          stopName_s: stopDetail.name_sc || stopDetail.name_tc,
+                          latitude: stopDetail.lat,
+                          longitude: stopDetail.long,
+                          seq: rs.seq
+                      };
+                  });
+                  routeStopsCache[rId] = mappedStops;
+
+                  // Basic KMB/LWB heuristic (LWB mostly uses E, A, NA, S prefixes)
+                  const isLWB = r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S');
+                  const company = isLWB ? 'LWB' : 'KMB';
+                  const cleanDestE = formatStopName(r.dest_en);
+                  const groupKey = `KMB_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+                  if (!groupedMap.has(groupKey)) {
+                      groupedMap.set(groupKey, {
+                          key: groupKey, routeNo: r.route,
+                          dest_e: cleanDestE, dest_c: r.dest_tc, dest_s: r.dest_sc,
+                          routeIds: [rId], company: company
+                      });
+                  } else {
+                      groupedMap.get(groupKey).routeIds.push(rId);
+                  }
+              });
+          }
+      } catch(e) { console.error("KMB/LWB Fetch failed", e); }
 
       groupedRoutes = Array.from(groupedMap.values());
-      routeStopsCache = {};
-      
-      const chunkSize = 6;
-      for (let i = 0; i < rawRoutes.length; i += chunkSize) {
-        const chunk = rawRoutes.slice(i, i + chunkSize);
-        await Promise.all(chunk.map(async (r) => {
-          try {
-            const res = await fetchJSON(`/stop.php?action=list&routeId=${r.routeId}`);
-            routeStopsCache[r.routeId] = res.stops || [];
-          } catch(e) { routeStopsCache[r.routeId] = []; }
-        }));
-        document.getElementById('loadingText').innerText = `${getT('building')} (${Math.round((i/rawRoutes.length)*100)}%)`;
-      }
-      
-      try {
-        const outRes = await fetch('https://data.etabus.gov.hk/v1/transport/kmb/route-stop/E36/outbound/1').then(r=>r.json());
-        const inRes = await fetch('https://data.etabus.gov.hk/v1/transport/kmb/route-stop/E36/inbound/1').then(r=>r.json());
-        const stopsRes = await fetch('https://data.etabus.gov.hk/v1/transport/kmb/stop').then(r=>r.json());
-        
-        const allKmbStops = {};
-        if (stopsRes && stopsRes.data) stopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
-
-        const formatStopName = (name) => {
-            if (!name) return '';
-            return name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-        };
-
-        const mapStop = (s) => {
-            const stopDetail = allKmbStops[s.stop] || { name_en: 'Unknown', name_tc: '未知', name_sc: '未知', lat: '0', long: '0' };
-            return {
-                stopId: s.stop,
-                stopName_e: formatStopName(stopDetail.name_en),
-                stopName_c: stopDetail.name_tc,
-                stopName_s: stopDetail.name_sc || stopDetail.name_tc,
-                latitude: stopDetail.lat,
-                longitude: stopDetail.long,
-                seq: s.seq
-            };
-        };
-
-        routeStopsCache['LWB_E36_O'] = outRes.data.filter(s => s.service_type === '1').map(mapStop);
-        routeStopsCache['LWB_E36_I'] = inRes.data.filter(s => s.service_type === '1').map(mapStop);
-
-        groupedRoutes.push({
-            key: 'LWB_E36_O', routeNo: 'E36',
-            dest_e: 'Airport (GTC)', dest_c: '機場 (地面運輸中心)', dest_s: '机场 (地面运输中心)',
-            routeIds: ['LWB_E36_O'], company: 'LWB'
-        });
-        groupedRoutes.push({
-            key: 'LWB_E36_I', routeNo: 'E36',
-            dest_e: 'Pat Heung Road', dest_c: '八鄉路', dest_s: '八乡路',
-            routeIds: ['LWB_E36_I'], company: 'LWB'
-        });
-      } catch(e) { console.error('LWB Fetch Error', e); }
 
       try {
-        localStorage.setItem('nlb_grouped_routes_v5', JSON.stringify(groupedRoutes));
-        localStorage.setItem('nlb_stops_v5', JSON.stringify(routeStopsCache));
-        localStorage.setItem('nlb_cache_time_v5', Date.now().toString());
+        localStorage.setItem('pulse_grouped_routes_v7', JSON.stringify(groupedRoutes));
+        localStorage.setItem('pulse_stops_v7', JSON.stringify(routeStopsCache));
+        localStorage.setItem('pulse_cache_time_v7', Date.now().toString());
       } catch (e) {}
     }
     
     buildAllStopsList();
-    populateRouteDropdown();
     
     const savedStop = localStorage.getItem('pulse_stop');
     const savedRoute = localStorage.getItem('pulse_route');
     
     if (savedRoute) currentRouteKey = savedRoute;
-    document.getElementById('routeSelect').value = currentRouteKey;
-    
-    if (savedRoute !== 'ALL' && savedRoute != null) {
-        const targetGroup = groupedRoutes.find(g => g.key === savedRoute);
-        populateStopDropdown(targetGroup ? getStopsForGroup(targetGroup) : allStops);
-    } else {
-        populateStopDropdown(allStops); 
-    }
+    updateRouteSelectText();
+    updateFavButtonUI();
     
     // Enable Auto-GPS on Initial Load
     autoGpsEnabled = true;
     document.getElementById('gpsBtn').classList.add('active-gps');
-    document.getElementById('gpsStatus').style.color = 'var(--accent-green)';
     
     if (savedStop && allStops.some(s => s.stopName_e === savedStop)) {
       currentStopName_e = savedStop;
-      document.getElementById('stopSelect').value = currentStopName_e;
+      updateStopSelectText();
     } 
     
     // Perform initial location lock then start loop
     await locateNearestStopPromise(false);
     
-    // Failsafe default if GPS failed and no saved stop
+    // Failsafe default
     if (!currentStopName_e && allStops.length > 0) {
         currentStopName_e = 'Tung Chung Station Bus Terminus';
-        document.getElementById('stopSelect').value = currentStopName_e;
+        updateStopSelectText();
     }
     
     resetAndFetch();
@@ -565,15 +567,12 @@ async function initApp() {
   }
 }
 
-function populateRouteDropdown() {
-  const rSelect = document.getElementById('routeSelect');
-  rSelect.innerHTML = `<option value="ALL">${getT('allLines')}</option>`;
-  groupedRoutes.forEach(g => {
-      const dest = getLocalizedName(g, 'dest');
-      const prefix = g.company === 'LWB' ? '[LWB] ' : '';
-      rSelect.insertAdjacentHTML('beforeend', `<option value="${g.key}">${prefix}${g.routeNo} (${getT('to')} ${dest})</option>`);
+function buildAllStopsList() {
+  const uniqueStops = new Map();
+  Object.values(routeStopsCache).flat().forEach(s => {
+    if (s && s.stopName_e && !uniqueStops.has(s.stopName_e)) uniqueStops.set(s.stopName_e, s);
   });
-  rSelect.value = currentRouteKey;
+  allStops = Array.from(uniqueStops.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
 
 function getStopsForGroup(group) {
@@ -583,91 +582,159 @@ function getStopsForGroup(group) {
       if (s && s.stopName_e && !uniqueMap.has(s.stopName_e)) uniqueMap.set(s.stopName_e, s);
     });
   });
-  return Array.from(uniqueMap.values());
+  return Array.from(uniqueMap.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
 
-function buildAllStopsList() {
-  const uniqueStops = new Map();
-  Object.values(routeStopsCache).flat().forEach(s => {
-    if (s && s.stopName_e && !uniqueStops.has(s.stopName_e)) uniqueStops.set(s.stopName_e, s);
-  });
-  allStops = Array.from(uniqueStops.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
+// --- Custom Search Modal Logic ---
+
+function updateRouteSelectText() {
+    const el = document.getElementById('routeSelectText');
+    if (currentRouteKey === 'ALL') {
+        el.innerText = getT('allLines');
+    } else {
+        const targetGroup = groupedRoutes.find(g => g.key === currentRouteKey);
+        el.innerText = targetGroup ? `${targetGroup.company === 'KMB' ? '[KMB] ' : (targetGroup.company === 'LWB' ? '[LWB] ' : '')}${targetGroup.routeNo} (${getT('to')} ${getLocalizedName(targetGroup, 'dest')})` : getT('allLines');
+    }
 }
 
-function populateStopDropdown(stopsList) {
-  const sSelect = document.getElementById('stopSelect');
-  sSelect.innerHTML = '';
-  
-  if (!stopsList || stopsList.length === 0) return;
-
-  const unique = [];
-  const seen = new Set();
-  for (const s of stopsList) {
-      if (s && s.stopName_e && !seen.has(s.stopName_e)) {
-          seen.add(s.stopName_e); unique.push(s);
-      }
-  }
-  
-  unique.forEach(s => {
-      const displayName = getLocalizedName(s, 'stopName');
-      sSelect.insertAdjacentHTML('beforeend', `<option value="${s.stopName_e}">${displayName}</option>`);
-  });
-
-  if (sSelect.options.length > 0) {
-    if (!currentStopName_e || !seen.has(currentStopName_e)) currentStopName_e = sSelect.options[0].value;
-    sSelect.value = currentStopName_e;
-  }
+function updateStopSelectText() {
+    const el = document.getElementById('stopSelectText');
+    if (currentStopName_e) {
+        const stopObj = allStops.find(s => s.stopName_e === currentStopName_e);
+        el.innerText = stopObj ? getLocalizedName(stopObj, 'stopName') : currentStopName_e;
+    } else {
+        el.innerText = "Select Stop...";
+    }
+    updateFavButtonUI();
 }
 
-function handleRouteChange(val) {
-  currentRouteKey = val;
-  localStorage.setItem('pulse_route', currentRouteKey);
-  
-  if (val === 'ALL') {
-      populateStopDropdown(allStops);
-  } else {
-      const targetGroup = groupedRoutes.find(g => g.key === val);
-      populateStopDropdown(targetGroup ? getStopsForGroup(targetGroup) : allStops);
-      ensureValidStopAndFetch();
-  }
-  
-  if (autoGpsEnabled) {
-      locateNearestStopPromise(false).then(() => resetAndFetch());
-  } else {
-      resetAndFetch();
-  }
+function openModal(type) {
+    activeModalType = type;
+    const modal = document.getElementById('searchModal');
+    const input = document.getElementById('searchInput');
+    input.value = '';
+    modal.style.display = 'flex';
+    input.focus();
+    renderModalList();
 }
 
-function handleStopChange(val) {
-  if (!val || val.trim() === '') return;
-  
-  // Disable Auto GPS tracking on manual stop change
-  autoGpsEnabled = false;
-  document.getElementById('gpsBtn').classList.remove('active-gps');
-  document.getElementById('gpsStatus').innerText = getT('manual');
-  document.getElementById('gpsStatus').style.color = 'var(--text-secondary)';
-
-  currentStopName_e = val.trim();
-  localStorage.setItem('pulse_stop', currentStopName_e);
-  resetAndFetch();
+function closeModal() {
+    document.getElementById('searchModal').style.display = 'none';
+    activeModalType = null;
 }
 
-function ensureValidStopAndFetch() {
-  const sSelect = document.getElementById('stopSelect');
-  if (!Array.from(sSelect.options).some(opt => opt.value === currentStopName_e) && sSelect.options.length > 0) {
-      currentStopName_e = sSelect.options[0].value;
-      localStorage.setItem('pulse_stop', currentStopName_e);
-  } 
-  sSelect.value = currentStopName_e;
-  resetAndFetch();
+function renderModalList() {
+    const listEl = document.getElementById('searchList');
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    listEl.innerHTML = '';
+
+    if (activeModalType === 'route') {
+        // "ALL" Option
+        if ('all'.includes(query) || getT('allLines').toLowerCase().includes(query)) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🚌</span> ${getT('allLines')}</div>`);
+        }
+        
+        let matches = groupedRoutes.filter(g => 
+            g.routeNo.toLowerCase().includes(query) || 
+            getLocalizedName(g, 'dest').toLowerCase().includes(query)
+        );
+        // Limit rendering to 100 items to prevent DOM lag
+        matches.slice(0, 100).forEach(g => {
+            const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> ${prefix}${g.routeNo} (${getT('to')} ${getLocalizedName(g, 'dest')})</div>`);
+        });
+    } else if (activeModalType === 'stop') {
+        const sourceStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
+        
+        let favs = sourceStops.filter(s => favStops.includes(s.stopName_e));
+        let others = sourceStops.filter(s => !favStops.includes(s.stopName_e));
+
+        if (query) {
+            favs = favs.filter(s => getLocalizedName(s, 'stopName').toLowerCase().includes(query) || s.stopName_e.toLowerCase().includes(query));
+            others = others.filter(s => getLocalizedName(s, 'stopName').toLowerCase().includes(query) || s.stopName_e.toLowerCase().includes(query));
+        }
+
+        if (favs.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Favourites</div>`);
+            favs.forEach(s => {
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon" style="color:#ffd60a">★</span> ${getLocalizedName(s, 'stopName')}</div>`);
+            });
+            if (others.length > 0) listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
+        }
+
+        others.slice(0, 150).forEach(s => {
+            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🚏</span> ${getLocalizedName(s, 'stopName')}</div>`);
+        });
+    }
 }
+
+function selectModalItem(type, value) {
+    if (type === 'route') {
+        currentRouteKey = value;
+        localStorage.setItem('pulse_route', currentRouteKey);
+        updateRouteSelectText();
+        
+        // Ensure valid stop for new route
+        const targetStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
+        if (targetStops.length > 0 && !targetStops.some(s => s.stopName_e === currentStopName_e)) {
+            currentStopName_e = targetStops[0].stopName_e;
+            localStorage.setItem('pulse_stop', currentStopName_e);
+            updateStopSelectText();
+        }
+        
+        if (autoGpsEnabled) locateNearestStopPromise(false).then(() => resetAndFetch());
+        else resetAndFetch();
+        
+    } else if (type === 'stop') {
+        autoGpsEnabled = false;
+        document.getElementById('gpsBtn').classList.remove('active-gps');
+        document.getElementById('gpsStatus').innerText = getT('manual');
+        
+        currentStopName_e = value;
+        localStorage.setItem('pulse_stop', currentStopName_e);
+        updateStopSelectText();
+        resetAndFetch();
+    }
+    closeModal();
+}
+
+function toggleFavorite() {
+    if (!currentStopName_e) return;
+    const idx = favStops.indexOf(currentStopName_e);
+    const msgEl = document.getElementById('favStatusText');
+    
+    if (idx > -1) {
+        favStops.splice(idx, 1);
+        msgEl.innerText = getT('favRemoved');
+    } else {
+        favStops.push(currentStopName_e);
+        msgEl.innerText = getT('favAdded');
+    }
+    localStorage.setItem('pulse_fav_stops', JSON.stringify(favStops));
+    updateFavButtonUI();
+    
+    // Clear flash message after 3s
+    setTimeout(() => { if (msgEl.innerText) msgEl.innerText = ''; }, 3000);
+}
+
+function updateFavButtonUI() {
+    const btn = document.getElementById('favBtn');
+    if (currentStopName_e && favStops.includes(currentStopName_e)) {
+        btn.classList.add('active-fav');
+        btn.innerText = '★';
+    } else {
+        btn.classList.remove('active-fav');
+        btn.innerText = '☆';
+    }
+}
+
+// --- End Modal Logic ---
 
 function resetAndFetch() {
   detailModeRouteKey = null;
   document.getElementById('detailControls').style.display = 'none';
   document.getElementById('routeList').classList.remove('detail-mode');
 
-  // Explicitly give id="loadingText" so updateNetworkTelemetry can purge it reliably
   document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
   for (let key in busStateMap) delete busStateMap[key];
   countdown = REFRESH_INTERVAL;
@@ -705,8 +772,8 @@ function locateNearestStopPromise(isManualClick = false) {
                 
                 if (closest.stopName_e !== currentStopName_e) {
                     currentStopName_e = closest.stopName_e;
-                    document.getElementById('stopSelect').value = currentStopName_e;
                     localStorage.setItem('pulse_stop', currentStopName_e);
+                    updateStopSelectText();
                     for (let key in busStateMap) delete busStateMap[key];
                     resolve(true); 
                 } else {
@@ -729,6 +796,16 @@ async function manualGpsSync() {
     document.getElementById('gpsStatus').style.color = 'var(--accent-green)';
     await locateNearestStopPromise(true);
     resetAndFetch();
+}
+
+function changeLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('pulse_lang', lang);
+  updateRouteSelectText();
+  updateStopSelectText();
+  const btn = document.getElementById('backBtn');
+  if (btn) btn.innerText = getT('back');
+  updateNetworkTelemetry();
 }
 
 function startAppLoop() {
@@ -780,11 +857,11 @@ async function updateNetworkTelemetry() {
             <div class="route-main-row">
                 <div class="route-left">
                 <div style="display:flex; flex-direction:column;">
-                    <div class="route-no" id="no-${group.key}" style="color: ${dirColor};">${group.routeNo}</div>
-                    ${group.company === 'LWB' ? '<div class="route-company">LWB</div>' : ''}
+                    <div class="route-no" id="no-${group.key}">${group.routeNo}</div>
+                    ${group.company !== 'NLB' ? `<div class="route-company">${group.company}</div>` : ''}
                 </div>
                 <div class="route-info">
-                    <div class="route-dest" id="dest-${group.key}" style="color: ${dirColor};">${getT('to')} ${destName}</div>
+                    <div class="route-dest" id="dest-${group.key}">${getT('to')} ${destName}</div>
                     <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
                        <span id="bars-${group.key}" class="occ-pill"></span>
                     </div>
@@ -806,12 +883,7 @@ async function updateNetworkTelemetry() {
         `);
       } else {
          const dEl = document.getElementById(`dest-${group.key}`);
-         if (dEl) {
-             dEl.innerText = `${getT('to')} ${destName}`;
-             dEl.style.color = dirColor;
-         }
-         const noEl = document.getElementById(`no-${group.key}`);
-         if (noEl) noEl.style.color = dirColor;
+         if (dEl) dEl.innerText = `${getT('to')} ${destName}`;
          document.getElementById(cardId).style.borderLeftColor = dirColor;
       }
     }
@@ -866,14 +938,16 @@ async function processSmartArrivals(group, matchDetails) {
 
       let targetEtaRes = null, upstreamEtaRes = null;
 
-      if (m.routeId.startsWith('LWB_')) {
-        const dir = m.routeId.endsWith('_O') ? 'O' : 'I';
-        const routeNo = m.routeId.split('_')[1];
+      if (m.routeId.startsWith('KMB_')) {
+        const parts = m.routeId.split('_');
+        const routeNo = parts[1];
+        const dir = parts[2]; 
+        const serviceType = parts[3];
         
         try {
             const [tResp, uResp] = await Promise.all([
-                fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${targetStop.stopId}/${routeNo}/1`).catch(()=>null),
-                upstreamStop ? fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${upstreamStop.stopId}/${routeNo}/1`).catch(()=>null) : Promise.resolve(null)
+                fetch(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null),
+                upstreamStop ? fetch(`${KMB_API_BASE}/eta/${upstreamStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null) : Promise.resolve(null)
             ]);
             
             const mapKmbEta = (resObj) => {
@@ -893,9 +967,11 @@ async function processSmartArrivals(group, matchDetails) {
         } catch(e) {}
       } 
       else {
+        // NLB
+        const rawNlbId = m.routeId.replace('NLB_', '');
         [targetEtaRes, upstreamEtaRes] = await Promise.all([
-            fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${targetStop.stopId}&language=en`).catch(()=>null),
-            upstreamStop ? fetchJSON(`/stop.php?action=estimatedArrivals&routeId=${m.routeId}&stopId=${upstreamStop.stopId}&language=en`).catch(()=>null) : Promise.resolve(null)
+            fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`).catch(()=>null),
+            upstreamStop ? fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${upstreamStop.stopId}&language=en`).catch(()=>null) : Promise.resolve(null)
         ]);
       }
       
@@ -917,19 +993,18 @@ async function processSmartArrivals(group, matchDetails) {
     const now = getNow();
     const currentHour = new Date(now).getHours();
     
-    // Time-aware retention tuning (aggressive drops at night, high patience in morning/evening rush)
+    // Time-aware retention tuning
     const isNight = (currentHour >= 20 || currentHour <= 5);
     const isPeak = (currentHour >= 7 && currentHour <= 9) || (currentHour >= 17 && currentHour <= 19);
     
-    // Peak Rush Hour Traffic Tolerance Tuning
-    let maxZeroTolerance = 240000; // 4 mins default
+    let maxZeroTolerance = 240000; 
     if (isNight) maxZeroTolerance = 45000;
-    else if (isPeak) maxZeroTolerance = 480000; // 8 mins tolerance for rush hour traffic lights
-    else maxZeroTolerance = 300000; // 5 mins standard day
+    else if (isPeak) maxZeroTolerance = 480000; 
+    else maxZeroTolerance = 300000; 
 
     combinedArrivals.sort((a, b) => new Date(a.arrival.estimatedArrivalTime.replace(/-/g, '/')) - new Date(b.arrival.estimatedArrivalTime.replace(/-/g, '/')));
 
-    // Build sub-ETAs if applicable (Next and 3rd bus)
+    // Build sub-ETAs
     if (subsEl) {
         if (combinedArrivals.length > 1) {
             let subsHtml = '';
@@ -1005,7 +1080,6 @@ async function processSmartArrivals(group, matchDetails) {
                    lblSmartEl.innerText = getT('scheduled');
                    smartEl.innerText = getT('due');
                    smartEl.className = 'smart-eta arriving';
-                   smartEl.style.color = 'var(--accent-orange)';
                    
                    const activeOcc = activeState.occState || 'pair';
                    const barsEl = document.getElementById(`bars-${groupKey}`);
