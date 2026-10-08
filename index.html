@@ -175,6 +175,38 @@
   .sub-eta-label { font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
   .sub-eta-time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
+  /* Journey Timeline (Inline Expansion) */
+  .timeline-container {
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--card-border);
+    display: flex; flex-direction: column; gap: 0;
+    max-height: 55vh; overflow-y: auto;
+  }
+  .timeline-row {
+    display: flex; justify-content: space-between; align-items: stretch; min-height: 44px; padding-right: 4px;
+  }
+  .timeline-left {
+    display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; position: relative;
+  }
+  .timeline-node {
+    width: 12px; height: 12px; border-radius: 50%; background: var(--bg-color); border: 3px solid var(--card-border); z-index: 2; margin-left: 2px;
+  }
+  .timeline-line {
+    position: absolute; left: 7px; top: 22px; bottom: -22px; width: 2px; background: var(--card-border); z-index: 1;
+  }
+  .timeline-row:last-child .timeline-line { display: none; }
+  .timeline-stop-name {
+    font-size: 0.95rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: 12px;
+  }
+  .timeline-right {
+    display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end; padding-bottom: 12px; margin-top: -2px;
+  }
+  .timeline-time {
+    font-size: 1.05rem; font-weight: 700; color: var(--accent-green); font-variant-numeric: tabular-nums;
+  }
+  .timeline-dur {
+    font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); margin-top: 2px;
+  }
+
   /* Filtering CSS */
   .route-card.inactive { display: none; }
   .route-card.terminating { display: none; }
@@ -300,8 +332,8 @@ const SPONGE_STOPS = {
   }
 };
 
-// AI NOTE: When regenerating index.html, update this timestamp to current generation time.
-const APP_TIMESTAMP = "Build: 2026-10-08 10:01 AM";
+// AI NOTE: Build timestamp updated to current time.
+const APP_TIMESTAMP = "Build: 2026-10-08 10:08 AM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -320,7 +352,7 @@ const i18n = {
     arrivingLabel: "Status", arriving: "Arriving...",
     showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
     showTerminating: "Show arriving buses", hideTerminating: "Hide arriving buses",
-    terminatingHere: "Terminating Here", routeStops: "Journey ETA",
+    terminatingHere: "Terminating Here", routeStops: "Journey ETA", nextStop: "Next Stop",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
     seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full",
@@ -337,7 +369,7 @@ const i18n = {
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
     showTerminating: "顯示抵達本站巴士", hideTerminating: "隱藏抵達本站巴士",
-    terminatingHere: "以此站為終點", routeStops: "車程預計",
+    terminatingHere: "以此站為終點", routeStops: "車程預計", nextStop: "下一站",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
     manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
     seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿",
@@ -354,7 +386,7 @@ const i18n = {
     arrivingLabel: "状态", arriving: "即将抵达...",
     showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
     showTerminating: "显示抵达本站巴士", hideTerminating: "隐藏抵达本站巴士",
-    terminatingHere: "以此站为终点", routeStops: "车程预计",
+    terminatingHere: "以此站为终点", routeStops: "车程预计", nextStop: "下一站",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
     manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
     seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满",
@@ -384,6 +416,13 @@ let lastKnownPos = null;
 let activeModalType = null; 
 
 function getNow() { return Date.now(); }
+
+// LIVIA FIX: Globally strips out internal pole tags like (TC417) or (ma103) from station names
+// to prevent search clutter and seamlessly group bays together.
+function cleanStopName(name) {
+    if (!name) return '';
+    return name.replace(/\s*[\(（][^\)）]*[\)）]/g, '').trim();
+}
 
 function setLoadProgress(pct, text) {
   const bar = document.getElementById('loadingBar');
@@ -486,9 +525,9 @@ function getLocalizedName(obj, prefix) {
 
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v7');
-    const cachedStops = localStorage.getItem('pulse_stops_v7');
-    const cacheTime = localStorage.getItem('pulse_cache_time_v7');
+    const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v8');
+    const cachedStops = localStorage.getItem('pulse_stops_v8');
+    const cacheTime = localStorage.getItem('pulse_cache_time_v8');
     const now = Date.now(); 
 
     if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
@@ -509,11 +548,11 @@ async function initApp() {
             const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
             const dest_c = r.routeName_c ? r.routeName_c.split(/[>＞]/).pop().trim() : '';
             const dest_s = r.routeName_s ? r.routeName_s.split(/[>＞]/).pop().trim() : '';
-            const cleanDest = dest_e.replace(/\s*\([^)]*\)/g, '').trim(); 
+            const cleanDest = cleanStopName(dest_e); 
             const key = `NLB_${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
             if (!groupedMap.has(key)) {
-              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, dest_c, dest_s, routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
+              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, dest_c: cleanStopName(dest_c), dest_s: cleanStopName(dest_s), routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
             } else {
               groupedMap.get(key).routeIds.push(`NLB_${r.routeId}`);
             }
@@ -525,7 +564,14 @@ async function initApp() {
             await Promise.all(chunk.map(async (r) => {
               try {
                 const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
-                routeStopsCache[`NLB_${r.routeId}`] = res.stops || [];
+                const rawStops = res.stops || [];
+                // LIVIA FIX: Strip internal IDs out of all NLB stop names globally
+                routeStopsCache[`NLB_${r.routeId}`] = rawStops.map(s => ({
+                    ...s,
+                    stopName_e: cleanStopName(s.stopName_e),
+                    stopName_c: cleanStopName(s.stopName_c),
+                    stopName_s: cleanStopName(s.stopName_s)
+                }));
               } catch(e) { routeStopsCache[`NLB_${r.routeId}`] = []; }
             }));
             
@@ -572,9 +618,10 @@ async function initApp() {
                       const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', name_tc: '未知', name_sc: '未知', lat: '0', long: '0' };
                       return {
                           stopId: rs.stop,
-                          stopName_e: formatStopName(stopDetail.name_en),
-                          stopName_c: stopDetail.name_tc,
-                          stopName_s: stopDetail.name_sc || stopDetail.name_tc,
+                          // LIVIA FIX: Strip internal IDs out of all KMB stop names globally
+                          stopName_e: formatStopName(cleanStopName(stopDetail.name_en)),
+                          stopName_c: cleanStopName(stopDetail.name_tc),
+                          stopName_s: cleanStopName(stopDetail.name_sc || stopDetail.name_tc),
                           latitude: stopDetail.lat,
                           longitude: stopDetail.long,
                           seq: rs.seq
@@ -584,13 +631,13 @@ async function initApp() {
 
                   const isLWB = r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S');
                   const company = isLWB ? 'LWB' : 'KMB';
-                  const cleanDestE = formatStopName(r.dest_en);
+                  const cleanDestE = formatStopName(cleanStopName(r.dest_en));
                   const groupKey = `KMB_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
                   if (!groupedMap.has(groupKey)) {
                       groupedMap.set(groupKey, {
                           key: groupKey, routeNo: r.route,
-                          dest_e: cleanDestE, dest_c: r.dest_tc, dest_s: r.dest_sc,
+                          dest_e: cleanDestE, dest_c: cleanStopName(r.dest_tc), dest_s: cleanStopName(r.dest_sc),
                           routeIds: [rId], company: company
                       });
                   } else {
@@ -603,9 +650,9 @@ async function initApp() {
       groupedRoutes = Array.from(groupedMap.values());
 
       try {
-        localStorage.setItem('pulse_grouped_routes_v7', JSON.stringify(groupedRoutes));
-        localStorage.setItem('pulse_stops_v7', JSON.stringify(routeStopsCache));
-        localStorage.setItem('pulse_cache_time_v7', Date.now().toString());
+        localStorage.setItem('pulse_grouped_routes_v8', JSON.stringify(groupedRoutes));
+        localStorage.setItem('pulse_stops_v8', JSON.stringify(routeStopsCache));
+        localStorage.setItem('pulse_cache_time_v8', Date.now().toString());
       } catch (e) {}
       
       setLoadProgress(100, "Network Sync Complete");
@@ -1010,7 +1057,7 @@ async function updateNetworkTelemetry() {
       const dirColor = getDirectionColor(group.dest_e);
 
       if (!document.getElementById(cardId)) {
-        // FIX: Inject cards securely hidden with the 'inactive' class by default to eliminate initialization flash clutter
+        // LIVIA FIX: Added a dedicated div under destination to hold the inline Next Stop info
         listEl.insertAdjacentHTML('beforeend', `
           <div class="route-card inactive ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
             <div class="route-main-row">
@@ -1021,6 +1068,7 @@ async function updateNetworkTelemetry() {
                 </div>
                 <div class="route-info">
                     <div class="route-dest" id="dest-${group.key}">${isGroupTerminating ? '' : getT('to') + ' '}${destName}</div>
+                    <div id="next-stop-${group.key}" style="font-size:0.75rem; color:var(--text-secondary); margin-top:1px; display:none;"></div>
                     <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
                        <span id="bars-${group.key}" class="occ-pill"></span>
                     </div>
@@ -1114,6 +1162,7 @@ async function processSmartArrivals(group, matchDetails) {
     const boxOffEl = document.getElementById(`box-off-${groupKey}`);
     const lblSmartEl = document.getElementById(`lbl-smart-${groupKey}`);
     const subsEl = document.getElementById(`subs-${groupKey}`);
+    const nextStopEl = document.getElementById(`next-stop-${groupKey}`);
 
     let combinedArrivals = [];
 
@@ -1182,6 +1231,17 @@ async function processSmartArrivals(group, matchDetails) {
     combinedArrivals.sort((a, b) => a.arrival.estimatedArrivalTime.localeCompare(b.arrival.estimatedArrivalTime));
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
+    // LIVIA FIX: Inject inline "Next Stop" data below destination
+    if (nextStopEl && activeItem) {
+        const nextStopObj = activeItem.stops[activeItem.targetIndex + 1];
+        if (nextStopObj && !isGroupTerminating) {
+            nextStopEl.innerText = `${getT('nextStop')}: ${getLocalizedName(nextStopObj, 'stopName')}`;
+            nextStopEl.style.display = 'block';
+        } else {
+            nextStopEl.style.display = 'none';
+        }
+    }
+
     if (subsEl && activeItem) {
         if (combinedArrivals.length > 1) {
             let subsHtml = '';
@@ -1238,6 +1298,7 @@ async function processSmartArrivals(group, matchDetails) {
       if (smartEl) smartEl.innerText = '--';
       if (occSecEl) occSecEl.style.display = 'none';
       if (boxOffEl) boxOffEl.style.display = 'none';
+      if (nextStopEl) nextStopEl.style.display = 'none';
       return;
     }
 
@@ -1409,7 +1470,6 @@ async function processSmartArrivals(group, matchDetails) {
     
     if (cardEl) {
         cardEl.dataset.smartMins = finalSmartMins;
-        // FIX: Ensure actively tracked buses are successfully unmarked as inactive
         cardEl.classList.remove('inactive');
     }
     
