@@ -333,7 +333,7 @@ const SPONGE_STOPS = {
 };
 
 // AI NOTE: Build timestamp updated to current time.
-const APP_TIMESTAMP = "Build: 2026-10-08 12:38 PM";
+const APP_TIMESTAMP = "Build: 2026-10-08 12:47 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -422,7 +422,6 @@ function cleanStopName(name) {
     return name.replace(/\s*[\(（][^\)）]*[\)）]/g, '').trim();
 }
 
-// SPATIAL HASHING FIX: Combines name with a 0.1 degree lat grid to mathematically separate duplicate names in different districts.
 function getGlobalStopKey(s) {
     const lat = parseFloat(s.latitude) || 0;
     return `${s.stopName_e}_${lat.toFixed(1)}`;
@@ -693,16 +692,29 @@ async function initApp() {
   }
 }
 
+// FIX: Aggregate route numbers servicing each stop to display as a disambiguation badge.
 function buildAllStopsList() {
   const uniqueStops = new Map();
-  Object.values(routeStopsCache).flat().forEach(s => {
-    if (!s || !s.stopName_e) return;
-    const key = getGlobalStopKey(s);
-    if (!uniqueStops.has(key)) {
-        uniqueStops.set(key, { ...s, stopKey: key });
-    }
+  groupedRoutes.forEach(g => {
+    g.routeIds.forEach(id => {
+      (routeStopsCache[id] || []).forEach(s => {
+        if (!s || !s.stopName_e) return;
+        const key = getGlobalStopKey(s);
+        if (!uniqueStops.has(key)) {
+            uniqueStops.set(key, { ...s, stopKey: key, routeLabels: new Set([g.routeNo]) });
+        } else {
+            uniqueStops.get(key).routeLabels.add(g.routeNo);
+        }
+      });
+    });
   });
-  allStops = Array.from(uniqueStops.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
+  
+  allStops = Array.from(uniqueStops.values()).map(s => {
+      const arr = Array.from(s.routeLabels);
+      s.routeStr = arr.slice(0, 6).join(', ');
+      if (arr.length > 6) s.routeStr += '...';
+      return s;
+  }).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
 
 function getStopsForGroup(group) {
@@ -711,7 +723,8 @@ function getStopsForGroup(group) {
     (routeStopsCache[id] || []).forEach(s => {
       const key = getGlobalStopKey(s);
       if (s && s.stopName_e && !uniqueMap.has(key)) {
-         uniqueMap.set(key, { ...s, stopKey: key });
+         const mainStop = allStops.find(as => as.stopKey === key);
+         uniqueMap.set(key, { ...s, stopKey: key, routeStr: mainStop ? mainStop.routeStr : group.routeNo });
       }
     });
   });
@@ -814,7 +827,14 @@ function renderModalList() {
         if (favs.length > 0) {
             listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Favourites</div>`);
             favs.forEach(s => {
-                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')"><span class="modal-item-icon" style="color:#ffd60a">★</span> ${getLocalizedName(s, 'stopName')}</div>`);
+                listEl.insertAdjacentHTML('beforeend', `
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
+                    <span class="modal-item-icon" style="color:#ffd60a">★</span> 
+                    <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</span>
+                        ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
+                    </div>
+                </div>`);
             });
         }
 
@@ -828,7 +848,7 @@ function renderModalList() {
                         <span class="modal-item-icon">📍</span> 
                         <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
                             <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'};">${getLocalizedName(s, 'stopName')}</span>
-                            <span style="font-size:0.75rem; color:var(--accent-green); margin-top:2px;">${distStr} away</span>
+                            <span style="font-size:0.75rem; color:var(--accent-green); margin-top:2px;">${distStr} away ${s.routeStr ? `<span style="color:var(--text-secondary); margin-left:6px;">· 🚌 ${s.routeStr}</span>` : ''}</span>
                         </div>
                         ${isSelected ? '<span style="font-size:0.8rem; color:var(--dir-blue); font-weight:700;">Active</span>' : ''}
                     </div>
@@ -849,9 +869,13 @@ function renderModalList() {
                    distHtml = `<span style="font-size:0.75rem; color:var(--text-secondary); margin-left:auto;">${dStr}</span>`;
                 }
 
-                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
+                listEl.insertAdjacentHTML('beforeend', `
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
                     <span class="modal-item-icon">🚏</span> 
-                    <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;">${getLocalizedName(s, 'stopName')}</div>
+                    <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</span>
+                        ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
+                    </div>
                     ${distHtml}
                 </div>`);
             });
