@@ -333,7 +333,7 @@ const SPONGE_STOPS = {
 };
 
 // AI NOTE: Build timestamp updated to current time.
-const APP_TIMESTAMP = "Build: 2026-10-08 10:08 AM";
+const APP_TIMESTAMP = "Build: 2026-10-08 12:38 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -397,7 +397,7 @@ const i18n = {
 const getT = (key) => i18n[currentLang][key];
 
 let currentRouteKey = 'ALL';
-let currentStopName_e = '';
+let currentStopKey = '';
 let countdown = REFRESH_INTERVAL;
 let timerInterval;
 let detailModeRouteKey = null;
@@ -408,7 +408,7 @@ let routeStopsCache = {};
 const busStateMap = {}; 
 let showInactive = false;
 let showTerminating = false;
-let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops') || '[]');
+let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops_v2') || '[]');
 
 let autoGpsEnabled = true;
 let lastKnownPos = null;
@@ -417,11 +417,15 @@ let activeModalType = null;
 
 function getNow() { return Date.now(); }
 
-// LIVIA FIX: Globally strips out internal pole tags like (TC417) or (ma103) from station names
-// to prevent search clutter and seamlessly group bays together.
 function cleanStopName(name) {
     if (!name) return '';
     return name.replace(/\s*[\(（][^\)）]*[\)）]/g, '').trim();
+}
+
+// SPATIAL HASHING FIX: Combines name with a 0.1 degree lat grid to mathematically separate duplicate names in different districts.
+function getGlobalStopKey(s) {
+    const lat = parseFloat(s.latitude) || 0;
+    return `${s.stopName_e}_${lat.toFixed(1)}`;
 }
 
 function setLoadProgress(pct, text) {
@@ -565,7 +569,6 @@ async function initApp() {
               try {
                 const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
                 const rawStops = res.stops || [];
-                // LIVIA FIX: Strip internal IDs out of all NLB stop names globally
                 routeStopsCache[`NLB_${r.routeId}`] = rawStops.map(s => ({
                     ...s,
                     stopName_e: cleanStopName(s.stopName_e),
@@ -618,7 +621,6 @@ async function initApp() {
                       const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', name_tc: '未知', name_sc: '未知', lat: '0', long: '0' };
                       return {
                           stopId: rs.stop,
-                          // LIVIA FIX: Strip internal IDs out of all KMB stop names globally
                           stopName_e: formatStopName(cleanStopName(stopDetail.name_en)),
                           stopName_c: cleanStopName(stopDetail.name_tc),
                           stopName_s: cleanStopName(stopDetail.name_sc || stopDetail.name_tc),
@@ -660,7 +662,7 @@ async function initApp() {
     
     buildAllStopsList();
     
-    const savedStop = localStorage.getItem('pulse_stop');
+    const savedStop = localStorage.getItem('pulse_stop_key');
     const savedRoute = localStorage.getItem('pulse_route');
     
     if (savedRoute) currentRouteKey = savedRoute;
@@ -670,15 +672,16 @@ async function initApp() {
     autoGpsEnabled = true;
     document.getElementById('gpsBtn').classList.add('active-gps');
     
-    if (savedStop && allStops.some(s => s.stopName_e === savedStop)) {
-      currentStopName_e = savedStop;
+    if (savedStop && allStops.some(s => s.stopKey === savedStop)) {
+      currentStopKey = savedStop;
       updateStopSelectText();
     } 
     
     await locateNearestStopPromise(false);
     
-    if (!currentStopName_e && allStops.length > 0) {
-        currentStopName_e = 'Tung Chung Station Bus Terminus';
+    if (!currentStopKey && allStops.length > 0) {
+        const tcStop = allStops.find(s => s.stopName_e === 'Tung Chung Station Bus Terminus');
+        currentStopKey = tcStop ? tcStop.stopKey : allStops[0].stopKey;
         updateStopSelectText();
     }
     
@@ -693,7 +696,11 @@ async function initApp() {
 function buildAllStopsList() {
   const uniqueStops = new Map();
   Object.values(routeStopsCache).flat().forEach(s => {
-    if (s && s.stopName_e && !uniqueStops.has(s.stopName_e)) uniqueStops.set(s.stopName_e, s);
+    if (!s || !s.stopName_e) return;
+    const key = getGlobalStopKey(s);
+    if (!uniqueStops.has(key)) {
+        uniqueStops.set(key, { ...s, stopKey: key });
+    }
   });
   allStops = Array.from(uniqueStops.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
@@ -702,7 +709,10 @@ function getStopsForGroup(group) {
   const uniqueMap = new Map();
   group.routeIds.forEach(id => {
     (routeStopsCache[id] || []).forEach(s => {
-      if (s && s.stopName_e && !uniqueMap.has(s.stopName_e)) uniqueMap.set(s.stopName_e, s);
+      const key = getGlobalStopKey(s);
+      if (s && s.stopName_e && !uniqueMap.has(key)) {
+         uniqueMap.set(key, { ...s, stopKey: key });
+      }
     });
   });
   return Array.from(uniqueMap.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
@@ -720,9 +730,9 @@ function updateRouteSelectText() {
 
 function updateStopSelectText() {
     const el = document.getElementById('stopSelectText');
-    if (currentStopName_e) {
-        const stopObj = allStops.find(s => s.stopName_e === currentStopName_e);
-        el.innerText = stopObj ? getLocalizedName(stopObj, 'stopName') : currentStopName_e;
+    if (currentStopKey) {
+        const stopObj = allStops.find(s => s.stopKey === currentStopKey);
+        el.innerText = stopObj ? getLocalizedName(stopObj, 'stopName') : currentStopKey.split('_')[0];
     } else {
         el.innerText = "Select Stop...";
     }
@@ -765,13 +775,13 @@ function renderModalList() {
     } else if (activeModalType === 'stop') {
         const sourceStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
         
-        let favs = sourceStops.filter(s => favStops.includes(s.stopName_e));
-        let others = sourceStops.filter(s => !favStops.includes(s.stopName_e));
+        let favs = sourceStops.filter(s => favStops.includes(s.stopKey));
+        let others = sourceStops.filter(s => !favStops.includes(s.stopKey));
         let nearbyStops = [];
 
         let refPos = lastKnownPos;
-        if (!refPos && currentStopName_e) {
-          const curObj = allStops.find(s => s.stopName_e === currentStopName_e);
+        if (!refPos && currentStopKey) {
+          const curObj = allStops.find(s => s.stopKey === currentStopKey);
           if (curObj && curObj.latitude && curObj.longitude) {
             refPos = { lat: parseFloat(curObj.latitude), lon: parseFloat(curObj.longitude) };
           }
@@ -804,7 +814,7 @@ function renderModalList() {
         if (favs.length > 0) {
             listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Favourites</div>`);
             favs.forEach(s => {
-                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon" style="color:#ffd60a">★</span> ${getLocalizedName(s, 'stopName')}</div>`);
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')"><span class="modal-item-icon" style="color:#ffd60a">★</span> ${getLocalizedName(s, 'stopName')}</div>`);
             });
         }
 
@@ -812,9 +822,9 @@ function renderModalList() {
             listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('nearbyStops')}</div>`);
             nearbyStops.forEach(s => {
                 const distStr = s.distKm < 1 ? `${Math.round(s.distKm * 1000)}m` : `${s.distKm.toFixed(1)}km`;
-                const isSelected = (s.stopName_e === currentStopName_e);
+                const isSelected = (s.stopKey === currentStopKey);
                 listEl.insertAdjacentHTML('beforeend', `
-                    <div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
+                    <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
                         <span class="modal-item-icon">📍</span> 
                         <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
                             <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'};">${getLocalizedName(s, 'stopName')}</span>
@@ -832,7 +842,18 @@ function renderModalList() {
             }
             const renderLimit = 150;
             others.slice(0, renderLimit).forEach(s => {
-                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🚏</span> <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</div></div>`);
+                let distHtml = '';
+                if (refPos) {
+                   const dKm = calculateDistanceKm(refPos.lat, refPos.lon, parseFloat(s.latitude), parseFloat(s.longitude));
+                   const dStr = dKm < 1 ? `${Math.round(dKm * 1000)}m` : `${dKm.toFixed(1)}km`;
+                   distHtml = `<span style="font-size:0.75rem; color:var(--text-secondary); margin-left:auto;">${dStr}</span>`;
+                }
+
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
+                    <span class="modal-item-icon">🚏</span> 
+                    <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;">${getLocalizedName(s, 'stopName')}</div>
+                    ${distHtml}
+                </div>`);
             });
         }
     }
@@ -845,9 +866,9 @@ function selectModalItem(type, value) {
         updateRouteSelectText();
         
         const targetStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
-        if (targetStops.length > 0 && !targetStops.some(s => s.stopName_e === currentStopName_e)) {
-            currentStopName_e = targetStops[0].stopName_e;
-            localStorage.setItem('pulse_stop', currentStopName_e);
+        if (targetStops.length > 0 && !targetStops.some(s => s.stopKey === currentStopKey)) {
+            currentStopKey = targetStops[0].stopKey;
+            localStorage.setItem('pulse_stop_key', currentStopKey);
             updateStopSelectText();
         }
         
@@ -859,8 +880,8 @@ function selectModalItem(type, value) {
         document.getElementById('gpsBtn').classList.remove('active-gps');
         document.getElementById('gpsStatus').innerText = getT('manual');
         
-        currentStopName_e = value;
-        localStorage.setItem('pulse_stop', currentStopName_e);
+        currentStopKey = value;
+        localStorage.setItem('pulse_stop_key', currentStopKey);
         updateStopSelectText();
         resetAndFetch();
     }
@@ -868,25 +889,25 @@ function selectModalItem(type, value) {
 }
 
 function toggleFavorite() {
-    if (!currentStopName_e) return;
-    const idx = favStops.indexOf(currentStopName_e);
+    if (!currentStopKey) return;
+    const idx = favStops.indexOf(currentStopKey);
     const msgEl = document.getElementById('favStatusText');
     
     if (idx > -1) {
         favStops.splice(idx, 1);
         msgEl.innerText = getT('favRemoved');
     } else {
-        favStops.push(currentStopName_e);
+        favStops.push(currentStopKey);
         msgEl.innerText = getT('favAdded');
     }
-    localStorage.setItem('pulse_fav_stops', JSON.stringify(favStops));
+    localStorage.setItem('pulse_fav_stops_v2', JSON.stringify(favStops));
     updateFavButtonUI();
     setTimeout(() => { if (msgEl.innerText) msgEl.innerText = ''; }, 3000);
 }
 
 function updateFavButtonUI() {
     const btn = document.getElementById('favBtn');
-    if (currentStopName_e && favStops.includes(currentStopName_e)) {
+    if (currentStopKey && favStops.includes(currentStopKey)) {
         btn.classList.add('active-fav');
         btn.innerText = '★';
     } else {
@@ -937,9 +958,9 @@ function locateNearestStopPromise(isManualClick = false) {
                 const distMeters = Math.round(minDistance * 1000);
                 document.getElementById('gpsStatus').innerText = `${getT('nearest')} ${distMeters}m`;
                 
-                if (closest.stopName_e !== currentStopName_e) {
-                    currentStopName_e = closest.stopName_e;
-                    localStorage.setItem('pulse_stop', currentStopName_e);
+                if (closest.stopKey !== currentStopKey) {
+                    currentStopKey = closest.stopKey;
+                    localStorage.setItem('pulse_stop_key', currentStopKey);
                     updateStopSelectText();
                     for (let key in busStateMap) delete busStateMap[key];
                     resolve(true); 
@@ -1014,7 +1035,7 @@ function startAppLoop() {
 }
 
 async function updateNetworkTelemetry() {
-  if (!currentStopName_e) return;
+  if (!currentStopKey) return;
   
   try {
     let groupsToCheck = currentRouteKey === 'ALL' ? groupedRoutes : groupedRoutes.filter(g => g.key === currentRouteKey);
@@ -1024,7 +1045,7 @@ async function updateNetworkTelemetry() {
       const matchDetails = [];
       for (const routeId of group.routeIds) {
         const stops = routeStopsCache[routeId] || [];
-        const targetIndex = stops.findIndex(s => s.stopName_e === currentStopName_e);
+        const targetIndex = stops.findIndex(s => getGlobalStopKey(s) === currentStopKey);
         
         if (targetIndex !== -1) {
           const isLastStop = (targetIndex === stops.length - 1);
@@ -1057,7 +1078,6 @@ async function updateNetworkTelemetry() {
       const dirColor = getDirectionColor(group.dest_e);
 
       if (!document.getElementById(cardId)) {
-        // LIVIA FIX: Added a dedicated div under destination to hold the inline Next Stop info
         listEl.insertAdjacentHTML('beforeend', `
           <div class="route-card inactive ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
             <div class="route-main-row">
@@ -1231,7 +1251,6 @@ async function processSmartArrivals(group, matchDetails) {
     combinedArrivals.sort((a, b) => a.arrival.estimatedArrivalTime.localeCompare(b.arrival.estimatedArrivalTime));
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
-    // LIVIA FIX: Inject inline "Next Stop" data below destination
     if (nextStopEl && activeItem) {
         const nextStopObj = activeItem.stops[activeItem.targetIndex + 1];
         if (nextStopObj && !isGroupTerminating) {
