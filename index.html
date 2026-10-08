@@ -68,12 +68,18 @@
   
   .action-btn {
     background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
-    width: 44px; height: 72px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem; cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+    width: 48px; height: 72px; border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 1.2rem; cursor: pointer; transition: all 0.2s; flex-shrink: 0; position: relative;
   }
   .action-btn:active { background: #3a3a3c; }
-  .action-btn.active-gps { border-color: var(--accent-green); color: var(--accent-green); background: rgba(48, 209, 88, 0.1); }
+  .action-btn.active-gps { 
+      border-color: var(--accent-green); 
+      color: var(--accent-green); 
+      background: rgba(48, 209, 88, 0.1); 
+      box-shadow: inset 0 0 10px rgba(48, 209, 88, 0.1);
+  }
+  .gps-label { font-size: 0.55rem; font-weight: 800; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; }
 
   .selectors { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
   
@@ -277,7 +283,10 @@
 
 <div class="stop-header">
   <div class="controls-container">
-    <button id="gpsBtn" class="action-btn active-gps" onclick="manualGpsSync()">📍</button>
+    <button id="gpsBtn" class="action-btn active-gps" onclick="manualGpsSync()" title="Auto-locate nearest stop">
+      <span id="gpsIcon" style="font-size: 1.3rem;">📍</span>
+      <span class="gps-label" id="gpsBtnLabel">Auto</span>
+    </button>
     <div class="selectors">
       <div class="search-input" onclick="openModal('route')">
         <span class="search-input-text" id="routeSelectText">All Routes</span>
@@ -289,7 +298,7 @@
   </div>
   <div class="gps-status">
       <span id="favStatusText" style="color: var(--text-secondary);"></span>
-      <span id="gpsStatus"></span>
+      <span id="gpsStatus">Locating...</span>
   </div>
 </div>
 
@@ -725,7 +734,7 @@ async function initApp() {
     updateFavButtonUI();
     
     autoGpsEnabled = true;
-    document.getElementById('gpsBtn').classList.add('active-gps');
+    updateGpsUi();
     
     if (savedStop && allStops.some(s => s.stopKey === savedStop)) {
       currentStopKey = savedStop;
@@ -853,12 +862,33 @@ function closeModal() {
 function renderModalList() {
     const listEl = document.getElementById('searchList');
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
-    const fuzzyQuery = query.replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''); // Removes spaces & symbols for fuzzy match
+    const fuzzyQuery = query.replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''); 
     listEl.innerHTML = '';
 
     if (activeModalType === 'route') {
+        const isInitialState = !query && routeFilterRegion === 'ALL';
+        
+        // Fix 1 & 2: Hide massive text dump unless explicitly searching or filtering
+        if (isInitialState) {
+            listEl.innerHTML = `
+                <div class="modal-item" onclick="selectModalItem('route', 'ALL')" style="background: rgba(10,132,255,0.1); border-left: 4px solid var(--accent-blue);">
+                    <span class="modal-item-icon">🌐</span> 
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--accent-blue);">${getT('allLines')}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">Show departures for every route passing here</div>
+                    </div>
+                </div>
+                <div style="padding: 60px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <div style="font-size: 3rem; opacity: 0.5;">🚍</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">Find Your Route</div>
+                    <div style="font-size: 0.9rem; max-width: 250px; line-height: 1.4;">Select a region tab above or use the search bar to find a specific bus line.</div>
+                </div>
+            `;
+            return;
+        }
+
         if ('all'.includes(query) || getT('allLines').toLowerCase().includes(query)) {
-            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🚌</span> ${getT('allLines')}</div>`);
+            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🌐</span> <b>${getT('allLines')}</b></div>`);
         }
         
         let matches = groupedRoutes.filter(g => {
@@ -878,8 +908,6 @@ function renderModalList() {
                 const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
                 listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> ${prefix}${g.routeNo} (${getT('to')} ${getLocalizedName(g, 'dest')})</div>`);
             });
-        } else if (!query && routeFilterRegion === 'ALL') {
-            listEl.innerHTML = `<div style="padding: 30px; text-align: center; color: var(--text-secondary); font-weight: 500;">Select a region above or search for a route number.</div>`;
         }
         
     } else if (activeModalType === 'stop') {
@@ -899,7 +927,6 @@ function renderModalList() {
             others = others.filter(filterFn);
         }
 
-        // Favourites pinned strictly at the top
         if (favs.length > 0) {
             listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Favourites</div>`);
             favs.forEach(s => {
@@ -915,12 +942,11 @@ function renderModalList() {
             });
         }
 
-        // Only show search results below (nearby stops removed to reduce clutter)
         if (others.length > 0 && (fuzzyQuery || favs.length === 0)) {
             if (favs.length > 0) {
                 listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
             }
-            const renderLimit = fuzzyQuery ? 150 : 50; // Performance optimization if not searching
+            const renderLimit = fuzzyQuery ? 150 : 50; 
             others.slice(0, renderLimit).forEach(s => {
                 listEl.insertAdjacentHTML('beforeend', `
                 <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
@@ -953,8 +979,7 @@ function selectModalItem(type, value) {
         
     } else if (type === 'stop') {
         autoGpsEnabled = false;
-        document.getElementById('gpsBtn').classList.remove('active-gps');
-        document.getElementById('gpsStatus').innerText = getT('manual');
+        updateGpsUi();
         
         currentStopKey = value;
         localStorage.setItem('pulse_stop_key', currentStopKey);
@@ -1008,6 +1033,36 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
+function updateGpsUi() {
+    const btn = document.getElementById('gpsBtn');
+    const icon = document.getElementById('gpsIcon');
+    const label = document.getElementById('gpsBtnLabel');
+    const status = document.getElementById('gpsStatus');
+    
+    if (autoGpsEnabled) {
+        btn.classList.add('active-gps');
+        icon.innerText = '📍';
+        icon.style.opacity = '1';
+        label.innerText = 'Auto';
+        status.style.color = 'var(--accent-green)';
+    } else {
+        btn.classList.remove('active-gps');
+        icon.innerText = '📌';
+        icon.style.opacity = '0.7';
+        label.innerText = 'Manual';
+        status.innerText = 'Manual Selection';
+        status.style.color = 'var(--text-secondary)';
+    }
+}
+
+async function manualGpsSync() {
+    autoGpsEnabled = true;
+    updateGpsUi();
+    document.getElementById('gpsStatus').innerText = 'Locating...';
+    await locateNearestStopPromise(true);
+    resetAndFetch();
+}
+
 function locateNearestStopPromise(isManualClick = false) {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
@@ -1030,7 +1085,7 @@ function locateNearestStopPromise(isManualClick = false) {
 
             if (closest) {
                 const distMeters = Math.round(minDistance * 1000);
-                document.getElementById('gpsStatus').innerText = `${getT('nearest')} ${distMeters}m`;
+                if (autoGpsEnabled) document.getElementById('gpsStatus').innerText = `${getT('nearest')} ${distMeters}m`;
                 
                 if (closest.stopKey !== currentStopKey) {
                     currentStopKey = closest.stopKey;
@@ -1050,14 +1105,6 @@ function locateNearestStopPromise(isManualClick = false) {
             resolve(false);
         }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 });
     });
-}
-
-async function manualGpsSync() {
-    autoGpsEnabled = true;
-    document.getElementById('gpsBtn').classList.add('active-gps');
-    document.getElementById('gpsStatus').style.color = 'var(--accent-green)';
-    await locateNearestStopPromise(true);
-    resetAndFetch();
 }
 
 function changeLanguage(lang) {
