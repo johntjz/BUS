@@ -175,38 +175,6 @@
   .sub-eta-label { font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
   .sub-eta-time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
-  /* Journey Timeline (Inline Expansion) */
-  .timeline-container {
-    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--card-border);
-    display: flex; flex-direction: column; gap: 0;
-    max-height: 55vh; overflow-y: auto;
-  }
-  .timeline-row {
-    display: flex; justify-content: space-between; align-items: stretch; min-height: 44px; padding-right: 4px;
-  }
-  .timeline-left {
-    display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; position: relative;
-  }
-  .timeline-node {
-    width: 12px; height: 12px; border-radius: 50%; background: var(--bg-color); border: 3px solid var(--card-border); z-index: 2; margin-left: 2px;
-  }
-  .timeline-line {
-    position: absolute; left: 7px; top: 22px; bottom: -22px; width: 2px; background: var(--card-border); z-index: 1;
-  }
-  .timeline-row:last-child .timeline-line { display: none; }
-  .timeline-stop-name {
-    font-size: 0.95rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: 12px;
-  }
-  .timeline-right {
-    display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end; padding-bottom: 12px; margin-top: -2px;
-  }
-  .timeline-time {
-    font-size: 1.05rem; font-weight: 700; color: var(--accent-green); font-variant-numeric: tabular-nums;
-  }
-  .timeline-dur {
-    font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); margin-top: 2px;
-  }
-
   /* Filtering CSS */
   .route-card.inactive { display: none; }
   .route-card.terminating { display: none; }
@@ -332,8 +300,8 @@ const SPONGE_STOPS = {
   }
 };
 
-// AI NOTE: When re-generating this index.html, update the build time below to current time.
-const APP_TIMESTAMP = "Build: 2026-10-08 09:56 AM";
+// AI NOTE: When regenerating index.html, update this timestamp to current generation time.
+const APP_TIMESTAMP = "Build: 2026-10-08 10:01 AM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -754,7 +722,6 @@ function renderModalList() {
         let others = sourceStops.filter(s => !favStops.includes(s.stopName_e));
         let nearbyStops = [];
 
-        // Reference position: user GPS or current selected stop coordinates
         let refPos = lastKnownPos;
         if (!refPos && currentStopName_e) {
           const curObj = allStops.find(s => s.stopName_e === currentStopName_e);
@@ -764,7 +731,6 @@ function renderModalList() {
         }
 
         if (query) {
-            // Enhanced search: supports Tung Chung, Fu Tung, Yu Tung, 富東, 裕東, etc.
             const filterFn = (s) => (
                 (s.stopName_e && s.stopName_e.toLowerCase().includes(query)) ||
                 (s.stopName_c && s.stopName_c.toLowerCase().includes(query)) ||
@@ -773,8 +739,7 @@ function renderModalList() {
             favs = favs.filter(filterFn);
             others = others.filter(filterFn);
         } else if (refPos) {
-            // LIVIA FIX: Group all walking-distance corridor stops within 500m
-            const WALKING_RADIUS_KM = 0.5; // 500 meters
+            const WALKING_RADIUS_KM = 0.5;
             const stopsWithDist = others.map(s => ({
                 ...s,
                 distKm: calculateDistanceKm(refPos.lat, refPos.lon, parseFloat(s.latitude), parseFloat(s.longitude))
@@ -782,10 +747,8 @@ function renderModalList() {
             
             stopsWithDist.sort((a, b) => a.distKm - b.distKm);
             
-            // Extract walking cluster
             nearbyStops = stopsWithDist.filter(s => s.distKm <= WALKING_RADIUS_KM);
             
-            // If very few, ensure at least the nearest 6 stops appear
             if (nearbyStops.length < 6) {
                 nearbyStops = stopsWithDist.slice(0, 8);
             }
@@ -816,8 +779,6 @@ function renderModalList() {
             });
         }
 
-        // LIVIA FIX: Only show 'others' (the list of 6,000+ stops) if the user actively types in a search query.
-        // The default "All Stops" and "Type to view more" UI has been removed for a cleaner default experience.
         if (query && others.length > 0) {
             if (favs.length > 0) {
                 listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('searchResults')}</div>`);
@@ -975,10 +936,7 @@ function updateLiveCountdowns() {
     const targetMs = parseInt(card.dataset.targetArrivalTime, 10);
     const smartEl = card.querySelector('.smart-eta');
 
-    // Retain "Departing" state untouched during local ticking
-    if (smartEl && smartEl.classList.contains('departing')) {
-      return; 
-    }
+    if (smartEl && smartEl.classList.contains('departing')) return; 
 
     if (!targetMs || isNaN(targetMs)) return;
 
@@ -1052,8 +1010,9 @@ async function updateNetworkTelemetry() {
       const dirColor = getDirectionColor(group.dest_e);
 
       if (!document.getElementById(cardId)) {
+        // FIX: Inject cards securely hidden with the 'inactive' class by default to eliminate initialization flash clutter
         listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
+          <div class="route-card inactive ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
             <div class="route-main-row">
                 <div class="route-left">
                 <div style="display:flex; flex-direction:column;">
@@ -1101,7 +1060,6 @@ async function updateNetworkTelemetry() {
 
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
     
-    // Smart Sorting: keep terminating routes at bottom, active ETAs ascending
     cards.sort((a, b) => {
         const aTerm = a.classList.contains('terminating');
         const bTerm = b.classList.contains('terminating');
@@ -1194,7 +1152,6 @@ async function processSmartArrivals(group, matchDetails) {
         } catch(e) {}
       } 
       else {
-        // NLB
         const rawNlbId = m.routeId.replace('NLB_', '');
         [targetEtaRes, upstreamEtaRes] = await Promise.all([
             fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`).catch(()=>null),
@@ -1220,13 +1177,9 @@ async function processSmartArrivals(group, matchDetails) {
     const now = getNow();
     const currentHour = new Date(now).getHours();
     const currentDay = new Date(now).getDay();
-    
     const isNight = (currentHour >= 20 || currentHour <= 5);
 
-    // Optimized ETA Sorting
     combinedArrivals.sort((a, b) => a.arrival.estimatedArrivalTime.localeCompare(b.arrival.estimatedArrivalTime));
-
-    // Build sub-ETAs
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
     if (subsEl && activeItem) {
@@ -1257,13 +1210,9 @@ async function processSmartArrivals(group, matchDetails) {
         }
     }
 
-    // ==========================================
-    // LIVIA FIX: GHOST BUS RETENTION BUFFER (90s)
-    // ==========================================
     if (combinedArrivals.length === 0) {
       const state = busStateMap[groupKey];
       
-      // If the bus was at 0m within the last 90 seconds, keep it visible as "Departing"
       if (state && state.lastEtaMins === 0 && (now - state.lastRealTime < 90000)) {
         if (smartEl) {
           smartEl.innerText = getT('departing'); 
@@ -1346,11 +1295,7 @@ async function processSmartArrivals(group, matchDetails) {
         }
     }
 
-    // ==========================================
-    // LIVIA FIX: EXACT OCCUPANCY PERCENTAGE
-    // ==========================================
     const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now, state.isSpongeLocked);
-    
     let occState = pct > 95 ? 'full' : (pct > 75 ? 'standing' : 'seating');
 
     let dwellPenaltyMins = 0;
@@ -1367,7 +1312,6 @@ async function processSmartArrivals(group, matchDetails) {
     const occInfo = getOccData(occState);
     if (barsEl) {
         barsEl.className = `occ-pill ${occInfo.class}`;
-        // Output format: [Icon] [Standing/Seating] · [XX]%
         barsEl.innerText = `${occInfo.icon} ${getT(occInfo.key)} · ${pct}%`;
     }
     
@@ -1449,9 +1393,6 @@ async function processSmartArrivals(group, matchDetails) {
       delete busStateMap[groupKey]; 
     }
 
-    // ==========================================
-    // ANTI-JITTER & LOCAL COUNTDOWN INTEGRATION
-    // ==========================================
     const newArrivalMs = now + (smartMins * 60000);
     const oldArrivalMs = parseInt(cardEl.dataset.targetArrivalTime, 10);
     let finalTargetMs = newArrivalMs;
@@ -1466,7 +1407,11 @@ async function processSmartArrivals(group, matchDetails) {
     cardEl.dataset.targetArrivalTime = finalTargetMs;
     const finalSmartMins = Math.max(0, Math.ceil((finalTargetMs - now) / 60000));
     
-    if (cardEl) cardEl.dataset.smartMins = finalSmartMins;
+    if (cardEl) {
+        cardEl.dataset.smartMins = finalSmartMins;
+        // FIX: Ensure actively tracked buses are successfully unmarked as inactive
+        cardEl.classList.remove('inactive');
+    }
     
     offEl.innerText = rawEtaMins === 0 ? (activeItem.targetIndex === 0 ? getT('departingSoon') : getT('due')) : `${rawEtaMins}${getT('min')}`;
 
@@ -1491,7 +1436,6 @@ async function processSmartArrivals(group, matchDetails) {
       boxOffEl.style.display = (finalSmartMins === rawEtaMins) ? 'none' : 'flex';
     }
     
-    // Inline Journey Planner Logic
     if (detailModeRouteKey === groupKey && !isGroupTerminating) {
         let timelineHtml = `<div class="timeline-container">
             <div style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; text-transform:uppercase; margin-bottom:12px; padding-left:24px;">${getT('routeStops')}</div>`;
