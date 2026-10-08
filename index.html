@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Pulse HK - Transport Network</title>
+<title>Bus HK - Transport Network</title>
 <style>
   :root {
     /* Status Colors */
@@ -34,6 +34,7 @@
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden; 
+    padding-bottom: 80px; /* Space for bottom fav bar */
   }
   .header {
     background-color: var(--accent-red);
@@ -73,7 +74,6 @@
   }
   .action-btn:active { background: #3a3a3c; }
   .action-btn.active-gps { border-color: var(--accent-green); color: var(--accent-green); background: rgba(48, 209, 88, 0.1); }
-  .action-btn.active-fav { border-color: #ffd60a; color: #ffd60a; background: rgba(255, 214, 10, 0.1); }
 
   .selectors { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
   
@@ -96,12 +96,26 @@
     animation: slideUp 0.2s ease-out;
   }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  .modal-header { display: flex; padding: 12px 16px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); gap: 12px; align-items: center; }
+  .modal-header { display: flex; padding: 16px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); gap: 12px; align-items: center; }
   .modal-search-bar {
-    flex: 1; background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
-    padding: 10px 12px; border-radius: 8px; font-size: 1rem; outline: none;
+    flex: 1; background: #1c1c1e; color: #fff; border: 2px solid var(--accent-blue);
+    padding: 14px 16px; border-radius: 12px; font-size: 1.15rem; font-weight: 600; outline: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
   }
+  .modal-search-bar::placeholder { color: #636366; font-weight: 500; }
   .modal-close { color: var(--accent-blue); background: none; border: none; font-size: 1.05rem; font-weight: 600; cursor: pointer; }
+  
+  .region-filters {
+    display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border); flex-shrink: 0; scrollbar-width: none;
+  }
+  .region-filters::-webkit-scrollbar { display: none; }
+  .region-btn {
+    background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
+    padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
+    white-space: nowrap; cursor: pointer; transition: all 0.2s;
+  }
+  .region-btn.active { background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+
   .modal-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
   .modal-item {
     padding: 14px 16px; border-bottom: 1px solid var(--card-border);
@@ -109,11 +123,26 @@
   }
   .modal-item:active { background-color: #1e1e20; }
   .modal-item-icon { font-size: 1.1rem; flex-shrink: 0; }
-  .fav-header { padding: 8px 16px; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); background: #1a1a1c; text-transform: uppercase; }
+  .fav-header { padding: 10px 16px; font-size: 0.8rem; font-weight: 800; color: var(--text-secondary); background: #1a1a1c; text-transform: uppercase; letter-spacing: 0.5px; }
 
-  #detailControls {
-    display: none; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border);
+  /* Bottom Fav Bar */
+  .bottom-fav-bar {
+    position: fixed; bottom: 0; left: 0; width: 100%;
+    background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--card-border);
+    padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+    display: flex; justify-content: center; align-items: center; z-index: 50;
   }
+  .bottom-fav-btn {
+    width: 100%; max-width: 400px; padding: 14px; border-radius: 12px;
+    font-size: 1.05rem; font-weight: 700; cursor: pointer; border: none;
+    transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .bottom-fav-btn:active { transform: scale(0.98); }
+  .btn-add-fav { background: #2c2c2e; color: #ffd60a; border: 1px solid #3a3a3c; }
+  .btn-rm-fav { background: rgba(227, 24, 55, 0.15); color: var(--accent-red); border: 1px solid rgba(227, 24, 55, 0.3); }
+
+  #detailControls { display: none; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border); }
   .back-btn {
     width: 100%; background: #2c2c2e; color: var(--dir-blue); border: 1px solid #3a3a3c;
     border-radius: 8px; padding: 12px; font-size: 1.05rem; font-weight: 600; cursor: pointer;
@@ -130,9 +159,7 @@
     cursor: pointer; transition: background-color 0.2s;
   }
   .route-card:active { background-color: #1e1e20; }
-  .route-main-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
-  }
+  .route-main-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
 
   .route-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
   .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; color: var(--text-primary); }
@@ -233,7 +260,7 @@
 <div class="header">
   <div class="header-left">
     <div class="title-row">
-      <h1>Pulse HK</h1>
+      <h1>Bus HK</h1>
       <span class="build-badge" id="buildVersion"></span>
     </div>
     <div class="time-row">
@@ -251,7 +278,6 @@
 <div class="stop-header">
   <div class="controls-container">
     <button id="gpsBtn" class="action-btn active-gps" onclick="manualGpsSync()">📍</button>
-    <button id="favBtn" class="action-btn" onclick="toggleFavorite()">☆</button>
     <div class="selectors">
       <div class="search-input" onclick="openModal('route')">
         <span class="search-input-text" id="routeSelectText">All Routes</span>
@@ -281,12 +307,18 @@
   </div>
 </div>
 
+<!-- Bottom Fav Bar -->
+<div id="bottomFavBar" class="bottom-fav-bar">
+    <button id="bottomFavBtn" class="bottom-fav-btn btn-add-fav" onclick="toggleFavorite()">⭐ Add to Favourites</button>
+</div>
+
 <!-- Search Modal -->
 <div id="searchModal" class="search-modal">
   <div class="modal-header">
-    <input type="text" id="searchInput" class="modal-search-bar" placeholder="Search stop name..." oninput="renderModalList()" autocomplete="off">
+    <input type="text" id="searchInput" class="modal-search-bar" placeholder="Type to search..." oninput="renderModalList()" autocomplete="off">
     <button class="modal-close" onclick="closeModal()">Cancel</button>
   </div>
+  <div id="regionFilters" class="region-filters" style="display: none;"></div>
   <div id="searchList" class="modal-list"></div>
 </div>
 
@@ -332,7 +364,6 @@ const SPONGE_STOPS = {
   }
 };
 
-// AI NOTE: Build timestamp updated to current time.
 const APP_TIMESTAMP = "Build: 2026-10-08 12:55 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
@@ -414,6 +445,7 @@ let autoGpsEnabled = true;
 let lastKnownPos = null;
 
 let activeModalType = null; 
+let routeFilterRegion = 'ALL'; 
 
 function getNow() { return Date.now(); }
 
@@ -661,10 +693,6 @@ async function initApp() {
     
     buildAllStopsList();
 
-    // ==========================================
-    // DATA MIGRATION SCRIPT (v1 Strings -> v2 Spatial Keys)
-    // Ensures users do not lose favorites when updating
-    // ==========================================
     let legacyFavs = localStorage.getItem('pulse_fav_stops');
     if (legacyFavs && !localStorage.getItem('pulse_fav_stops_v2')) {
         try {
@@ -688,7 +716,6 @@ async function initApp() {
          }
          localStorage.removeItem('pulse_stop');
     }
-    // ==========================================
     
     const savedStop = localStorage.getItem('pulse_stop_key');
     const savedRoute = localStorage.getItem('pulse_route');
@@ -784,10 +811,38 @@ function openModal(type) {
     activeModalType = type;
     const modal = document.getElementById('searchModal');
     const input = document.getElementById('searchInput');
+    const regionFilters = document.getElementById('regionFilters');
+    
     input.value = '';
     modal.style.display = 'flex';
+    
+    if (type === 'route') {
+        input.placeholder = "Search route number or destination...";
+        regionFilters.style.display = 'flex';
+        renderRegionFilters();
+    } else {
+        input.placeholder = "Type stop name to search...";
+        regionFilters.style.display = 'none';
+    }
+    
     input.focus();
     renderModalList();
+}
+
+function setRouteRegion(region) {
+    routeFilterRegion = region;
+    renderRegionFilters();
+    renderModalList();
+}
+
+function renderRegionFilters() {
+    const rf = document.getElementById('regionFilters');
+    rf.innerHTML = `
+        <button class="region-btn ${routeFilterRegion === 'ALL' ? 'active' : ''}" onclick="setRouteRegion('ALL')">All Routes</button>
+        <button class="region-btn ${routeFilterRegion === 'NLB' ? 'active' : ''}" onclick="setRouteRegion('NLB')">Lantau (NLB)</button>
+        <button class="region-btn ${routeFilterRegion === 'KMB' ? 'active' : ''}" onclick="setRouteRegion('KMB')">Urban (KMB)</button>
+        <button class="region-btn ${routeFilterRegion === 'LWB' ? 'active' : ''}" onclick="setRouteRegion('LWB')">Airport (LWB)</button>
+    `;
 }
 
 function closeModal() {
@@ -798,6 +853,7 @@ function closeModal() {
 function renderModalList() {
     const listEl = document.getElementById('searchList');
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
+    const fuzzyQuery = query.replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''); // Removes spaces & symbols for fuzzy match
     listEl.innerHTML = '';
 
     if (activeModalType === 'route') {
@@ -805,98 +861,67 @@ function renderModalList() {
             listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🚌</span> ${getT('allLines')}</div>`);
         }
         
-        let matches = groupedRoutes.filter(g => 
-            g.routeNo.toLowerCase().includes(query) || 
-            getLocalizedName(g, 'dest').toLowerCase().includes(query)
-        );
-        matches.slice(0, 100).forEach(g => {
-            const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
-            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> ${prefix}${g.routeNo} (${getT('to')} ${getLocalizedName(g, 'dest')})</div>`);
+        let matches = groupedRoutes.filter(g => {
+            if (routeFilterRegion !== 'ALL' && g.company !== routeFilterRegion) return false;
+            if (!query) return true;
+            
+            const normRoute = g.routeNo.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normDestE = getLocalizedName(g, 'dest').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normDestC = g.dest_c || '';
+            const normDestS = g.dest_s || '';
+            
+            return normRoute.includes(fuzzyQuery) || normDestE.includes(fuzzyQuery) || normDestC.includes(fuzzyQuery) || normDestS.includes(fuzzyQuery);
         });
+
+        if (matches.length > 0) {
+            matches.slice(0, 100).forEach(g => {
+                const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> ${prefix}${g.routeNo} (${getT('to')} ${getLocalizedName(g, 'dest')})</div>`);
+            });
+        } else if (!query && routeFilterRegion === 'ALL') {
+            listEl.innerHTML = `<div style="padding: 30px; text-align: center; color: var(--text-secondary); font-weight: 500;">Select a region above or search for a route number.</div>`;
+        }
+        
     } else if (activeModalType === 'stop') {
         const sourceStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
         
         let favs = sourceStops.filter(s => favStops.includes(s.stopKey));
         let others = sourceStops.filter(s => !favStops.includes(s.stopKey));
-        let nearbyStops = [];
 
-        let refPos = lastKnownPos;
-        if (!refPos && currentStopKey) {
-          const curObj = allStops.find(s => s.stopKey === currentStopKey);
-          if (curObj && curObj.latitude && curObj.longitude) {
-            refPos = { lat: parseFloat(curObj.latitude), lon: parseFloat(curObj.longitude) };
-          }
-        }
-
-        if (query) {
-            const filterFn = (s) => (
-                (s.stopName_e && s.stopName_e.toLowerCase().includes(query)) ||
-                (s.stopName_c && s.stopName_c.toLowerCase().includes(query)) ||
-                (s.stopName_s && s.stopName_s.toLowerCase().includes(query))
-            );
+        if (fuzzyQuery) {
+            const filterFn = (s) => {
+                const nE = (s.stopName_e || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+                const nC = (s.stopName_c || '').replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+                const nS = (s.stopName_s || '').replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+                return nE.includes(fuzzyQuery) || nC.includes(fuzzyQuery) || nS.includes(fuzzyQuery);
+            };
             favs = favs.filter(filterFn);
             others = others.filter(filterFn);
-        } else if (refPos) {
-            const WALKING_RADIUS_KM = 0.5;
-            const stopsWithDist = others.map(s => ({
-                ...s,
-                distKm: calculateDistanceKm(refPos.lat, refPos.lon, parseFloat(s.latitude), parseFloat(s.longitude))
-            }));
-            
-            stopsWithDist.sort((a, b) => a.distKm - b.distKm);
-            
-            nearbyStops = stopsWithDist.filter(s => s.distKm <= WALKING_RADIUS_KM);
-            
-            if (nearbyStops.length < 6) {
-                nearbyStops = stopsWithDist.slice(0, 8);
-            }
         }
 
+        // Favourites pinned strictly at the top
         if (favs.length > 0) {
             listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Favourites</div>`);
             favs.forEach(s => {
+                const isSelected = (s.stopKey === currentStopKey);
                 listEl.insertAdjacentHTML('beforeend', `
-                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
                     <span class="modal-item-icon" style="color:#ffd60a">★</span> 
                     <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
-                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</span>
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')}</span>
                         ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
                     </div>
                 </div>`);
             });
         }
 
-        if (nearbyStops.length > 0 && !query) {
-            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('nearbyStops')}</div>`);
-            nearbyStops.forEach(s => {
-                const distStr = s.distKm < 1 ? `${Math.round(s.distKm * 1000)}m` : `${s.distKm.toFixed(1)}km`;
-                const isSelected = (s.stopKey === currentStopKey);
-                listEl.insertAdjacentHTML('beforeend', `
-                    <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
-                        <span class="modal-item-icon">📍</span> 
-                        <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
-                            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'};">${getLocalizedName(s, 'stopName')}</span>
-                            <span style="font-size:0.75rem; color:var(--accent-green); margin-top:2px;">${distStr} away ${s.routeStr ? `<span style="color:var(--text-secondary); margin-left:6px;">· 🚌 ${s.routeStr}</span>` : ''}</span>
-                        </div>
-                        ${isSelected ? '<span style="font-size:0.8rem; color:var(--dir-blue); font-weight:700;">Active</span>' : ''}
-                    </div>
-                `);
-            });
-        }
-
-        if (query && others.length > 0) {
+        // Only show search results below (nearby stops removed to reduce clutter)
+        if (others.length > 0 && (fuzzyQuery || favs.length === 0)) {
             if (favs.length > 0) {
-                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('searchResults')}</div>`);
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
             }
-            const renderLimit = 150;
+            const renderLimit = fuzzyQuery ? 150 : 50; // Performance optimization if not searching
             others.slice(0, renderLimit).forEach(s => {
-                let distHtml = '';
-                if (refPos) {
-                   const dKm = calculateDistanceKm(refPos.lat, refPos.lon, parseFloat(s.latitude), parseFloat(s.longitude));
-                   const dStr = dKm < 1 ? `${Math.round(dKm * 1000)}m` : `${dKm.toFixed(1)}km`;
-                   distHtml = `<span style="font-size:0.75rem; color:var(--text-secondary); margin-left:auto;">${dStr}</span>`;
-                }
-
                 listEl.insertAdjacentHTML('beforeend', `
                 <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
                     <span class="modal-item-icon">🚏</span> 
@@ -904,7 +929,6 @@ function renderModalList() {
                         <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</span>
                         ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
                     </div>
-                    ${distHtml}
                 </div>`);
             });
         }
@@ -943,28 +967,26 @@ function selectModalItem(type, value) {
 function toggleFavorite() {
     if (!currentStopKey) return;
     const idx = favStops.indexOf(currentStopKey);
-    const msgEl = document.getElementById('favStatusText');
     
     if (idx > -1) {
         favStops.splice(idx, 1);
-        msgEl.innerText = getT('favRemoved');
     } else {
         favStops.push(currentStopKey);
-        msgEl.innerText = getT('favAdded');
     }
     localStorage.setItem('pulse_fav_stops_v2', JSON.stringify(favStops));
     updateFavButtonUI();
-    setTimeout(() => { if (msgEl.innerText) msgEl.innerText = ''; }, 3000);
 }
 
 function updateFavButtonUI() {
-    const btn = document.getElementById('favBtn');
+    const btn = document.getElementById('bottomFavBtn');
+    if (!btn) return;
+    
     if (currentStopKey && favStops.includes(currentStopKey)) {
-        btn.classList.add('active-fav');
-        btn.innerText = '★';
+        btn.className = 'bottom-fav-btn btn-rm-fav';
+        btn.innerText = '❌ Remove from Favourites';
     } else {
-        btn.classList.remove('active-fav');
-        btn.innerText = '☆';
+        btn.className = 'bottom-fav-btn btn-add-fav';
+        btn.innerText = '⭐ Add to Favourites';
     }
 }
 
@@ -1647,13 +1669,12 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else if (hour >= 10 && hour <= 16) {
       baseLoad = 30;
     } else if (hour >= 17 && hour <= 20) {
-      // Explicit routing instead of a catch-all for non-Tung Chung
       if (isFeeder || isE_Route || dest.includes('tung chung')) {
           baseLoad = 80;
       } else if (routeNo === '3M' && dest.includes('mui wo')) {
-          baseLoad = 75; // Commuters returning from TC
+          baseLoad = 75; 
       } else if (isTouristRoute && dest.includes('mui wo')) {
-          baseLoad = 25; // Evening tourist routes to Mui Wo are mostly empty
+          baseLoad = 25; 
       } else {
           baseLoad = 35;
       }
@@ -1665,9 +1686,9 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
       baseLoad = isTouristRoute ? 85 : 40; 
     } else if (hour >= 15 && hour <= 19) {
       if (dest.includes('tung chung')) {
-          baseLoad = 90; // Heavy flow out of tourist spots to TC
+          baseLoad = 90; 
       } else if (isTouristRoute && dest.includes('mui wo')) {
-          baseLoad = 35; // Flow to Mui Wo is much lighter
+          baseLoad = 35; 
       } else {
           baseLoad = 40;
       }
@@ -1688,7 +1709,6 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   } else if (isFeeder) {
       spatialMultiplier = progress < 0.75 ? 1.0 : Math.max(0, (1 - progress) / 0.25);
   } else if (isTouristRoute) {
-      // Start low (empty at station), peak mid-route, drop sharply as people alight
       if (progress < 0.15) {
           spatialMultiplier = 0.5;
       } else if (progress > 0.8) {
