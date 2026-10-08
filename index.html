@@ -332,7 +332,8 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Patch: 2026-10-08 Livia Experience Update";
+// AI NOTE: When re-generating this index.html, update the build time below to current time.
+const APP_TIMESTAMP = "Build: 2026-10-08 09:56 AM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -355,7 +356,7 @@ const i18n = {
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
     seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full",
-    nearbyStops: "📍 Nearby Stops (Walking Distance)", allStopsHead: "All Stops"
+    nearbyStops: "📍 Nearby Stops (Walking Distance)", searchResults: "Search Results"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -372,7 +373,7 @@ const i18n = {
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
     manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
     seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿",
-    nearbyStops: "📍 步行範圍車站", allStopsHead: "所有車站"
+    nearbyStops: "📍 步行範圍車站", searchResults: "搜尋結果"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -389,7 +390,7 @@ const i18n = {
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
     manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
     seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满",
-    nearbyStops: "📍 步行范围车站", allStopsHead: "所有车站"
+    nearbyStops: "📍 步行范围车站", searchResults: "搜索结果"
   }
 };
 
@@ -788,9 +789,6 @@ function renderModalList() {
             if (nearbyStops.length < 6) {
                 nearbyStops = stopsWithDist.slice(0, 8);
             }
-            
-            const nearbyNames = new Set(nearbyStops.map(n => n.stopName_e));
-            others = stopsWithDist.filter(s => !nearbyNames.has(s.stopName_e)).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
         }
 
         if (favs.length > 0) {
@@ -818,18 +816,16 @@ function renderModalList() {
             });
         }
 
-        if (others.length > 0) {
-            if (nearbyStops.length > 0 || favs.length > 0) {
-                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('allStopsHead')}</div>`);
+        // LIVIA FIX: Only show 'others' (the list of 6,000+ stops) if the user actively types in a search query.
+        // The default "All Stops" and "Type to view more" UI has been removed for a cleaner default experience.
+        if (query && others.length > 0) {
+            if (favs.length > 0) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${getT('searchResults')}</div>`);
             }
             const renderLimit = 150;
             others.slice(0, renderLimit).forEach(s => {
                 listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('stop', '${s.stopName_e.replace(/'/g, "\\'")}')"><span class="modal-item-icon">🚏</span> <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</div></div>`);
             });
-
-            if (others.length > renderLimit && !query) {
-                listEl.insertAdjacentHTML('beforeend', `<div style="padding: 24px 16px; text-align: center; color: var(--text-secondary); font-size: 0.85rem; font-weight: 500;">Type in search bar to view ${others.length - renderLimit} more stops...</div>`);
-            }
         }
     }
 }
@@ -1262,7 +1258,7 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     // ==========================================
-    // LIVIA FIX 1: GHOST BUS RETENTION BUFFER (90s)
+    // LIVIA FIX: GHOST BUS RETENTION BUFFER (90s)
     // ==========================================
     if (combinedArrivals.length === 0) {
       const state = busStateMap[groupKey];
@@ -1351,7 +1347,7 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     // ==========================================
-    // LIVIA FIX 2: PRECISE OCCUPANCY PERCENTAGE
+    // LIVIA FIX: EXACT OCCUPANCY PERCENTAGE
     // ==========================================
     const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now, state.isSpongeLocked);
     
@@ -1371,7 +1367,7 @@ async function processSmartArrivals(group, matchDetails) {
     const occInfo = getOccData(occState);
     if (barsEl) {
         barsEl.className = `occ-pill ${occInfo.class}`;
-        // Displays both status and exact percentage
+        // Output format: [Icon] [Standing/Seating] · [XX]%
         barsEl.innerText = `${occInfo.icon} ${getT(occInfo.key)} · ${pct}%`;
     }
     
