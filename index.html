@@ -333,7 +333,7 @@ const SPONGE_STOPS = {
 };
 
 // AI NOTE: Build timestamp updated to current time.
-const APP_TIMESTAMP = "Build: 2026-10-08 12:47 PM";
+const APP_TIMESTAMP = "Build: 2026-10-08 12:55 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -660,6 +660,35 @@ async function initApp() {
     }
     
     buildAllStopsList();
+
+    // ==========================================
+    // DATA MIGRATION SCRIPT (v1 Strings -> v2 Spatial Keys)
+    // Ensures users do not lose favorites when updating
+    // ==========================================
+    let legacyFavs = localStorage.getItem('pulse_fav_stops');
+    if (legacyFavs && !localStorage.getItem('pulse_fav_stops_v2')) {
+        try {
+            let parsedLegacy = JSON.parse(legacyFavs);
+            let migratedFavs = [];
+            parsedLegacy.forEach(legacyName => {
+                let match = allStops.find(s => s.stopName_e === legacyName);
+                if (match) migratedFavs.push(match.stopKey);
+            });
+            favStops = migratedFavs;
+            localStorage.setItem('pulse_fav_stops_v2', JSON.stringify(favStops));
+            localStorage.removeItem('pulse_fav_stops'); 
+        } catch(e) {}
+    }
+
+    let legacyCurrentStop = localStorage.getItem('pulse_stop');
+    if (legacyCurrentStop && !localStorage.getItem('pulse_stop_key')) {
+         let match = allStops.find(s => s.stopName_e === legacyCurrentStop);
+         if (match) {
+             localStorage.setItem('pulse_stop_key', match.stopKey);
+         }
+         localStorage.removeItem('pulse_stop');
+    }
+    // ==========================================
     
     const savedStop = localStorage.getItem('pulse_stop_key');
     const savedRoute = localStorage.getItem('pulse_route');
@@ -692,7 +721,6 @@ async function initApp() {
   }
 }
 
-// FIX: Aggregate route numbers servicing each stop to display as a disambiguation badge.
 function buildAllStopsList() {
   const uniqueStops = new Map();
   groupedRoutes.forEach(g => {
