@@ -61,13 +61,39 @@
     background: rgba(0,0,0,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.3);
     padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; cursor: pointer; flex-shrink: 0;
   }
+
+  /* In-App Alarm Banner */
+  .alarm-banner {
+    position: sticky; top: 58px; left: 0; width: 100%;
+    background: #ffd60a; color: #000;
+    padding: 10px 16px; font-weight: 800; font-size: 0.9rem;
+    display: none; justify-content: space-between; align-items: center; z-index: 11;
+    box-shadow: 0 4px 10px rgba(255,214,10,0.2);
+    transition: background 0.3s;
+  }
+  .alarm-banner.alerting { background: var(--accent-red); color: #fff; animation: pulse-full 1s infinite; }
+  .alarm-close { background: rgba(0,0,0,0.1); border: none; font-size: 1rem; cursor: pointer; color: inherit; font-weight: 800; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+
   .stop-header {
     padding: 12px 16px; border-bottom: 1px solid var(--card-border);
     display: flex; flex-direction: column; background-color: var(--bg-color); gap: 8px;
     position: sticky; top: 58px; z-index: 9;
   }
-  .controls-container { display: flex; width: 100%; }
+  .controls-container { display: flex; width: 100%; gap: 10px;}
   
+  .action-btn {
+    background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
+    width: 48px; border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 1.2rem; cursor: pointer; transition: all 0.2s; flex-shrink: 0; position: relative;
+  }
+  .action-btn:active { background: #3a3a3c; }
+  .action-btn.active-gps { 
+      border-color: var(--accent-green); color: var(--accent-green); 
+      background: rgba(48, 209, 88, 0.1); box-shadow: inset 0 0 10px rgba(48, 209, 88, 0.1);
+  }
+  .gps-label { font-size: 0.55rem; font-weight: 800; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; }
+
   .selectors { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
   
   .search-input {
@@ -79,6 +105,14 @@
     background-repeat: no-repeat; background-position: right 8px center;
   }
   .search-input-text { text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+
+  .commute-row { display: flex; gap: 8px; width: 100%; }
+  .commute-btn { 
+      flex: 1; background: rgba(10, 132, 255, 0.15); color: var(--dir-blue); border: 1px solid rgba(10, 132, 255, 0.3);
+      padding: 8px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+      display: flex; justify-content: center; align-items: center; gap: 6px; transition: all 0.2s;
+  }
+  .commute-btn:active { background: rgba(10, 132, 255, 0.3); }
 
   .gps-status { font-size: 0.75rem; color: var(--accent-green); font-weight: 600; text-align: right; padding-right: 4px; display: flex; justify-content: space-between; align-items: center; }
   
@@ -160,8 +194,9 @@
   .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--text-primary); }
   
   .eta-container { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; }
-  .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; text-align: right; }
+  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; cursor: pointer; padding: 4px; border-radius: 8px; transition: background 0.2s; }
+  .eta-box:active { background: rgba(255,255,255,0.1); }
+  .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; text-align: right; display: flex; align-items: center; gap: 4px; }
   .official-eta { font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); text-decoration: line-through; opacity: 0.7; font-variant-numeric: tabular-nums; }
   .smart-eta { font-size: 1.45rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; transition: color 0.3s; }
   
@@ -194,7 +229,7 @@
   .sub-eta-label { font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
   .sub-eta-time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
-  /* Journey Timeline (Inline Expansion) */
+  /* Journey Timeline */
   .timeline-container {
     margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--card-border);
     display: flex; flex-direction: column; gap: 0;
@@ -226,7 +261,6 @@
     font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); margin-top: 2px;
   }
 
-  /* Filtering CSS */
   .route-card.inactive { display: none; }
   .route-card.terminating { display: none; }
   .show-inactive .route-card.inactive { display: flex; }
@@ -239,7 +273,6 @@
     padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: auto; display: block;
   }
 
-  /* Initial Loader UI */
   .init-loader-container { padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
   .init-loader-text { color: var(--text-secondary); font-size: 1.05rem; font-weight: 600; }
   .init-loader-bar-bg { width: 100%; max-width: 280px; height: 6px; background: var(--card-border); border-radius: 4px; overflow: hidden; }
@@ -267,14 +300,27 @@
   </select>
 </div>
 
+<div id="alarmBanner" class="alarm-banner">
+    <span id="alarmText">⏰ Alarm set</span>
+    <button class="alarm-close" onclick="clearAlarm()">✕</button>
+</div>
+
 <div class="stop-header">
   <div class="controls-container">
+    <button id="gpsBtn" class="action-btn active-gps" onclick="manualGpsSync()" title="Auto-locate nearest stop">
+      <span id="gpsIcon" style="font-size: 1.3rem;">📍</span>
+      <span class="gps-label" id="gpsBtnLabel">Auto</span>
+    </button>
     <div class="selectors">
       <div class="search-input" onclick="openModal('route')">
         <span class="search-input-text" id="routeSelectText">All Routes</span>
       </div>
       <div class="search-input" onclick="openModal('stop')">
         <span class="search-input-text" id="stopSelectText">Select Stop...</span>
+      </div>
+      <div class="commute-row">
+        <button class="commute-btn" onclick="triggerCommute('work')">💼 To Work</button>
+        <button class="commute-btn" onclick="triggerCommute('home')">🏠 To Home</button>
       </div>
     </div>
   </div>
@@ -325,58 +371,14 @@ const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Safe LocalStorage wrapper to prevent iOS Safari crash
 function safeSetStorage(key, value) {
-    try {
-        localStorage.setItem(key, value);
-    } catch (e) {
-        console.warn("Storage restricted", e);
-    }
+    try { localStorage.setItem(key, value); } catch (e) {}
 }
 
 function safeGetStorage(key) {
-    try {
-        return localStorage.getItem(key);
-    } catch (e) {
-        return null;
-    }
+    try { return localStorage.getItem(key); } catch (e) { return null; }
 }
 
-// ============================================================================
-// SPONGE STOPS CONFIGURATION
-// ============================================================================
-const SPONGE_STOPS = {
-  "Tung Chung Station Bus Terminus": {
-    routes: ["3M", "11", "23", "34"],
-    triggerWindows: [
-      { days: [1, 2, 3, 4, 5], hours: [17, 18, 19, 20] }, 
-      { days: [0, 6], hours: [9, 10, 11, 12, 13] }        
-    ],
-    driftThreshold: 1.5 
-  },
-  "Mun Tung Estate Terminus": {
-    routes: ["E31", "E36A", "E32A", "39M", "B6"],
-    triggerWindows: [
-      { days: [1, 2, 3, 4, 5], hours: [7, 8, 9] } 
-    ],
-    driftThreshold: 2.0 
-  },
-  "Mui Wo Ferry Pier": {
-    routes: ["3M", "1", "4"],
-    triggerWindows: [
-      { days: [1, 2, 3, 4, 5], hours: [7, 8, 9] }, 
-      { days: [0, 6], hours: [15, 16, 17, 18] }    
-    ],
-    driftThreshold: 1.5
-  },
-  "Tai O": {
-    routes: ["11", "21", "1"],
-    triggerWindows: [
-      { days: [0, 6], hours: [15, 16, 17, 18, 19] }
-    ],
-    driftThreshold: 2.0
-  }
-};
-
-const APP_TIMESTAMP = "Build: 2026-10-09 2:52 PM";
+const APP_TIMESTAMP = "Build: 2026-10-09 3:41 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -398,8 +400,7 @@ const i18n = {
     terminatingHere: "Terminating Here", routeStops: "Journey ETA", nextStop: "Next Stop",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Selection",
-    seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full",
-    nearbyStops: "📍 Nearby Stops (Walking Distance)", searchResults: "Search Results"
+    seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full"
   },
   tc: {
     allLines: "所有路線", loadingIndex: "載入車站索引...",
@@ -415,8 +416,7 @@ const i18n = {
     terminatingHere: "以此站為終點", routeStops: "車程預計", nextStop: "下一站",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
     manual: "手動選擇",
-    seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿",
-    nearbyStops: "📍 步行範圍車站", searchResults: "搜尋結果"
+    seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿"
   },
   sc: {
     allLines: "所有路线", loadingIndex: "载入车站索引...",
@@ -432,8 +432,7 @@ const i18n = {
     terminatingHere: "以此站为终点", routeStops: "车程预计", nextStop: "下一站",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
     manual: "手动选择",
-    seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满",
-    nearbyStops: "📍 步行范围车站", searchResults: "搜索结果"
+    seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满"
   }
 };
 
@@ -462,6 +461,10 @@ let lastKnownPos = null;
 let activeModalType = null; 
 let routeFilterRegion = 'ALL'; 
 
+// Alarm Variables
+let activeAlarm = null;
+let alarmIntervalId = null;
+
 function getNow() { return Date.now(); }
 
 function cleanStopName(name) {
@@ -488,8 +491,6 @@ function toggleInactive() {
   const listEl = document.getElementById('routeList');
   if (showInactive) listEl.classList.add('show-inactive');
   else listEl.classList.remove('show-inactive');
-  const btn = document.getElementById('toggleInactiveBtn');
-  if (btn) btn.innerText = showInactive ? getT('hideInactive') : getT('showInactive');
 }
 
 function toggleTerminating() {
@@ -497,8 +498,6 @@ function toggleTerminating() {
   const listEl = document.getElementById('routeList');
   if (showTerminating) listEl.classList.add('show-terminating');
   else listEl.classList.remove('show-terminating');
-  const btn = document.getElementById('toggleTerminatingBtn');
-  if (btn) btn.innerText = showTerminating ? getT('hideTerminating') : getT('showTerminating');
 }
 
 function showDetail(groupKey) {
@@ -506,8 +505,6 @@ function showDetail(groupKey) {
   detailModeRouteKey = groupKey;
   document.getElementById('detailControls').style.display = 'block';
   document.getElementById('routeList').classList.add('detail-mode');
-  const btn = document.getElementById('backBtn');
-  if (btn) btn.innerText = getT('back');
   updateNetworkTelemetry();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -524,8 +521,8 @@ function getDirectionColor(dest) {
   if (d.includes('tung chung')) return 'var(--dir-blue)';
   if (d.includes('mui wo')) return 'var(--dir-purple)';
   if (d.includes('tai o') || d.includes('kowloon') || d.includes('tsim sha tsui')) return 'var(--dir-cyan)';
-  if (d.includes('airport') || d.includes('gtc') || d.includes('hzmb') || d.includes('macao') || d.includes('yuen long') || d.includes('tuen mun')) return 'var(--dir-indigo)';
-  if (d.includes('tong fuk') || d.includes('causeway bay') || d.includes('tin hau')) return 'var(--dir-pink)';
+  if (d.includes('airport') || d.includes('yuen long') || d.includes('tuen mun')) return 'var(--dir-indigo)';
+  if (d.includes('tong fuk') || d.includes('causeway bay')) return 'var(--dir-pink)';
   return 'var(--card-border)';
 }
 
@@ -575,7 +572,6 @@ function getLocalizedName(obj, prefix) {
 
 async function initApp() {
   try {
-    // FORCE CACHE INVALIDATION BY BUMPING TO v9
     const cachedGrouped = safeGetStorage('pulse_grouped_routes_v9');
     const cachedStops = safeGetStorage('pulse_stops_v9');
     const cacheTime = safeGetStorage('pulse_cache_time_v9');
@@ -589,7 +585,6 @@ async function initApp() {
           routeStopsCache = JSON.parse(cachedStops);
           loadedFromCache = true;
       } catch (e) {
-          console.error("Cache corrupted. Re-fetching network.", e);
           safeSetStorage('pulse_cache_time_v9', '0');
       }
     } 
@@ -640,7 +635,6 @@ async function initApp() {
             setLoadProgress(progress, `Fetching NLB Stops (${Math.round(progress)}%)...`);
           }
       } catch(e) { 
-          console.error("NLB Fetch failed", e); 
           cacheSuccess = false;
       }
 
@@ -712,10 +706,7 @@ async function initApp() {
                   }
               });
           }
-      } catch(e) { 
-          console.error("KMB/LWB Fetch failed", e);
-          cacheSuccess = false;
-      }
+      } catch(e) { cacheSuccess = false; }
 
       groupedRoutes = Array.from(groupedMap.values());
 
@@ -731,20 +722,6 @@ async function initApp() {
     }
     
     buildAllStopsList();
-
-    let legacyFavs = safeGetStorage('pulse_fav_stops_v2');
-    if (legacyFavs && !safeGetStorage('pulse_fav_stops_v2')) {
-        try {
-            let parsedLegacy = JSON.parse(legacyFavs);
-            let migratedFavs = [];
-            parsedLegacy.forEach(legacyName => {
-                let match = allStops.find(s => s.stopName_e === legacyName);
-                if (match) migratedFavs.push(match.stopKey);
-            });
-            favStops = migratedFavs;
-            safeSetStorage('pulse_fav_stops_v2', JSON.stringify(favStops));
-        } catch(e) {}
-    }
     
     const savedStop = safeGetStorage('pulse_stop_key');
     const savedRoute = safeGetStorage('pulse_route');
@@ -836,6 +813,63 @@ function updateStopSelectText() {
         el.innerText = "Select Stop...";
     }
     updateFavButtonUI();
+}
+
+// ==========================================
+// COMMUTE LOGIC
+// ==========================================
+async function triggerCommute(type) {
+    if (!lastKnownPos) await locateNearestStopPromise(false);
+    if (!lastKnownPos) return;
+
+    // Quick latitude bounds to determine which side of the mountain we are on
+    const isTungChung = lastKnownPos.lat > 22.27 && lastKnownPos.lat < 22.35;
+    const isYuenLongOrUrban = lastKnownPos.lat >= 22.35;
+    const isSouthLantau = lastKnownPos.lat <= 22.27;
+
+    autoGpsEnabled = false; // Reset to manual unless overridden below
+    
+    if (type === 'work') {
+        if (isTungChung || isYuenLongOrUrban) {
+            // Leg 2: Tung Chung -> Yuen Long (E36)
+            let e36 = groupedRoutes.find(g => g.routeNo === 'E36' && (g.dest_e.toLowerCase().includes('yuen long') || g.dest_e.toLowerCase().includes('heung road')));
+            if(e36) currentRouteKey = e36.key;
+            
+            let tcStop = allStops.find(s => s.stopName_e.includes('Tung Chung Cable Car') || s.stopName_e.includes('Tung Chung Station'));
+            if(tcStop) currentStopKey = tcStop.stopKey;
+            
+        } else {
+            // Leg 1: South Lantau -> Tung Chung (3M)
+            let r3M = groupedRoutes.find(g => g.routeNo === '3M' && g.dest_e.toLowerCase().includes('tung chung'));
+            if(r3M) currentRouteKey = r3M.key;
+            
+            let loUkStop = allStops.find(s => s.stopName_e.includes('Lo Uk Tsuen'));
+            if(loUkStop) currentStopKey = loUkStop.stopKey;
+        }
+    } else if (type === 'home') {
+        if (isYuenLongOrUrban) {
+            // Leg 1: Yuen Long -> Tung Chung (E36)
+            let e36 = groupedRoutes.find(g => g.routeNo === 'E36' && (g.dest_e.toLowerCase().includes('airport') || g.dest_e.toLowerCase().includes('tung chung')));
+            if(e36) currentRouteKey = e36.key;
+            
+            autoGpsEnabled = true;
+            await locateNearestStopPromise(false); // Let GPS find closest E36 stop
+        } else {
+            // Leg 2: Tung Chung -> South Lantau (3M)
+            let r3M = groupedRoutes.find(g => g.routeNo === '3M' && g.dest_e.toLowerCase().includes('mui wo'));
+            if(r3M) currentRouteKey = r3M.key;
+            
+            let tcTerminus = allStops.find(s => s.stopName_e.includes('Tung Chung Station Bus Terminus'));
+            if(tcTerminus) currentStopKey = tcTerminus.stopKey;
+        }
+    }
+    
+    safeSetStorage('pulse_route', currentRouteKey);
+    safeSetStorage('pulse_stop_key', currentStopKey);
+    updateRouteSelectText();
+    updateStopSelectText();
+    updateGpsUi();
+    resetAndFetch();
 }
 
 function openModal(type) {
@@ -1167,6 +1201,68 @@ function updateFavButtonUI() {
     }
 }
 
+// ==========================================
+// IN-APP ALARM SYSTEM
+// ==========================================
+function toggleAlarm(routeNo, groupKey) {
+    const cardEl = document.getElementById(`route-${groupKey}`);
+    if (!cardEl) return;
+    
+    const targetMs = parseInt(cardEl.dataset.targetArrivalTime, 10);
+    if (!targetMs || isNaN(targetMs)) return;
+    
+    if (activeAlarm && activeAlarm.groupKey === groupKey) {
+        clearAlarm();
+        return;
+    }
+    
+    activeAlarm = { route: routeNo, groupKey: groupKey, targetMs: targetMs };
+    const banner = document.getElementById('alarmBanner');
+    banner.style.display = 'flex';
+    banner.classList.remove('alerting');
+    
+    clearInterval(alarmIntervalId);
+    alarmIntervalId = setInterval(checkAlarm, 1000);
+    checkAlarm();
+}
+
+function checkAlarm() {
+    if (!activeAlarm) return;
+    
+    // Attempt to dynamically sync the target MS in case of API ETA updates
+    const cardEl = document.getElementById(`route-${activeAlarm.groupKey}`);
+    if (cardEl) {
+        const liveTargetMs = parseInt(cardEl.dataset.targetArrivalTime, 10);
+        if (liveTargetMs && !isNaN(liveTargetMs)) {
+            activeAlarm.targetMs = liveTargetMs;
+        }
+    }
+
+    const remainingMs = activeAlarm.targetMs - Date.now();
+    const mins = Math.ceil(remainingMs / 60000);
+    const banner = document.getElementById('alarmBanner');
+    
+    if (mins <= 3 && mins > 0) {
+        document.getElementById('alarmText').innerText = `🚨 Alert: ${activeAlarm.route} arriving in ${mins}m!`;
+        banner.classList.add('alerting');
+        if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+    } else if (mins <= 0) {
+        document.getElementById('alarmText').innerText = `🚍 ${activeAlarm.route} is arriving now!`;
+        banner.classList.add('alerting');
+        if (navigator.vibrate) navigator.vibrate([1000, 500, 1000]);
+        setTimeout(clearAlarm, 10000); // Clear after 10 seconds of arriving
+    } else {
+        document.getElementById('alarmText').innerText = `⏰ Alarm Set: ${activeAlarm.route} (${mins}m away)`;
+        banner.classList.remove('alerting');
+    }
+}
+
+function clearAlarm() {
+    activeAlarm = null;
+    clearInterval(alarmIntervalId);
+    document.getElementById('alarmBanner').style.display = 'none';
+}
+
 function resetAndFetch() {
   detailModeRouteKey = null;
   document.getElementById('detailControls').style.display = 'none';
@@ -1186,13 +1282,33 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
 }
 
 function updateGpsUi() {
+    const btn = document.getElementById('gpsBtn');
+    const icon = document.getElementById('gpsIcon');
+    const label = document.getElementById('gpsBtnLabel');
     const status = document.getElementById('gpsStatus');
-    if (!autoGpsEnabled) {
+    
+    if (autoGpsEnabled) {
+        btn.classList.add('active-gps');
+        icon.innerText = '📍';
+        icon.style.opacity = '1';
+        label.innerText = 'Auto';
+        status.style.color = 'var(--accent-green)';
+    } else {
+        btn.classList.remove('active-gps');
+        icon.innerText = '📌';
+        icon.style.opacity = '0.7';
+        label.innerText = 'Manual';
         status.innerText = 'Manual Selection';
         status.style.color = 'var(--text-secondary)';
-    } else {
-        status.style.color = 'var(--accent-green)';
     }
+}
+
+async function manualGpsSync() {
+    autoGpsEnabled = true;
+    updateGpsUi();
+    document.getElementById('gpsStatus').innerText = 'Locating...';
+    await locateNearestStopPromise(true);
+    resetAndFetch();
 }
 
 function locateNearestStopPromise(isManualClick = false) {
@@ -1369,8 +1485,8 @@ async function updateNetworkTelemetry() {
                     <span class="eta-label" id="lbl-off-${group.key}">${getT('official')}</span>
                     <span class="official-eta" id="off-${group.key}">--</span>
                 </div>
-                <div class="eta-box" id="box-smart-${group.key}">
-                    <span class="eta-label" id="lbl-smart-${group.key}">${getT('actual')}</span>
+                <div class="eta-box" id="box-smart-${group.key}" onclick="event.stopPropagation(); toggleAlarm('${group.routeNo}', '${group.key}')" title="Tap to set alarm">
+                    <span class="eta-label" id="lbl-smart-${group.key}">🔔 ${getT('actual')}</span>
                     <span class="smart-eta" id="smart-${group.key}">--</span>
                 </div>
                 </div>
@@ -1568,7 +1684,7 @@ async function processSmartArrivals(group, matchDetails) {
           smartEl.className = 'smart-eta departing';
         }
         if (offEl) offEl.innerText = '--';
-        if (lblSmartEl) lblSmartEl.innerText = getT('arrivingLabel');
+        if (lblSmartEl) lblSmartEl.innerText = `🔔 ${getT('arrivingLabel')}`;
         
         if (cardEl) {
           cardEl.dataset.smartMins = 0;
@@ -1642,6 +1758,7 @@ async function processSmartArrivals(group, matchDetails) {
             isGhostActive = true;
         }
     } else if (state.pseudoBusId !== pseudoBusId) {
+        // FIX: Hard reset the math filter when the bus ID changes to prevent "1m" ghost bounce
         state.pseudoBusId = pseudoBusId;
         state.firstZeroTime = (rawEtaMins === 0) ? now : null;
         state.lastEtaMins = rawEtaMins;
@@ -1705,18 +1822,18 @@ async function processSmartArrivals(group, matchDetails) {
     
     if (isGhostActive) {
         smartMins = ghostMins;
-        lblSmartEl.innerText = getT('actual');
+        lblSmartEl.innerText = `🔔 ${getT('actual')}`;
         smartEl.style.color = 'var(--accent-orange)';
         rawEtaMins = ghostMins; 
     } else if (rawEtaMins >= 0) {
       if (isNoGPS) {
         smartMins = rawEtaMins; 
-        lblSmartEl.innerText = getT('scheduled');
+        lblSmartEl.innerText = `🔔 ${getT('scheduled')}`;
         smartEl.style.color = 'var(--accent-orange)';
         state.isScheduled = true;
         state.occState = occState;
       } else {
-        lblSmartEl.innerText = getT('actual');
+        lblSmartEl.innerText = `🔔 ${getT('actual')}`;
         smartEl.style.color = ''; 
         state.occState = occState;
         
@@ -1803,11 +1920,11 @@ async function processSmartArrivals(group, matchDetails) {
       const zeroDuration = (state && state.firstZeroTime) ? (now - state.firstZeroTime) : 0;
       
       if (zeroDuration > 75000 && !isNight) { 
-          lblSmartEl.innerText = getT('arrivingLabel');
+          lblSmartEl.innerText = `🔔 ${getT('arrivingLabel')}`;
           smartEl.innerText = getT('delayed');
           smartEl.className = 'smart-eta delayed';
       } else {
-          lblSmartEl.innerText = getT('arrivingLabel');
+          lblSmartEl.innerText = `🔔 ${getT('arrivingLabel')}`;
           smartEl.innerText = (activeItem.targetIndex === 0) ? getT('departingSoon') : getT('due');
           smartEl.className = 'smart-eta arriving';
       }
@@ -2022,4 +2139,3 @@ initApp();
 </script>
 </body>
 </html>
-
