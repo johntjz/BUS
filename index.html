@@ -348,7 +348,7 @@ let allStops = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
 let busStateMap = {}; 
-let favRoutes = JSON.parse(localStorage.getItem('hkbus_fav_routes_v10') || '[]');
+let favRoutes = JSON.parse(localStorage.getItem('hkbus_fav_routes_v11') || '[]');
 let searchCompanyFilter = 'ALL';
 
 let lastKnownPos = null;
@@ -392,9 +392,9 @@ function updateLoadingText(text) {
 
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('hkbus_grouped_v10');
-    const cachedStops = localStorage.getItem('hkbus_stops_v10');
-    const cacheTime = localStorage.getItem('hkbus_cache_time_v10');
+    const cachedGrouped = localStorage.getItem('hkbus_grouped_v11');
+    const cachedStops = localStorage.getItem('hkbus_stops_v11');
+    const cacheTime = localStorage.getItem('hkbus_cache_time_v11');
     const now = Date.now(); 
 
     let loadedFromCache = false;
@@ -404,7 +404,7 @@ async function initApp() {
           groupedRoutes = JSON.parse(cachedGrouped);
           routeStopsCache = JSON.parse(cachedStops);
           loadedFromCache = true;
-      } catch (e) { localStorage.removeItem('hkbus_cache_time_v10'); }
+      } catch (e) { localStorage.removeItem('hkbus_cache_time_v11'); }
     } 
     
     if (!loadedFromCache) {
@@ -505,9 +505,9 @@ async function initApp() {
 
       groupedRoutes = Array.from(groupedMap.values());
       try {
-        localStorage.setItem('hkbus_grouped_v10', JSON.stringify(groupedRoutes));
-        localStorage.setItem('hkbus_stops_v10', JSON.stringify(routeStopsCache));
-        localStorage.setItem('hkbus_cache_time_v10', Date.now().toString());
+        localStorage.setItem('hkbus_grouped_v11', JSON.stringify(groupedRoutes));
+        localStorage.setItem('hkbus_stops_v11', JSON.stringify(routeStopsCache));
+        localStorage.setItem('hkbus_cache_time_v11', Date.now().toString());
       } catch (e) {}
     }
     
@@ -840,7 +840,6 @@ function buildEtaCardsHTML(relevantGroups, containerId, prefix) {
                   </div>
                   <div class="route-info">
                       <div class="route-dest" id="${prefix}-dest-${groupKey}">
-                        <span class="co-badge" style="background:${coColor};">${group.company}</span>
                         ${isGroupTerminating ? '' : 'To '}${destName}
                       </div>
                       <div class="compact-occupancy" id="${prefix}-occ-sec-${groupKey}" style="display:none;">
@@ -970,7 +969,7 @@ function getOccData(state) {
     return { class: 'occ-seating', key: 'Seating', icon: '💺' };
 }
 
-async function processSmartArrivals(item, prefix = 'main') {
+async function processSmartArrivals(item, prefix = 'main', restrictToLiveGPS = false) {
   const group = item.group;
   const matchDetails = item.matchDetails;
   const groupKey = group.key + (item.isTransfer ? '_T' : '');
@@ -1018,8 +1017,18 @@ async function processSmartArrivals(item, prefix = 'main') {
       }
     }));
 
+    if (restrictToLiveGPS) {
+        combinedArrivals = combinedArrivals.filter(c => !c.noGPS);
+    }
+
     combinedArrivals = combinedArrivals.filter(c => new Date(c.arrivalTimeStr).getTime() > now - 60000);
     combinedArrivals.sort((a, b) => new Date(a.arrivalTimeStr).getTime() - new Date(b.arrivalTimeStr).getTime());
+    
+    if (restrictToLiveGPS && combinedArrivals.length === 0) {
+        if (cardEl) cardEl.remove();
+        return;
+    }
+
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
     if (subsEl && activeItem) {
@@ -1256,13 +1265,21 @@ async function refreshMapSheet() {
     const prefix = 'sheet';
     
     buildEtaCardsHTML(relevantGroups, containerId, prefix);
-    await Promise.all(relevantGroups.map(item => processSmartArrivals(item, prefix)));
+    
+    // Apply strict filtering in the map sheet to ONLY show live ETAs
+    await Promise.all(relevantGroups.map(item => processSmartArrivals(item, prefix, true)));
 
     const listEl = document.getElementById(containerId);
     if(listEl) {
       const cards = Array.from(listEl.querySelectorAll('.route-card'));
-      cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
-      cards.forEach(card => listEl.appendChild(card));
+      
+      // If there are no cards left after the live GPS filtering, show a nice empty state
+      if (cards.length === 0) {
+          listEl.innerHTML = `<div class="text-center" style="padding: 20px;">No buses are actively arriving at this stop right now.</div>`;
+      } else {
+          cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
+          cards.forEach(card => listEl.appendChild(card));
+      }
     }
 }
 
@@ -1348,7 +1365,7 @@ function renderFavList() {
 
 function removeFavRoute(key) {
     favRoutes = favRoutes.filter(k => k !== key);
-    localStorage.setItem('hkbus_fav_routes_v10', JSON.stringify(favRoutes));
+    localStorage.setItem('hkbus_fav_routes_v11', JSON.stringify(favRoutes));
     renderFavList();
 }
 
@@ -1388,7 +1405,7 @@ function renderFavSearch() {
 function addFavFromModal(key) {
     if(!favRoutes.includes(key)) {
         favRoutes.push(key);
-        localStorage.setItem('hkbus_fav_routes_v10', JSON.stringify(favRoutes));
+        localStorage.setItem('hkbus_fav_routes_v11', JSON.stringify(favRoutes));
     }
     closeFavModal();
     renderFavList();
