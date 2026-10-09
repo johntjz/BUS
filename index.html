@@ -32,11 +32,11 @@
     color-scheme: dark;
   }
 
-  /* Header */
+  /* Header - Fixed overlap with symmetrical padding and constrained back button */
   .header {
     background-color: var(--kmb-red);
     color: white;
-    padding: 12px 16px;
+    padding: 0 12px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -45,11 +45,36 @@
     height: 55px;
     flex-shrink: 0;
   }
-  .header h1 { font-size: 1.25rem; font-weight: 700; margin: 0; }
+  .header h1 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 46px; /* Guaranteed clearance for back button on the left */
+    width: 100%;
+    box-sizing: border-box;
+  }
   .back-btn {
-    position: absolute; left: 10px; top: 0; bottom: 0; display: none;
-    align-items: center; justify-content: center; background: none; border: none; color: white;
-    font-size: 2.2rem; font-weight: bold; cursor: pointer; padding: 0 16px;
+    position: absolute;
+    left: 4px;
+    top: 0;
+    bottom: 0;
+    width: 44px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 2.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0;
+    z-index: 2;
+    line-height: 1;
   }
 
   /* Views */
@@ -108,10 +133,18 @@
   .eta-row { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-bottom: 1px dashed var(--border-color); }
   .eta-row:last-child { border-bottom: none; }
   .eta-row-left { display: flex; align-items: center; gap: 16px; font-size: 1rem; color: var(--text-sub); }
-  .eta-row-seq { display: inline-block; width: 24px; font-weight: 900; color: var(--text-main); font-size: 1.4rem; }
+  .eta-row-seq {
+    display: inline-block;
+    min-width: 48px;
+    font-weight: 900;
+    color: var(--text-main);
+    font-size: 1.35rem;
+    line-height: 1;
+    letter-spacing: -0.5px;
+  }
   .eta-row-time { font-size: 2.2rem; font-weight: 900; font-variant-numeric: tabular-nums; }
 
-  /* Search View */
+  /* Search / Route View */
   .search-box-container { padding: 16px; background: var(--bg-white); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; z-index: 10;}
   .search-input {
     width: 100%; padding: 16px; border: 2px solid var(--border-color); border-radius: 12px;
@@ -229,7 +262,7 @@
   <h1 id="headerTitle">Bus HK</h1>
 </header>
 
-<!-- Main / Nearby View -->
+<!-- Nearby (Main) View -->
 <main id="view-main" class="view-container active">
   <div class="location-header">
     <div style="display:flex; align-items:center; gap:12px;">
@@ -246,7 +279,7 @@
   </div>
 </main>
 
-<!-- Search View -->
+<!-- Route (Search) View -->
 <main id="view-search" class="view-container">
   <div class="search-box-container">
     <div class="region-filters">
@@ -288,8 +321,8 @@
 
 <!-- Bottom Tabs -->
 <nav class="bottom-tabs">
-  <div class="tab active" onclick="switchTab('main')" id="tab-main"><span class="tab-icon">🏠</span><span>Main</span></div>
-  <div class="tab" onclick="switchTab('search')" id="tab-search"><span class="tab-icon">🔍</span><span>Search</span></div>
+  <div class="tab active" onclick="switchTab('main')" id="tab-main"><span class="tab-icon">📍</span><span>Nearby</span></div>
+  <div class="tab" onclick="switchTab('search')" id="tab-search"><span class="tab-icon">🚌</span><span>Route</span></div>
   <div class="tab" onclick="switchTab('map')" id="tab-map"><span class="tab-icon">🗺️</span><span>Map</span></div>
   <div class="tab" onclick="switchTab('fav')" id="tab-fav"><span class="tab-icon">⭐</span><span>Favorites</span></div>
 </nav>
@@ -533,7 +566,6 @@ function makeUserIcon() {
     return L.divIcon({ className: 'custom-user-icon', html: '<div></div>', iconSize: [22, 22] });
 }
 
-// Lightweight GPS refresh: updates lastKnownPos + user markers, resolves position (or cached/null on failure)
 function refreshGPS(timeoutMs = 4000) {
     return new Promise((resolve) => {
         if (!navigator.geolocation) { resolve(lastKnownPos); return; }
@@ -602,6 +634,47 @@ function locateNearestStopPromise() {
     });
 }
 
+// Get routes passing through nearby stops based on GPS
+function getNearbyRoutes(maxDistanceKm = 1.0) {
+    if (!lastKnownPos || allStops.length === 0) return [];
+    
+    const stopsWithDist = allStops.map(s => {
+        const lat = parseFloat(s.latitude);
+        const lon = parseFloat(s.longitude);
+        const dist = (isNaN(lat) || isNaN(lon) || lat === 0) ? Infinity : calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, lat, lon);
+        return { stop: s, dist };
+    }).filter(item => item.dist !== Infinity).sort((a, b) => a.dist - b.dist);
+
+    if (stopsWithDist.length === 0) return [];
+
+    let candidates = stopsWithDist.filter(item => item.dist <= maxDistanceKm);
+    if (candidates.length === 0) {
+        candidates = stopsWithDist.slice(0, 3);
+    }
+
+    const seenGroupKeys = new Set();
+    const result = [];
+
+    candidates.forEach(item => {
+        item.stop.routes.forEach(rk => {
+            if (!seenGroupKeys.has(rk)) {
+                seenGroupKeys.add(rk);
+                const g = groupedRoutes.find(r => r.key === rk);
+                if (g) result.push(g);
+            }
+        });
+    });
+
+    result.sort((a, b) => {
+        const numA = parseInt(a.routeNo.replace(/[^0-9]/g, '')) || 999;
+        const numB = parseInt(b.routeNo.replace(/[^0-9]/g, '')) || 999;
+        if (numA === numB) return a.routeNo.localeCompare(b.routeNo);
+        return numA - numB;
+    });
+
+    return result;
+}
+
 // --- UI Navigation ---
 function switchTab(tabId) {
     if (tabId === 'main') {
@@ -612,7 +685,7 @@ function switchTab(tabId) {
     
     currentView = tabId;
     detailRouteGroup = null; 
-    detailOpenToken++; // cancel any pending auto-select
+    detailOpenToken++; 
     
     document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -623,7 +696,12 @@ function switchTab(tabId) {
     document.getElementById('backBtn').style.display = 'none';
     document.getElementById('headerTitle').innerText = 'Bus HK';
     
-    if (tabId === 'search') renderSearchResults();
+    if (tabId === 'search') {
+        if (!lastKnownPos) {
+            refreshGPS().then(() => renderSearchResults());
+        }
+        renderSearchResults();
+    }
     if (tabId === 'fav') renderFavList();
     if (tabId === 'map') {
         closeMapSheet();
@@ -639,7 +717,6 @@ function switchTab(tabId) {
     }
 }
 
-// autoNearest = true (used by Favorites): jump straight to the stop on this route nearest to current GPS
 function openRouteDetail(groupKey, autoNearest = false) {
     const group = groupedRoutes.find(g => g.key === groupKey);
     if (!group) return;
@@ -668,21 +745,18 @@ function openRouteDetail(groupKey, autoNearest = false) {
     }, 100);
 }
 
-// Find the stop in the selected route's sequence closest to the user's GPS, expand it and scroll to it
 async function autoSelectNearestStop(token) {
     const stops = getStopsForGroup(detailRouteGroup);
     if (stops.length === 0) return;
 
-    // Use cached fix immediately so the UI responds fast, then refine with a fresh fix
     let pos = lastKnownPos;
     if (!pos) pos = await refreshGPS(5000);
     if (token !== detailOpenToken) return;
-    if (!pos) return; // no GPS: leave the list as-is
+    if (!pos) return;
 
     let idx = findNearestStopIdx(stops, pos);
     if (idx !== -1) await selectNearestStop(idx, stops);
 
-    // Refresh GPS in the background; if a different stop is now nearest, switch to it
     const fresh = await refreshGPS(4000);
     if (token !== detailOpenToken || !fresh) return;
     const newIdx = findNearestStopIdx(stops, fresh);
@@ -703,7 +777,6 @@ function findNearestStopIdx(stops, pos) {
 }
 
 async function selectNearestStop(idx, stops) {
-    // tag the nearest stop
     if (detailNearestIdx !== -1) {
         const old = document.getElementById(`nearest-tag-${detailNearestIdx}`);
         if (old) old.remove();
@@ -712,7 +785,6 @@ async function selectNearestStop(idx, stops) {
     const nameEl = document.querySelector(`#stop-item-${idx} .stop-name`);
     if (nameEl) nameEl.insertAdjacentHTML('beforeend', `<span class="nearest-tag" id="nearest-tag-${idx}">Nearest</span>`);
 
-    // make sure expandStop opens (not toggles closed) the target
     if (detailExpandedStopIdx === idx) {
         document.getElementById(`detail-eta-expanded-${idx}`).classList.remove('active');
         document.getElementById(`stop-item-${idx}`).classList.remove('active-stop');
@@ -919,7 +991,7 @@ async function toggleSheetEta(groupKey, stopKey) {
     }
 }
 
-// --- Main View Core Logic ---
+// --- Main (Nearby) View Logic ---
 async function renderMainNearby(isSilentRefresh = false) {
     const listEl = document.getElementById('mainRouteList');
     if (!currentNearestStopKey) {
@@ -954,7 +1026,6 @@ async function renderMainNearby(isSilentRefresh = false) {
         }
     }));
 
-    // Active buses by time, then inactive by route number
     sortGroupsWithEtas(groupsWithEtas);
 
     let html = '';
@@ -1029,6 +1100,7 @@ async function toggleMainEta(groupKey) {
     }
 }
 
+// Replaced 1, 2, 3 sequence with group.routeNo
 function generateExpandedETAsHtml(arrs, group, stopKey) {
     if (arrs.length === 0) {
         return '<div style="color:var(--text-sub); text-align:center; padding: 20px;">No further departures scheduled.</div>';
@@ -1038,7 +1110,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     const stopIdx = stops.findIndex(s => s.stopKey === stopKey);
     
     let html = '';
-    // Show max 3 buses
+    // Show max 3 upcoming departures
     for(let i = 0; i < Math.min(3, arrs.length); i++) {
         const arr = arrs[i];
         const targetMs = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
@@ -1048,7 +1120,6 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
         let timeStr = mins === 0 ? 'Due' : `${mins} <span style="font-size:1.2rem; font-weight:700;">m</span>`;
         let color = isScheduled ? 'var(--accent-orange)' : 'var(--accent-green)'; 
         
-        // Occupancy only for the immediate bus and if within 20 mins
         let occBadge = '';
         if (i === 0 && mins <= 20) {
             const occPct = calculateOccupancy(group.routeNo, group.dest_e, Math.max(0, stopIdx), stops.length, Date.now());
@@ -1060,7 +1131,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
         html += `
             <div class="eta-row">
                 <div class="eta-row-left">
-                    <span class="eta-row-seq">${i+1}</span>
+                    <span class="eta-row-seq">${group.routeNo}</span>
                     ${occBadge}
                 </div>
                 <div class="eta-row-time" style="color:${color};">${timeStr}</div>
@@ -1070,7 +1141,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     return html;
 }
 
-// --- Search ---
+// --- Route / Search View ---
 function setRegionFilter(region) {
     activeRegionFilter = region;
     document.querySelectorAll('.region-btn').forEach(b => b.classList.remove('active'));
@@ -1082,22 +1153,68 @@ function renderSearchResults() {
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     const listEl = document.getElementById('searchResults');
     
+    // When search is empty, show nearby routes based on current GPS
+    if (!query) {
+        let nearby = getNearbyRoutes();
+        if (activeRegionFilter !== 'ALL') {
+            nearby = nearby.filter(g => g.company === activeRegionFilter);
+        }
+        
+        if (!lastKnownPos) {
+            listEl.innerHTML = `
+                <div class="text-center" style="padding-top:60px;">
+                    <div style="font-size:3rem; margin-bottom:12px;">📍</div>
+                    <div style="font-weight:700;">Locating nearby routes...</div>
+                    <div style="font-size:0.9rem; color:var(--text-sub); margin-top:8px;">Or enter a route number above</div>
+                </div>`;
+            return;
+        }
+        
+        if (nearby.length === 0) {
+            listEl.innerHTML = `
+                <div class="text-center" style="padding-top:60px;">
+                    <div style="font-size:3rem; margin-bottom:12px;">🚌</div>
+                    <div style="font-weight:700;">No nearby routes for selected filter</div>
+                    <div style="font-size:0.9rem; color:var(--text-sub); margin-top:8px;">Try selecting "ALL" or search by route number</div>
+                </div>`;
+            return;
+        }
+
+        const nearestStop = currentNearestStopKey ? allStops.find(s => s.stopKey === currentNearestStopKey) : null;
+        const stopLabel = nearestStop ? nearestStop.stopName_e : 'Current Location';
+
+        let html = `
+            <div style="padding: 12px 16px; font-size: 0.85rem; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-white); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5;">
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%;">📍 Nearby Routes (${stopLabel})</span>
+                <span style="color: var(--accent-blue); font-size: 0.8rem; font-weight: 800; flex-shrink: 0;">${nearby.length} routes</span>
+            </div>
+        `;
+
+        nearby.forEach(g => {
+            html += `
+              <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
+                  <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
+                  <div class="route-info-col">
+                      <div class="route-dest">To ${g.dest_e}</div>
+                      <div class="route-sub">${g.company}</div>
+                  </div>
+              </div>
+            `;
+        });
+        listEl.innerHTML = html;
+        return;
+    }
+
+    // Active search across all routes matching query
     let matches = groupedRoutes;
     if (activeRegionFilter !== 'ALL') {
         matches = matches.filter(g => g.company === activeRegionFilter);
     }
-    if(query) {
-        matches = matches.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
-    }
+    matches = matches.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
     
     if(matches.length === 0) {
         listEl.innerHTML = '<div class="text-center" style="padding-top:60px; font-size:4rem; opacity:0.2;">🚌</div><div class="text-center" style="padding-top:0;">No routes found</div>';
         return;
-    }
-    
-    if (!query && activeRegionFilter === 'ALL') {
-         listEl.innerHTML = '<div class="text-center" style="padding-top:60px; font-size:4rem; opacity:0.2;">🔍</div><div class="text-center" style="padding-top:0;">Type route number to search</div>';
-         return;
     }
     
     let html = '';
@@ -1134,7 +1251,6 @@ function renderFavList() {
     favRoutes.forEach(k => {
         const g = groupedRoutes.find(r => r.key === k);
         if(g) {
-            // true => auto-select the stop nearest to current GPS
             html += `
               <div class="route-list-item" onclick="openRouteDetail('${g.key}', true)">
                   <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
@@ -1264,7 +1380,7 @@ async function expandStop(idx) {
     
     try {
         const arrs = await fetchEtaRaw(detailRouteGroup, targetStop.stopKey);
-        if (detailExpandedStopIdx !== idx) return; // user moved on
+        if (detailExpandedStopIdx !== idx) return; 
         expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
     } catch(e) {
         expandContainer.innerHTML = '<div style="color:var(--kmb-red); padding:20px; text-align:center;">Failed to fetch ETAs.</div>';
@@ -1313,12 +1429,8 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
 }
 
 // --- Advanced Occupancy Engine ---
-
 const HK_PUBLIC_HOLIDAYS = [
-    // 2026 Estimated
-    "01-01", "02-17", "02-18", "02-19", "04-03", "04-04", "04-06", "04-07", "05-01", "05-24", "06-19", "07-01", "10-01", "10-07", "10-29", "12-25", "12-26",
-    // 2027 Estimated
-    "01-01", "02-06", "02-07", "02-08", "03-26", "03-27", "03-29", "03-30", "04-04", "05-01", "05-13", "06-09", "07-01", "09-16", "10-01", "10-29", "12-25", "12-26"
+    "01-01", "02-17", "02-18", "02-19", "04-03", "04-04", "04-06", "04-07", "05-01", "05-24", "06-19", "07-01", "10-01", "10-07", "10-29", "12-25", "12-26"
 ];
 
 function isPublicHoliday(date) {
@@ -1338,7 +1450,6 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
 
     let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
     
-    // Always empty at the final terminus
     if (currentStopIndex === totalStops - 1 && totalStops > 1) return 0;
 
     const rNo = String(routeNo).toUpperCase();
@@ -1371,7 +1482,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     else if (timeOfDay === 'midday') baseLoad = 65;
                     else baseLoad = 25;
                 }
-            } else { // To Yuen Long
+            } else { 
                 if (dayType === 'weekday') {
                     if (timeOfDay === 'am_peak') baseLoad = 40;
                     else if (timeOfDay === 'pm_peak') baseLoad = 95;
@@ -1389,8 +1500,8 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
             else spatialCurve = 1.0;
 
         } else if (rNo === '3M') {
-            const isToMuiWo = destUpper.includes('MUI WO');
-            if (isToMuiWo) {
+            const isToMui Wo = destUpper.includes('MUI WO');
+            if (isToMui Wo) {
                 if (dayType === 'holiday' || dayType === 'saturday') {
                     if (timeOfDay === 'am_peak') baseLoad = 98;
                     else if (timeOfDay === 'midday') baseLoad = 85;
@@ -1401,7 +1512,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     else baseLoad = 40;
                 }
                 spatialCurve = 1.0 - Math.pow(progress, 3);
-            } else { // To Tung Chung
+            } else { 
                 if (dayType === 'holiday' || dayType === 'saturday') {
                     if (timeOfDay === 'pm_peak') baseLoad = 98;
                     else if (timeOfDay === 'midday') baseLoad = 75;
@@ -1425,7 +1536,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     baseLoad = 45; 
                 }
                 spatialCurve = 1.0 - Math.pow(progress, 2);
-            } else { // To Mui Wo
+            } else { 
                 if (dayType === 'holiday' || dayType === 'saturday') {
                     if (timeOfDay === 'pm_peak') baseLoad = 95;
                     else if (timeOfDay === 'midday') baseLoad = 80;
@@ -1447,7 +1558,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     baseLoad = 50; 
                 }
                 spatialCurve = 1.0 - Math.pow(progress, 3);
-            } else { // To Tung Chung
+            } else { 
                 if (dayType === 'holiday' || dayType === 'saturday') {
                     if (timeOfDay === 'pm_peak') baseLoad = 98;
                     else if (timeOfDay === 'midday') baseLoad = 70;
@@ -1459,13 +1570,11 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
             }
         }
 
-        // Small randomization (-5 to +5) based on minute
         const noise = (date.getMinutes() % 11) - 5;
         let finalLoad = Math.round(baseLoad * spatialCurve) + noise;
         return Math.min(100, Math.max(0, finalLoad));
     }
 
-    // --- Fallback for all other routes ---
     let baseLoad = 30; 
     if (!isWeekend) {
         if (hour >= 7 && hour <= 9) baseLoad = 75;
