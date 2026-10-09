@@ -267,7 +267,6 @@
 const NLB_API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
-const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 let currentView = 'main';
 let previousView = 'main';
@@ -697,108 +696,15 @@ function renderGlobalMapStops() {
 // ==========================================
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('kmb_grouped_v7');
-    const cachedStops = localStorage.getItem('kmb_stops_v7');
-    const cacheTime = localStorage.getItem('kmb_cache_time_v7');
-    const now = Date.now(); 
-
-    let loadedFromCache = false;
-    if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
-      try {
-          setLoadProgress(100, "Loading from cache...");
-          groupedRoutes = JSON.parse(cachedGrouped);
-          routeStopsCache = JSON.parse(cachedStops);
-          loadedFromCache = true;
-      } catch (e) { localStorage.removeItem('kmb_cache_time_v7'); }
-    } 
+    setLoadProgress(50, "Loading bus network...");
     
-    if (!loadedFromCache) {
-      setLoadProgress(10, "Fetching Network Data...");
-      const groupedMap = new Map();
-      routeStopsCache = {};
-
-      try {
-          const nlbRData = await fetchJSON(`${NLB_API_BASE}/route.php?action=list`);
-          const rawNlbRoutes = nlbRData.routes || [];
-          
-          rawNlbRoutes.forEach(r => {
-            const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
-            const cleanDest = cleanStopName(dest_e); 
-            const key = `NLB_${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-            if (!groupedMap.has(key)) {
-              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
-            } else {
-              groupedMap.get(key).routeIds.push(`NLB_${r.routeId}`);
-            }
-          });
-
-          const chunkSize = 15;
-          for (let i = 0; i < rawNlbRoutes.length; i += chunkSize) {
-            const chunk = rawNlbRoutes.slice(i, i + chunkSize);
-            await Promise.all(chunk.map(async (r) => {
-              try {
-                const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
-                routeStopsCache[`NLB_${r.routeId}`] = (res.stops || []).map(s => ({...s, stopName_e: cleanStopName(s.stopName_e)}));
-              } catch(e) {}
-            }));
-            setLoadProgress(10 + ((i / rawNlbRoutes.length) * 30), "Syncing Lantau Routes...");
-          }
-      } catch(e) {}
-
-      try {
-          setLoadProgress(40, "Fetching KMB Network...");
-          const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
-              fetch(`${KMB_API_BASE}/route/`).then(r => r.json()).catch(()=>null),
-              fetch(`${KMB_API_BASE}/stop/`).then(r => r.json()).catch(()=>null),
-              fetch(`${KMB_API_BASE}/route-stop/`).then(r => r.json()).catch(()=>null)
-          ]);
-
-          setLoadProgress(80, "Building System Index...");
-          const allKmbStops = {};
-          if (kmbStopsRes && kmbStopsRes.data) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
-
-          const formatStopName = (name) => name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
-
-          if (kmbRoutesRes && kmbRouteStopsRes) {
-              const kmbRouteStopsMap = {};
-              kmbRouteStopsRes.data.forEach(rs => {
-                  const key = `KMB_${rs.route}_${rs.bound}_${rs.service_type}`;
-                  if (!kmbRouteStopsMap[key]) kmbRouteStopsMap[key] = [];
-                  kmbRouteStopsMap[key].push(rs);
-              });
-
-              kmbRoutesRes.data.forEach(r => {
-                  const rId = `KMB_${r.route}_${r.bound}_${r.service_type}`;
-                  const rsData = kmbRouteStopsMap[rId];
-                  if (!rsData) return;
-
-                  rsData.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
-                  routeStopsCache[rId] = rsData.map(rs => {
-                      const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', lat: '0', long: '0' };
-                      return { stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq };
-                  });
-
-                  const company = (r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S')) ? 'LWB' : 'KMB';
-                  const cleanDestE = formatStopName(cleanStopName(r.dest_en));
-                  const groupKey = `KMB_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-                  if (!groupedMap.has(groupKey)) {
-                      groupedMap.set(groupKey, { key: groupKey, routeNo: r.route, dest_e: cleanDestE, routeIds: [rId], company: company });
-                  } else {
-                      groupedMap.get(groupKey).routeIds.push(rId);
-                  }
-              });
-          }
-      } catch(e) {}
-
-      groupedRoutes = Array.from(groupedMap.values());
-      try {
-        localStorage.setItem('kmb_grouped_v7', JSON.stringify(groupedRoutes));
-        localStorage.setItem('kmb_stops_v7', JSON.stringify(routeStopsCache));
-        localStorage.setItem('kmb_cache_time_v7', Date.now().toString());
-      } catch (e) {}
-    }
+    // Fetch the pre-compiled file instantly from Cloudflare
+    const indexResponse = await fetch('bus_index.min.json', { cache: 'default' });
+    if (!indexResponse.ok) throw new Error('Failed to load network index');
+    
+    const db = await indexResponse.json();
+    groupedRoutes = db.groupedRoutes;
+    routeStopsCache = db.routeStopsCache;
     
     buildAllStopsList();
     initDetailMap(); 
@@ -807,7 +713,8 @@ async function initApp() {
     startTimer();
     
   } catch (err) {
-    document.getElementById('mainRouteList').innerHTML = '<div class="text-center" style="color:var(--kmb-red);">Error connecting to transit network.</div>';
+    document.getElementById('mainRouteList').innerHTML = '<div class="text-center" style="color:var(--kmb-red);">Error connecting to transit network. Check internet connection.</div>';
+    console.error(err);
   }
 }
 
