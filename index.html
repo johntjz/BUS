@@ -141,25 +141,31 @@
   
   /* Search View */
   .search-box-container { padding: 16px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; z-index: 10;}
+  .search-company-tabs { display: flex; gap: 8px; }
+  .co-tab { flex: 1; padding: 10px; background: var(--bg-color); color: var(--text-secondary); border: 2px solid var(--card-border); border-radius: 8px; font-weight: 800; cursor: pointer; transition: all 0.2s ease; }
+  .co-tab.active { background: var(--accent-red); color: white; border-color: var(--accent-red); }
   .search-input { width: 100%; padding: 16px; border: 2px solid var(--card-border); border-radius: 12px; font-size: 1.3rem; outline: none; text-align: center; background: var(--bg-color); color: var(--text-primary); font-weight: 700; }
   .search-input:focus { border-color: var(--accent-blue); }
   
   .simple-list-item { display: flex; padding: 16px; border-bottom: 1px solid var(--card-border); align-items: center; gap: 16px; cursor: pointer; background: var(--bg-color); transition: background 0.2s; }
   .simple-list-item:active { background: var(--card-bg); }
+  .co-badge { display: inline-block; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; color: white; font-weight: bold; margin-bottom: 4px; text-transform: uppercase; }
 
   /* Map View */
   #map-container { height: 35vh; width: 100%; background: #111; flex-shrink: 0; border-bottom: 1px solid var(--card-border); }
   #stop-list-container { flex: 1; overflow-y: auto; position: relative; background: var(--bg-color); }
-  #global-map-container { flex: 1; width: 100%; background: #111; z-index: 1; }
+  
+  #global-map-container { width: 100%; height: 100%; transition: height 0.3s cubic-bezier(0.1, 0.8, 0.2, 1); z-index: 1; flex-shrink: 0; }
   
   .map-bottom-sheet {
-    position: absolute; bottom: 0; left: 0; right: 0; background: var(--card-bg);
-    border-top-left-radius: 20px; border-top-right-radius: 20px; max-height: 70vh; overflow-y: auto; z-index: 1000;
-    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.6); display: flex; flex-direction: column;
+    background: var(--bg-color);
+    height: 0; overflow-y: auto; z-index: 2;
+    transition: height 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
+    display: flex; flex-direction: column; flex-shrink: 0;
   }
-  .map-bottom-sheet.active { transform: translateY(0); }
-  .sheet-header { padding: 16px; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--card-bg); z-index: 2; }
+  .map-bottom-sheet.active { height: 50%; border-top: 1px solid var(--card-border); }
+  
+  .sheet-header { padding: 16px; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--card-bg); z-index: 3; }
   .sheet-title { font-size: 1.25rem; font-weight: 800; }
   .sheet-close { font-size: 1.5rem; font-weight: bold; color: var(--text-secondary); cursor: pointer; background: none; border: none; }
 
@@ -175,14 +181,14 @@
   /* Modal Overlays */
   .modal-overlay {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.85); z-index: 1000; /* Set to 1000 so bottom-tabs (1001) stay accessible! */
+      background: rgba(0,0,0,0.85); z-index: 1000;
       display: none; justify-content: center; align-items: flex-end;
   }
   .modal-content {
       background: var(--bg-color); width: 100%; height: 90vh;
       border-top-left-radius: 20px; border-top-right-radius: 20px;
       display: flex; flex-direction: column; overflow: hidden;
-      padding-bottom: 65px; /* Ensures list items are not hidden behind the bottom tabs */
+      padding-bottom: 65px; 
   }
   .modal-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); border-bottom: 1px solid var(--card-border); }
   .modal-header h3 { font-size: 1.25rem; font-weight: 800; margin: 0; }
@@ -233,7 +239,7 @@
     </div>
   </div>
   <div id="mainRouteList">
-      <div class="init-loader">
+      <div class="init-loader" id="loader-container">
           <div id="loadText" style="font-size:1.1rem; color:var(--text-primary); font-weight: 700;">Connecting to network...</div>
       </div>
   </div>
@@ -242,6 +248,12 @@
 <!-- Search View -->
 <main id="view-search" class="view-container">
   <div class="search-box-container">
+    <div class="search-company-tabs" id="search-company-tabs">
+        <button class="co-tab active" onclick="setSearchCompany('ALL')">All</button>
+        <button class="co-tab" onclick="setSearchCompany('KMB')">KMB</button>
+        <button class="co-tab" onclick="setSearchCompany('LWB')">LWB</button>
+        <button class="co-tab" onclick="setSearchCompany('NLB')">NLB</button>
+    </div>
     <input type="text" id="searchInput" class="search-input" placeholder="Search Route Number..." oninput="renderSearchResults()" autocomplete="off">
   </div>
   <div id="searchResults" style="flex:1; overflow-y:auto;"></div>
@@ -331,12 +343,13 @@ const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 let currentView = 'main';
 let previousView = 'main';
-let appMode = 'NEAREST'; // 'NEAREST' | 'COMMUTE_WORK' | 'COMMUTE_HOME'
+let appMode = 'NEAREST'; 
 let allStops = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
-let busStateMap = {}; // Kalman filter tracker state
-let favRoutes = JSON.parse(localStorage.getItem('nlb_fav_routes_v9') || '[]');
+let busStateMap = {}; 
+let favRoutes = JSON.parse(localStorage.getItem('hkbus_fav_routes_v10') || '[]');
+let searchCompanyFilter = 'ALL';
 
 let lastKnownPos = null;
 let currentNearestStopKey = null;
@@ -379,9 +392,9 @@ function updateLoadingText(text) {
 
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('nlb_grouped_v9');
-    const cachedStops = localStorage.getItem('nlb_stops_v9');
-    const cacheTime = localStorage.getItem('nlb_cache_time_v9');
+    const cachedGrouped = localStorage.getItem('hkbus_grouped_v10');
+    const cachedStops = localStorage.getItem('hkbus_stops_v10');
+    const cacheTime = localStorage.getItem('hkbus_cache_time_v10');
     const now = Date.now(); 
 
     let loadedFromCache = false;
@@ -391,7 +404,7 @@ async function initApp() {
           groupedRoutes = JSON.parse(cachedGrouped);
           routeStopsCache = JSON.parse(cachedStops);
           loadedFromCache = true;
-      } catch (e) { localStorage.removeItem('nlb_cache_time_v9'); }
+      } catch (e) { localStorage.removeItem('hkbus_cache_time_v10'); }
     } 
     
     if (!loadedFromCache) {
@@ -399,6 +412,7 @@ async function initApp() {
       const groupedMap = new Map();
       routeStopsCache = {};
 
+      // NLB Base Data Fetching
       try {
           const nlbRData = await fetchJSON(`${NLB_API_BASE}/route.php?action=list`);
           const rawNlbRoutes = nlbRData.routes || [];
@@ -421,18 +435,79 @@ async function initApp() {
             await Promise.all(chunk.map(async (r) => {
               try {
                 const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
-                routeStopsCache[`NLB_${r.routeId}`] = (res.stops || []).map(s => ({...s, stopName_e: cleanStopName(s.stopName_e)}));
+                routeStopsCache[`NLB_${r.routeId}`] = (res.stops || []).map(s => ({...s, stopName_e: cleanStopName(s.stopName_e), company: 'NLB'}));
               } catch(e) {}
             }));
-            updateLoadingText("Syncing Lantau Routes...");
+            updateLoadingText(`Syncing Lantau Routes... ${Math.round((i/rawNlbRoutes.length)*100)}%`);
           }
       } catch(e) { console.error("Error fetching NLB network", e); }
 
+      // KMB / LWB Base Data Fetching
+      try {
+          updateLoadingText("Fetching KMB/LWB Routes...");
+          const kmbRoutesData = await fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/route/');
+          updateLoadingText("Fetching KMB/LWB Stops...");
+          const kmbStopsData = await fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/stop');
+          updateLoadingText("Building KMB/LWB Path Geometry...");
+          const kmbRouteStopsData = await fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/route-stop');
+
+          const kmbStopsMap = {};
+          if(kmbStopsData && kmbStopsData.data) {
+              kmbStopsData.data.forEach(s => { kmbStopsMap[s.stop] = s; });
+          }
+
+          const kmbRouteCoMap = {}; 
+
+          if(kmbRoutesData && kmbRoutesData.data) {
+              kmbRoutesData.data.forEach(r => {
+                  const cleanDest = cleanStopName(r.dest_en);
+                  const co = r.co || 'KMB';
+                  kmbRouteCoMap[`${r.route}_${r.bound}_${r.service_type}`] = co;
+                  
+                  const key = `${co}_${r.route}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+                  const routeId = `${co}_${r.route}_${r.bound}_${r.service_type}`;
+
+                  if(!groupedMap.has(key)) {
+                      groupedMap.set(key, { key, routeNo: r.route, dest_e: cleanDest, routeIds: [routeId], company: co });
+                  } else {
+                      groupedMap.get(key).routeIds.push(routeId);
+                  }
+              });
+          }
+
+          if(kmbRouteStopsData && kmbRouteStopsData.data) {
+              const kmbRsMap = {};
+              kmbRouteStopsData.data.forEach(rs => {
+                  const co = kmbRouteCoMap[`${rs.route}_${rs.bound}_${rs.service_type}`] || 'KMB';
+                  const routeId = `${co}_${rs.route}_${rs.bound}_${rs.service_type}`;
+                  if(!kmbRsMap[routeId]) kmbRsMap[routeId] = [];
+                  kmbRsMap[routeId].push({...rs, co});
+              });
+
+              Object.keys(kmbRsMap).forEach(routeId => {
+                  kmbRsMap[routeId].sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
+                  routeStopsCache[routeId] = kmbRsMap[routeId].map(rs => {
+                      const stopInfo = kmbStopsMap[rs.stop];
+                      return {
+                          stopId: rs.stop,
+                          stopName_e: cleanStopName(stopInfo ? stopInfo.name_en : 'Unknown Stop'),
+                          latitude: stopInfo ? stopInfo.lat : 0,
+                          longitude: stopInfo ? stopInfo.long : 0,
+                          kmbRoute: rs.route,
+                          kmbServiceType: rs.service_type,
+                          kmbBound: rs.bound,
+                          company: rs.co
+                      };
+                  });
+              });
+          }
+      } catch(e) { console.error("Error fetching KMB/LWB network", e); }
+
       groupedRoutes = Array.from(groupedMap.values());
       try {
-        localStorage.setItem('nlb_grouped_v9', JSON.stringify(groupedRoutes));
-        localStorage.setItem('nlb_stops_v9', JSON.stringify(routeStopsCache));
-        localStorage.setItem('nlb_cache_time_v9', Date.now().toString());
+        localStorage.setItem('hkbus_grouped_v10', JSON.stringify(groupedRoutes));
+        localStorage.setItem('hkbus_stops_v10', JSON.stringify(routeStopsCache));
+        localStorage.setItem('hkbus_cache_time_v10', Date.now().toString());
       } catch (e) {}
     }
     
@@ -535,7 +610,6 @@ function locateNearestStopPromise() {
 
 // --- UI Navigation ---
 function switchTab(tabId) {
-    // Close modals on tab switch to ensure clean state
     closeCommuteModal();
     closeFavModal();
     
@@ -736,9 +810,9 @@ function getCommuteRelevantGroups(destStopKey) {
 function buildEtaCardsHTML(relevantGroups, containerId, prefix) {
     const listEl = document.getElementById(containerId);
     
-    // Clear init load text
-    const loadEl = document.getElementById('loadText');
-    if (loadEl) loadEl.remove();
+    // Completely remove the loader gap
+    const loadContainer = document.getElementById('loader-container');
+    if (loadContainer) loadContainer.remove();
 
     if (relevantGroups.length === 0) {
         listEl.innerHTML = `<div class="text-center">No active buses available for this selection.</div>`;
@@ -752,19 +826,23 @@ function buildEtaCardsHTML(relevantGroups, containerId, prefix) {
       const cardId = `${prefix}-route-${groupKey}`;
       const destName = isGroupTerminating ? 'Terminating Here' : group.dest_e;
       
+      let coColor = group.company === 'KMB' ? '#e31837' : (group.company === 'LWB' ? '#ff9f0a' : '#0a84ff');
       let transferBadgeHtml = item.isTransfer ? `<div style="color: var(--accent-blue); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px;">🔄 ${item.transferName}</div>` : '';
 
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card inactive" id="${cardId}" data-smart-mins="9999" onclick="toggleMainEtaCard('${prefix}', '${groupKey}')">
+          <div class="route-card" id="${cardId}" data-smart-mins="9999" onclick="toggleMainEtaCard('${prefix}', '${groupKey}')">
             ${transferBadgeHtml}
             <div class="route-main-row">
                 <div class="route-left">
                   <div style="display:flex; flex-direction:column;">
-                      <div class="route-no" id="${prefix}-no-${groupKey}">${group.routeNo}</div>
+                      <div class="route-no" id="${prefix}-no-${groupKey}" style="color:${coColor}">${group.routeNo}</div>
                   </div>
                   <div class="route-info">
-                      <div class="route-dest" id="${prefix}-dest-${groupKey}">${isGroupTerminating ? '' : 'To '}${destName}</div>
+                      <div class="route-dest" id="${prefix}-dest-${groupKey}">
+                        <span class="co-badge" style="background:${coColor};">${group.company}</span>
+                        ${isGroupTerminating ? '' : 'To '}${destName}
+                      </div>
                       <div class="compact-occupancy" id="${prefix}-occ-sec-${groupKey}" style="display:none;">
                          <span id="${prefix}-bars-${groupKey}" class="occ-pill"></span>
                       </div>
@@ -837,10 +915,13 @@ async function updateNetworkTelemetry() {
     
     await Promise.all(relevantGroups.map(item => processSmartArrivals(item, prefix)));
 
+    // Re-sort elements purely based on remaining minutes
     const listEl = document.getElementById(containerId);
-    const cards = Array.from(listEl.querySelectorAll('.route-card'));
-    cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
-    cards.forEach(card => listEl.appendChild(card));
+    if(listEl) {
+        const cards = Array.from(listEl.querySelectorAll('.route-card'));
+        cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
+        cards.forEach(card => listEl.appendChild(card));
+    }
 }
 
 // --- Load Factor & Core Arrival Processing ---
@@ -906,39 +987,55 @@ async function processSmartArrivals(item, prefix = 'main') {
 
     await Promise.all(matchDetails.map(async (m) => {
       const targetStop = m.stops[m.targetIndex];
-      let targetEtaRes = null;
 
-      const rawNlbId = m.routeId.replace('NLB_', '');
-      try { 
-          targetEtaRes = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`); 
-      } catch(e) {}
-      
-      if (targetEtaRes && targetEtaRes.estimatedArrivals) {
-        targetEtaRes.estimatedArrivals.forEach(arr => {
-          combinedArrivals.push({ arrival: arr, targetStop, targetIndex: m.targetIndex, totalStops: m.stops.length, stops: m.stops });
-        });
+      if (m.routeId.startsWith('NLB_')) {
+          const rawNlbId = m.routeId.replace('NLB_', '');
+          try { 
+              const targetEtaRes = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`); 
+              if (targetEtaRes && targetEtaRes.estimatedArrivals) {
+                  targetEtaRes.estimatedArrivals.forEach(arr => {
+                      combinedArrivals.push({
+                          arrivalTimeStr: arr.estimatedArrivalTime.replace(/-/g, '/'),
+                          noGPS: arr.noGPS === 1 || arr.noGPS === '1',
+                          targetStop, targetIndex: m.targetIndex, totalStops: m.stops.length, stops: m.stops 
+                      });
+                  });
+              }
+          } catch(e) {}
+      } else {
+          try {
+              const res = await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${targetStop.stopId}/${targetStop.kmbRoute}/${targetStop.kmbServiceType}`);
+              if (res && res.data) {
+                  res.data.filter(arr => arr.dir === targetStop.kmbBound && arr.eta).forEach(arr => {
+                      combinedArrivals.push({
+                          arrivalTimeStr: arr.eta, // e.g. "2023-10-09T19:12:00+08:00" natively parsed
+                          noGPS: arr.rmk_en?.toLowerCase().includes('scheduled'),
+                          targetStop, targetIndex: m.targetIndex, totalStops: m.stops.length, stops: m.stops 
+                      });
+                  });
+              }
+          } catch(e) {}
       }
     }));
 
-    combinedArrivals = combinedArrivals.filter(c => new Date(c.arrival.estimatedArrivalTime.replace(/-/g, '/')).getTime() > now - 60000);
-    combinedArrivals.sort((a, b) => a.arrival.estimatedArrivalTime.localeCompare(b.arrival.estimatedArrivalTime));
+    combinedArrivals = combinedArrivals.filter(c => new Date(c.arrivalTimeStr).getTime() > now - 60000);
+    combinedArrivals.sort((a, b) => new Date(a.arrivalTimeStr).getTime() - new Date(b.arrivalTimeStr).getTime());
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
     if (subsEl && activeItem) {
         if (combinedArrivals.length > 1) {
             let subsHtml = '';
             for (let i = 1; i < combinedArrivals.length && i <= 2; i++) {
-                const cBus = combinedArrivals[i].arrival;
-                const cArr = new Date(cBus.estimatedArrivalTime.replace(/-/g, '/'));
+                const cBus = combinedArrivals[i];
+                const cArr = new Date(cBus.arrivalTimeStr);
                 const cRawMins = Math.max(0, Math.floor((cArr.getTime() - now) / 60000));
-                const isNoGPS = cBus.noGPS === 1 || cBus.noGPS === '1';
                 const timeText = cRawMins === 0 ? 'Due' : `${cRawMins}m`;
-                const labelText = isNoGPS ? 'Scheduled' : 'Actual';
+                const labelText = cBus.noGPS ? 'Scheduled' : 'Actual';
                 const seqName = i === 1 ? 'Next Bus' : '3rd Bus';
                 subsHtml += `
                     <div class="sub-eta-row">
                         <span class="sub-eta-label">${seqName} <span style="font-size:0.75rem; opacity:0.6; margin-left:4px;">(${labelText})</span></span>
-                        <span class="sub-eta-time" style="color: ${isNoGPS ? 'var(--accent-orange)' : 'var(--text-primary)'}">${timeText}</span>
+                        <span class="sub-eta-time" style="color: ${cBus.noGPS ? 'var(--accent-orange)' : 'var(--text-primary)'}">${timeText}</span>
                     </div>
                 `;
             }
@@ -952,17 +1049,21 @@ async function processSmartArrivals(item, prefix = 'main') {
       if (cardEl) {
         cardEl.dataset.smartMins = 9999;
         cardEl.dataset.targetArrivalTime = "";
-        cardEl.classList.add('inactive');
       }
-      if (smartEl) smartEl.innerText = '--';
+      if (smartEl) {
+          smartEl.innerText = '--';
+          smartEl.className = 'smart-eta departing'; // Dim it out
+      }
+      if (lblSmartEl) lblSmartEl.innerText = 'No Schedule';
       if (occSecEl) occSecEl.style.display = 'none';
+      if (subsEl) subsEl.innerHTML = `<div class="sub-eta-row" style="justify-content:center; color: var(--text-secondary); font-size: 0.9rem;">Route ended / No schedule.</div>`;
       return;
     }
 
-    const activeBus = activeItem.arrival;
-    const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
-    const pseudoBusId = activeBus.estimatedArrivalTime.replace(/[^0-9]/g, ''); 
-    const isNoGPS = activeBus.noGPS === 1 || activeBus.noGPS === '1';
+    const activeBus = activeItem;
+    const arrivalTime = new Date(activeBus.arrivalTimeStr);
+    const pseudoBusId = activeBus.arrivalTimeStr.replace(/[^0-9]/g, ''); 
+    const isNoGPS = activeBus.noGPS;
     let rawEtaMins = Math.max(0, Math.floor((arrivalTime.getTime() - now) / 60000));
 
     let state = busStateMap[groupKey];
@@ -977,7 +1078,6 @@ async function processSmartArrivals(item, prefix = 'main') {
 
     let dwellPenaltyMins = 0;
     
-    // Only display occupancy and apply heavy dwell penalty if ETA is <= 30 mins
     if (rawEtaMins <= 30) {
         const { pct } = calculateOccupancy(group.routeNo, group.dest_e, activeItem.targetIndex, activeItem.totalStops, now);
         let occState = pct > 95 ? 'full' : (pct > 75 ? 'standing' : 'seating');
@@ -1032,10 +1132,7 @@ async function processSmartArrivals(item, prefix = 'main') {
     cardEl.dataset.targetArrivalTime = finalTargetMs;
     const finalSmartMins = Math.max(0, Math.ceil((finalTargetMs - now) / 60000));
     
-    if (cardEl) {
-        cardEl.dataset.smartMins = finalSmartMins;
-        cardEl.classList.remove('inactive');
-    }
+    if (cardEl) cardEl.dataset.smartMins = finalSmartMins;
     
     if (finalSmartMins === 0) {
         if(smartEl) smartEl.innerText = 'Due';
@@ -1046,10 +1143,7 @@ async function processSmartArrivals(item, prefix = 'main') {
     }
 
   } catch (err) {
-    if (cardEl) {
-        cardEl.dataset.smartMins = 9999;
-        cardEl.classList.add('inactive');
-    }
+    if (cardEl) cardEl.dataset.smartMins = 9999;
   }
 }
 
@@ -1115,8 +1209,7 @@ function renderGlobalMapStops() {
     nearby.forEach(s => {
         const marker = L.marker([parseFloat(s.latitude), parseFloat(s.longitude)], {icon: stopIcon}).addTo(globalMapInstance);
         marker.on('click', () => {
-            globalMapInstance.setView(marker.getLatLng(), 17, { animate: true });
-            openMapSheet(s);
+            openMapSheet(s, marker);
         });
         globalMarkers.push(marker);
     });
@@ -1124,11 +1217,19 @@ function renderGlobalMapStops() {
     globalMapInstance.setView([lastKnownPos.lat, lastKnownPos.lon], 16);
 }
 
-function openMapSheet(stopObj) {
+function openMapSheet(stopObj, marker) {
     currentMapSheetStop = stopObj;
     document.getElementById('map-bottom-sheet').classList.add('active');
     document.getElementById('sheet-title').innerText = stopObj.stopName_e;
     
+    // Smoothly wait for flex CSS transition then resize Map appropriately
+    setTimeout(() => {
+        if (globalMapInstance) {
+            globalMapInstance.invalidateSize();
+            if (marker) globalMapInstance.panTo(marker.getLatLng(), {animate: true});
+        }
+    }, 320);
+
     refreshMapSheet();
 }
 
@@ -1158,32 +1259,57 @@ async function refreshMapSheet() {
     await Promise.all(relevantGroups.map(item => processSmartArrivals(item, prefix)));
 
     const listEl = document.getElementById(containerId);
-    const cards = Array.from(listEl.querySelectorAll('.route-card'));
-    cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
-    cards.forEach(card => listEl.appendChild(card));
+    if(listEl) {
+      const cards = Array.from(listEl.querySelectorAll('.route-card'));
+      cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
+      cards.forEach(card => listEl.appendChild(card));
+    }
 }
 
 function closeMapSheet() {
     document.getElementById('map-bottom-sheet').classList.remove('active');
     currentMapSheetStop = null;
+    setTimeout(() => {
+        if (globalMapInstance) globalMapInstance.invalidateSize();
+    }, 320);
 }
 
 // --- Search View ---
+function setSearchCompany(co) {
+    searchCompanyFilter = co;
+    document.querySelectorAll('#search-company-tabs .co-tab').forEach(btn => {
+        if(btn.innerText.toUpperCase() === co || (co==='ALL' && btn.innerText==='All')) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    renderSearchResults();
+}
+
 function renderSearchResults() {
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     const listEl = document.getElementById('searchResults');
     
     let matches = groupedRoutes;
+    if(searchCompanyFilter !== 'ALL') {
+        matches = matches.filter(g => g.company === searchCompanyFilter);
+    }
+    
     if(query) matches = matches.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
     
     if(matches.length === 0) { listEl.innerHTML = '<div class="text-center">No routes found</div>'; return; }
     
     let html = '';
     matches.slice(0, 100).forEach(g => {
+        let coColor = g.company === 'KMB' ? '#e31837' : (g.company === 'LWB' ? '#ff9f0a' : '#0a84ff');
         html += `<div class="simple-list-item" onclick="openRouteDetail('${g.key}')">
-            <div class="route-no-col" style="font-size:1.8rem; font-weight:900; width:85px; color:var(--accent-red);">${g.routeNo}</div>
+            <div class="route-no-col" style="font-size:1.8rem; font-weight:900; width:85px; color:${coColor};">${g.routeNo}</div>
             <div class="route-info-col" style="flex:1;">
                 <div style="font-weight:700; font-size:1.2rem;">To ${g.dest_e}</div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
+                   <span class="co-badge" style="background:${coColor};">${g.company}</span>
+                </div>
             </div>
         </div>`;
     });
@@ -1204,10 +1330,14 @@ function renderFavList() {
     favRoutes.forEach(k => {
         const g = groupedRoutes.find(r => r.key === k);
         if(g) {
+            let coColor = g.company === 'KMB' ? '#e31837' : (g.company === 'LWB' ? '#ff9f0a' : '#0a84ff');
             html += `<div class="simple-list-item" onclick="openRouteDetail('${g.key}')">
-                <div class="route-no-col" style="font-size:1.8rem; font-weight:900; width:85px; color:var(--accent-red);">${g.routeNo}</div>
+                <div class="route-no-col" style="font-size:1.8rem; font-weight:900; width:85px; color:${coColor};">${g.routeNo}</div>
                 <div class="route-info-col" style="flex:1;">
                     <div style="font-weight:700; font-size:1.2rem;">To ${g.dest_e}</div>
+                    <div style="font-size: 0.8rem; margin-top:4px;">
+                       <span class="co-badge" style="background:${coColor};">${g.company}</span>
+                    </div>
                 </div>
                 <button class="del-fav-btn" onclick="event.stopPropagation(); removeFavRoute('${g.key}');">🗑️</button>
             </div>`;
@@ -1218,7 +1348,7 @@ function renderFavList() {
 
 function removeFavRoute(key) {
     favRoutes = favRoutes.filter(k => k !== key);
-    localStorage.setItem('nlb_fav_routes_v9', JSON.stringify(favRoutes));
+    localStorage.setItem('hkbus_fav_routes_v10', JSON.stringify(favRoutes));
     renderFavList();
 }
 
@@ -1243,11 +1373,12 @@ function renderFavSearch() {
     let html = '';
     matches.slice(0, 50).forEach(g => {
         const isSaved = favRoutes.includes(g.key);
+        let coColor = g.company === 'KMB' ? '#e31837' : (g.company === 'LWB' ? '#ff9f0a' : '#0a84ff');
         html += `<div class="simple-list-item" style="opacity: ${isSaved ? '0.5' : '1'}; pointer-events: ${isSaved ? 'none' : 'auto'};" onclick="addFavFromModal('${g.key}')">
-            <div class="route-no-col" style="font-size:1.4rem; font-weight:900; width:65px; color:var(--accent-red);">${g.routeNo}</div>
+            <div class="route-no-col" style="font-size:1.4rem; font-weight:900; width:65px; color:${coColor};">${g.routeNo}</div>
             <div class="route-info-col" style="flex:1;">
                 <div style="font-weight:700;">To ${g.dest_e}</div>
-                <div style="font-size:0.85rem; color:var(--text-secondary); text-transform:uppercase;">${isSaved ? '(Saved)' : ''}</div>
+                <div style="font-size:0.85rem; color:var(--text-secondary); text-transform:uppercase;">${isSaved ? '(Saved)' : ''} <span class="co-badge" style="background:${coColor};">${g.company}</span></div>
             </div>
         </div>`;
     });
@@ -1257,7 +1388,7 @@ function renderFavSearch() {
 function addFavFromModal(key) {
     if(!favRoutes.includes(key)) {
         favRoutes.push(key);
-        localStorage.setItem('nlb_fav_routes_v9', JSON.stringify(favRoutes));
+        localStorage.setItem('hkbus_fav_routes_v10', JSON.stringify(favRoutes));
     }
     closeFavModal();
     renderFavList();
@@ -1284,8 +1415,7 @@ function startBackgroundLoop() {
   setInterval(() => {
     if (isSyncing) return;
     
-    // Process local Kalman updates for smooth counting downwards globally
-    document.querySelectorAll('.route-card:not(.inactive)').forEach(card => {
+    document.querySelectorAll('.route-card').forEach(card => {
         const targetMs = parseInt(card.dataset.targetArrivalTime, 10);
         if (!targetMs || isNaN(targetMs)) return;
         const remainingMs = targetMs - Date.now();
@@ -1293,7 +1423,7 @@ function startBackgroundLoop() {
         card.dataset.smartMins = mins;
         
         const smartEl = card.querySelector('.smart-eta');
-        if (smartEl) {
+        if (smartEl && card.dataset.smartMins != "9999") {
             if (mins > 0) {
                 smartEl.innerText = `${mins}m`;
                 smartEl.className = 'smart-eta';
@@ -1304,7 +1434,6 @@ function startBackgroundLoop() {
         }
     });
 
-    // Every 15 seconds run full network refresh silently
     if (Date.now() % 15000 < 1000) {
         isSyncing = true;
         let syncPromises = [];
