@@ -64,7 +64,7 @@
     background-color: var(--card-bg); border-top: 1px solid var(--card-border);
     display: flex; justify-content: space-around; align-items: center;
     height: 65px; flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom);
-    z-index: 1001; /* Keeps tabs above modals */
+    z-index: 1001;
   }
   .tab {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -348,7 +348,8 @@ let allStops = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
 let busStateMap = {}; 
-let favRoutes = JSON.parse(localStorage.getItem('hkbus_fav_routes_v11') || '[]');
+// Bumping cache version to v12 to force a fresh load of all KMB/LWB API data
+let favRoutes = JSON.parse(localStorage.getItem('hkbus_fav_routes_v12') || '[]');
 let searchCompanyFilter = 'ALL';
 
 let lastKnownPos = null;
@@ -392,9 +393,9 @@ function updateLoadingText(text) {
 
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('hkbus_grouped_v11');
-    const cachedStops = localStorage.getItem('hkbus_stops_v11');
-    const cacheTime = localStorage.getItem('hkbus_cache_time_v11');
+    const cachedGrouped = localStorage.getItem('hkbus_grouped_v12');
+    const cachedStops = localStorage.getItem('hkbus_stops_v12');
+    const cacheTime = localStorage.getItem('hkbus_cache_time_v12');
     const now = Date.now(); 
 
     let loadedFromCache = false;
@@ -404,7 +405,7 @@ async function initApp() {
           groupedRoutes = JSON.parse(cachedGrouped);
           routeStopsCache = JSON.parse(cachedStops);
           loadedFromCache = true;
-      } catch (e) { localStorage.removeItem('hkbus_cache_time_v11'); }
+      } catch (e) { localStorage.removeItem('hkbus_cache_time_v12'); }
     } 
     
     if (!loadedFromCache) {
@@ -412,7 +413,7 @@ async function initApp() {
       const groupedMap = new Map();
       routeStopsCache = {};
 
-      // NLB Base Data Fetching
+      // 1. NLB Base Data Fetching
       try {
           const nlbRData = await fetchJSON(`${NLB_API_BASE}/route.php?action=list`);
           const rawNlbRoutes = nlbRData.routes || [];
@@ -442,14 +443,17 @@ async function initApp() {
           }
       } catch(e) { console.error("Error fetching NLB network", e); }
 
-      // KMB / LWB Base Data Fetching
+      // 2. KMB / LWB Base Data Fetching
+      // Note: Data.gov.hk serves both KMB and LWB routes through the same '/v1/transport/kmb/' endpoint.
       try {
-          updateLoadingText("Fetching KMB/LWB Routes...");
-          const kmbRoutesData = await fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/route/');
-          updateLoadingText("Fetching KMB/LWB Stops...");
-          const kmbStopsData = await fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/stop');
-          updateLoadingText("Building KMB/LWB Path Geometry...");
-          const kmbRouteStopsData = await fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/route-stop');
+          updateLoadingText("Fetching KMB/LWB Network Data...");
+          
+          // Using Promise.all here speeds up KMB/LWB API load times significantly
+          const [kmbRoutesData, kmbStopsData, kmbRouteStopsData] = await Promise.all([
+              fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/route/'),
+              fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/stop'),
+              fetchJSON('https://data.etabus.gov.hk/v1/transport/kmb/route-stop')
+          ]);
 
           const kmbStopsMap = {};
           if(kmbStopsData && kmbStopsData.data) {
@@ -461,7 +465,8 @@ async function initApp() {
           if(kmbRoutesData && kmbRoutesData.data) {
               kmbRoutesData.data.forEach(r => {
                   const cleanDest = cleanStopName(r.dest_en);
-                  const co = r.co || 'KMB';
+                  // The API specifically flags 'LWB' routes in the 'co' field here, otherwise it's 'KMB'
+                  const co = r.co || 'KMB'; 
                   kmbRouteCoMap[`${r.route}_${r.bound}_${r.service_type}`] = co;
                   
                   const key = `${co}_${r.route}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -505,9 +510,9 @@ async function initApp() {
 
       groupedRoutes = Array.from(groupedMap.values());
       try {
-        localStorage.setItem('hkbus_grouped_v11', JSON.stringify(groupedRoutes));
-        localStorage.setItem('hkbus_stops_v11', JSON.stringify(routeStopsCache));
-        localStorage.setItem('hkbus_cache_time_v11', Date.now().toString());
+        localStorage.setItem('hkbus_grouped_v12', JSON.stringify(groupedRoutes));
+        localStorage.setItem('hkbus_stops_v12', JSON.stringify(routeStopsCache));
+        localStorage.setItem('hkbus_cache_time_v12', Date.now().toString());
       } catch (e) {}
     }
     
@@ -1002,6 +1007,7 @@ async function processSmartArrivals(item, prefix = 'main', restrictToLiveGPS = f
               }
           } catch(e) {}
       } else {
+          // Both KMB and LWB ETAs load directly from this single endpoint
           try {
               const res = await fetchJSON(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${targetStop.stopId}/${targetStop.kmbRoute}/${targetStop.kmbServiceType}`);
               if (res && res.data) {
@@ -1365,7 +1371,7 @@ function renderFavList() {
 
 function removeFavRoute(key) {
     favRoutes = favRoutes.filter(k => k !== key);
-    localStorage.setItem('hkbus_fav_routes_v11', JSON.stringify(favRoutes));
+    localStorage.setItem('hkbus_fav_routes_v12', JSON.stringify(favRoutes));
     renderFavList();
 }
 
@@ -1405,7 +1411,7 @@ function renderFavSearch() {
 function addFavFromModal(key) {
     if(!favRoutes.includes(key)) {
         favRoutes.push(key);
-        localStorage.setItem('hkbus_fav_routes_v11', JSON.stringify(favRoutes));
+        localStorage.setItem('hkbus_fav_routes_v12', JSON.stringify(favRoutes));
     }
     closeFavModal();
     renderFavList();
