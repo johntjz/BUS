@@ -376,7 +376,7 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Build: 2026-10-09 2:03 PM";
+const APP_TIMESTAMP = "Build: 2026-10-09 2:52 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -575,9 +575,10 @@ function getLocalizedName(obj, prefix) {
 
 async function initApp() {
   try {
-    const cachedGrouped = safeGetStorage('pulse_grouped_routes_v8');
-    const cachedStops = safeGetStorage('pulse_stops_v8');
-    const cacheTime = safeGetStorage('pulse_cache_time_v8');
+    // FORCE CACHE INVALIDATION BY BUMPING TO v9
+    const cachedGrouped = safeGetStorage('pulse_grouped_routes_v9');
+    const cachedStops = safeGetStorage('pulse_stops_v9');
+    const cacheTime = safeGetStorage('pulse_cache_time_v9');
     const now = Date.now(); 
 
     let loadedFromCache = false;
@@ -589,11 +590,12 @@ async function initApp() {
           loadedFromCache = true;
       } catch (e) {
           console.error("Cache corrupted. Re-fetching network.", e);
-          safeSetStorage('pulse_cache_time_v8', '0');
+          safeSetStorage('pulse_cache_time_v9', '0');
       }
     } 
     
     if (!loadedFromCache) {
+      let cacheSuccess = true;
       setLoadProgress(5, "Fetching NLB Routes...");
       
       const groupedMap = new Map();
@@ -602,6 +604,7 @@ async function initApp() {
       try {
           const nlbRData = await fetchJSON(`${NLB_API_BASE}/route.php?action=list`);
           const rawNlbRoutes = nlbRData.routes || [];
+          if (rawNlbRoutes.length === 0) cacheSuccess = false;
           
           rawNlbRoutes.forEach(r => {
             const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
@@ -636,7 +639,10 @@ async function initApp() {
             const progress = 5 + ((i / rawNlbRoutes.length) * 30);
             setLoadProgress(progress, `Fetching NLB Stops (${Math.round(progress)}%)...`);
           }
-      } catch(e) { console.error("NLB Fetch failed", e); }
+      } catch(e) { 
+          console.error("NLB Fetch failed", e); 
+          cacheSuccess = false;
+      }
 
       try {
           setLoadProgress(35, "Fetching KMB Network...");
@@ -647,6 +653,10 @@ async function initApp() {
           const p3 = fetch(`${KMB_API_BASE}/route-stop/`).then(r => { kmbProg += 15; setLoadProgress(kmbProg, "Syncing KMB Mappings..."); return r.json(); }).catch(()=>null);
 
           const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([p1, p2, p3]);
+
+          if (!kmbRoutesRes || !kmbRoutesRes.data || !kmbStopsRes || !kmbStopsRes.data || !kmbRouteStopsRes || !kmbRouteStopsRes.data) {
+              cacheSuccess = false;
+          }
 
           setLoadProgress(85, "Building System Index...");
 
@@ -702,22 +712,27 @@ async function initApp() {
                   }
               });
           }
-      } catch(e) { console.error("KMB/LWB Fetch failed", e); }
+      } catch(e) { 
+          console.error("KMB/LWB Fetch failed", e);
+          cacheSuccess = false;
+      }
 
       groupedRoutes = Array.from(groupedMap.values());
 
-      try {
-        safeSetStorage('pulse_grouped_routes_v8', JSON.stringify(groupedRoutes));
-        safeSetStorage('pulse_stops_v8', JSON.stringify(routeStopsCache));
-        safeSetStorage('pulse_cache_time_v8', Date.now().toString());
-      } catch (e) {}
+      if (cacheSuccess) {
+          try {
+            safeSetStorage('pulse_grouped_routes_v9', JSON.stringify(groupedRoutes));
+            safeSetStorage('pulse_stops_v9', JSON.stringify(routeStopsCache));
+            safeSetStorage('pulse_cache_time_v9', Date.now().toString());
+          } catch (e) {}
+      }
       
       setLoadProgress(100, "Network Sync Complete");
     }
     
     buildAllStopsList();
 
-    let legacyFavs = safeGetStorage('pulse_fav_stops');
+    let legacyFavs = safeGetStorage('pulse_fav_stops_v2');
     if (legacyFavs && !safeGetStorage('pulse_fav_stops_v2')) {
         try {
             let parsedLegacy = JSON.parse(legacyFavs);
@@ -728,17 +743,7 @@ async function initApp() {
             });
             favStops = migratedFavs;
             safeSetStorage('pulse_fav_stops_v2', JSON.stringify(favStops));
-            localStorage.removeItem('pulse_fav_stops'); 
         } catch(e) {}
-    }
-
-    let legacyCurrentStop = safeGetStorage('pulse_stop');
-    if (legacyCurrentStop && !safeGetStorage('pulse_stop_key')) {
-         let match = allStops.find(s => s.stopName_e === legacyCurrentStop);
-         if (match) {
-             safeSetStorage('pulse_stop_key', match.stopKey);
-         }
-         localStorage.removeItem('pulse_stop');
     }
     
     const savedStop = safeGetStorage('pulse_stop_key');
@@ -967,6 +972,23 @@ function renderModalList() {
         let favs = sourceStops.filter(s => favStops.includes(s.stopKey));
         let others = sourceStops.filter(s => !favStops.includes(s.stopKey));
 
+        let refPos = lastKnownPos;
+        let nearbyStops = [];
+        
+        if (refPos && !fuzzyQuery) {
+            const WALKING_RADIUS_KM = 0.5;
+            const stopsWithDist = others.map(s => ({
+                ...s,
+                distKm: calculateDistanceKm(refPos.lat, refPos.lon, parseFloat(s.latitude), parseFloat(s.longitude))
+            }));
+            
+            stopsWithDist.sort((a, b) => a.distKm - b.distKm);
+            nearbyStops = stopsWithDist.filter(s => s.distKm <= WALKING_RADIUS_KM).slice(0, 6);
+            
+            const nearbyKeys = nearbyStops.map(s => s.stopKey);
+            others = others.filter(s => !nearbyKeys.includes(s.stopKey));
+        }
+
         if (fuzzyQuery) {
             const filterFn = (s) => {
                 const nE = (s.stopName_e || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
@@ -997,8 +1019,28 @@ function renderModalList() {
             });
         }
 
+        if (nearbyStops.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">📍 Nearby Stops</div>`);
+            nearbyStops.forEach(s => {
+                const isSelected = (s.stopKey === currentStopKey);
+                const distStr = s.distKm < 1 ? `${Math.round(s.distKm * 1000)}m` : `${s.distKm.toFixed(1)}km`;
+                const seqBadge = s.routeSeq ? `<span style="background:var(--card-border); color:var(--text-primary); font-size:0.75rem; padding:3px 6px; border-radius:8px; font-weight:700; min-width:26px; text-align:center; display:inline-block; border:1px solid #3a3a3c;">${s.routeSeq}</span>` : `<span class="modal-item-icon">📍</span>`;
+                
+                listEl.insertAdjacentHTML('beforeend', `
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
+                    <div style="display: flex; align-items: center; justify-content: center; width: 32px; margin-right: 8px;">
+                        ${seqBadge}
+                    </div>
+                    <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')}</span>
+                        <span style="font-size:0.75rem; color:var(--accent-green); margin-top:2px;">${distStr} away ${s.routeStr ? `<span style="color:var(--text-secondary); margin-left:6px;">· 🚌 ${s.routeStr}</span>` : ''}</span>
+                    </div>
+                </div>`);
+            });
+        }
+
         if (isAllRoutes && !fuzzyQuery) {
-            if (favs.length > 0) {
+            if (favs.length > 0 || nearbyStops.length > 0) {
                 listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
             }
             listEl.insertAdjacentHTML('beforeend', `
@@ -1009,7 +1051,7 @@ function renderModalList() {
                 </div>
             `);
         } else if (others.length > 0) {
-            if (favs.length > 0 || !isAllRoutes) {
+            if (favs.length > 0 || nearbyStops.length > 0 || !isAllRoutes) {
                 listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${isAllRoutes ? 'Search Results' : 'Route Sequence'}</div>`);
             }
             
@@ -1855,7 +1897,6 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
   let capacityDivider = 1.0; 
   let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
 
-  // Custom logic to fix 3M "nearly no seats left" observation
   if (routeNo === '3M') {
       capacityDivider = 1.1; 
       if (dest.includes('tung chung')) {
@@ -1878,6 +1919,8 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
     } else if (hour >= 17 && hour <= 20) {
       if (isFeeder || isE_Route || dest.includes('tung chung')) {
           baseLoad = 80;
+      } else if (routeNo === '3M' && dest.includes('mui wo')) {
+          baseLoad = 75; 
       } else if (isTouristRoute && dest.includes('mui wo')) {
           baseLoad = 25; 
       } else {
