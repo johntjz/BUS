@@ -34,7 +34,9 @@
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden; 
-    padding-bottom: 80px; 
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
   }
   .header {
     background-color: var(--accent-red);
@@ -46,7 +48,7 @@
     top: 0;
     z-index: 10;
   }
-  .header-left { display: flex; flex-direction: column; }
+  .header-left { display: flex; flex-direction: column; cursor: pointer; }
   .title-row { display: flex; align-items: baseline; gap: 8px; }
   .header h1 { margin: 0; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; }
   .build-badge { font-size: 0.55rem; color: rgba(255, 255, 255, 0.7); font-family: monospace; font-weight: 600; letter-spacing: 0.5px; white-space: nowrap; }
@@ -61,32 +63,17 @@
   }
   .stop-header {
     padding: 12px 16px; border-bottom: 1px solid var(--card-border);
-    display: flex; flex-direction: column; background-color: var(--bg-color); gap: 4px;
+    display: flex; flex-direction: column; background-color: var(--bg-color); gap: 8px;
     position: sticky; top: 58px; z-index: 9;
   }
-  .controls-container { display: flex; gap: 10px; width: 100%; min-width: 0; }
+  .controls-container { display: flex; width: 100%; }
   
-  .action-btn {
-    background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
-    width: 48px; height: 72px; border-radius: 8px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    font-size: 1.2rem; cursor: pointer; transition: all 0.2s; flex-shrink: 0; position: relative;
-  }
-  .action-btn:active { background: #3a3a3c; }
-  .action-btn.active-gps { 
-      border-color: var(--accent-green); 
-      color: var(--accent-green); 
-      background: rgba(48, 209, 88, 0.1); 
-      box-shadow: inset 0 0 10px rgba(48, 209, 88, 0.1);
-  }
-  .gps-label { font-size: 0.55rem; font-weight: 800; text-transform: uppercase; margin-top: 4px; letter-spacing: 0.5px; }
-
   .selectors { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
   
   .search-input {
     background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
-    padding: 8px 32px 8px 12px; border-radius: 8px;
-    font-size: 0.9rem; font-weight: 600; outline: none; cursor: pointer;
+    padding: 10px 32px 10px 14px; border-radius: 8px;
+    font-size: 0.95rem; font-weight: 600; outline: none; cursor: pointer;
     width: 100%; display: flex; align-items: center; justify-content: space-between;
     background-image: url('data:image/svg+xml;utf8,<svg fill="%2398989d" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>');
     background-repeat: no-repeat; background-position: right 8px center;
@@ -132,21 +119,18 @@
   .modal-item-icon { font-size: 1.1rem; flex-shrink: 0; }
   .fav-header { padding: 10px 16px; font-size: 0.8rem; font-weight: 800; color: var(--text-secondary); background: #1a1a1c; text-transform: uppercase; letter-spacing: 0.5px; }
 
-  /* Bottom Fav Bar */
-  .bottom-fav-bar {
-    position: fixed; bottom: 0; left: 0; width: 100%;
-    background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    border-top: 1px solid var(--card-border);
-    padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
-    display: flex; justify-content: center; align-items: center; gap: 12px; z-index: 50;
+  /* Bottom Controls (Quiet, embedded at the end of the list) */
+  .bottom-controls {
+    margin-top: auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 12px;
+    background: var(--bg-color); border-top: 1px dashed var(--card-border);
   }
-  .bottom-fav-btn {
-    flex: 1; max-width: 250px; padding: 14px 8px; border-radius: 12px;
-    font-size: 0.95rem; font-weight: 700; cursor: pointer; border: none;
-    transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;
-    white-space: nowrap;
+  .bottom-btn {
+    width: 100%; padding: 14px; border-radius: 12px;
+    font-size: 1.05rem; font-weight: 700; cursor: pointer; border: none;
+    transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
   }
-  .bottom-fav-btn:active { transform: scale(0.98); }
+  .bottom-btn:active { transform: scale(0.98); }
+  .btn-reset { background: var(--accent-blue); color: #fff; }
   .btn-add-fav { background: #2c2c2e; color: #ffd60a; border: 1px solid #3a3a3c; }
   .btn-rm-fav { background: rgba(227, 24, 55, 0.15); color: var(--accent-red); border: 1px solid rgba(227, 24, 55, 0.3); }
 
@@ -158,7 +142,7 @@
   }
   .back-btn:active { background: #3a3a3c; }
 
-  #routeList { display: flex; flex-direction: column; min-height: 50vh; padding-bottom: 24px; }
+  #routeList { display: flex; flex-direction: column; min-height: 40vh; }
   
   .route-card {
     display: flex; flex-direction: column; align-items: stretch;
@@ -266,7 +250,7 @@
 <body>
 
 <div class="header">
-  <div class="header-left">
+  <div class="header-left" onclick="resetToHome()" title="Reset to Home">
     <div class="title-row">
       <h1>Bus HK</h1>
       <span class="build-badge" id="buildVersion"></span>
@@ -285,10 +269,6 @@
 
 <div class="stop-header">
   <div class="controls-container">
-    <button id="gpsBtn" class="action-btn active-gps" onclick="manualGpsSync()" title="Auto-locate nearest stop">
-      <span id="gpsIcon" style="font-size: 1.3rem;">📍</span>
-      <span class="gps-label" id="gpsBtnLabel">Auto</span>
-    </button>
     <div class="selectors">
       <div class="search-input" onclick="openModal('route')">
         <span class="search-input-text" id="routeSelectText">All Routes</span>
@@ -318,10 +298,13 @@
   </div>
 </div>
 
-<!-- Bottom Fav Bar (Split for Stops and Routes) -->
-<div id="bottomFavBar" class="bottom-fav-bar">
-    <button id="bottomFavStopBtn" class="bottom-fav-btn btn-add-fav" onclick="toggleFavoriteStop()">⭐ Save Stop</button>
-    <button id="bottomFavRouteBtn" class="bottom-fav-btn btn-add-fav" onclick="toggleFavoriteRoute()" style="display:none;">⭐ Save Route</button>
+<!-- Bottom Controls (Quiet Flow) -->
+<div id="bottomControls" class="bottom-controls">
+    <button class="bottom-btn btn-reset" onclick="resetToHome()">🏠 Reset to Nearest Stop</button>
+    <div style="display: flex; gap: 12px;">
+        <button id="bottomFavStopBtn" class="bottom-btn btn-add-fav" style="flex: 1;" onclick="toggleFavoriteStop()">⭐ Save Stop</button>
+        <button id="bottomFavRouteBtn" class="bottom-btn btn-add-fav" style="flex: 1; display:none;" onclick="toggleFavoriteRoute()">⭐ Save Route</button>
+    </div>
 </div>
 
 <!-- Search Modal -->
@@ -339,6 +322,23 @@ const NLB_API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
 const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Safe LocalStorage wrapper to prevent iOS Safari crash
+function safeSetStorage(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        console.warn("Storage restricted", e);
+    }
+}
+
+function safeGetStorage(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        return null;
+    }
+}
 
 // ============================================================================
 // SPONGE STOPS CONFIGURATION
@@ -376,11 +376,11 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Build: 2026-10-09 10:40 AM";
+const APP_TIMESTAMP = "Build: 2026-10-09 1:46 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
-let currentLang = localStorage.getItem('pulse_lang') || 'en';
+let currentLang = safeGetStorage('pulse_lang') || 'en';
 if (document.getElementById('langSelect')) document.getElementById('langSelect').value = currentLang;
 
 const i18n = {
@@ -397,7 +397,7 @@ const i18n = {
     showTerminating: "Show arriving buses", hideTerminating: "Hide arriving buses",
     terminatingHere: "Terminating Here", routeStops: "Journey ETA", nextStop: "Next Stop",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
-    manual: "Manual Override",
+    manual: "Manual Selection",
     seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full",
     nearbyStops: "📍 Nearby Stops (Walking Distance)", searchResults: "Search Results"
   },
@@ -453,8 +453,8 @@ let showInactive = false;
 let showTerminating = false;
 
 // Dual Favorites
-let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops_v2') || '[]');
-let favRoutes = JSON.parse(localStorage.getItem('pulse_fav_routes_v2') || '[]');
+let favStops = JSON.parse(safeGetStorage('pulse_fav_stops_v2') || '[]');
+let favRoutes = JSON.parse(safeGetStorage('pulse_fav_routes_v2') || '[]');
 
 let autoGpsEnabled = true;
 let lastKnownPos = null;
@@ -575,16 +575,25 @@ function getLocalizedName(obj, prefix) {
 
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('pulse_grouped_routes_v8');
-    const cachedStops = localStorage.getItem('pulse_stops_v8');
-    const cacheTime = localStorage.getItem('pulse_cache_time_v8');
+    const cachedGrouped = safeGetStorage('pulse_grouped_routes_v8');
+    const cachedStops = safeGetStorage('pulse_stops_v8');
+    const cacheTime = safeGetStorage('pulse_cache_time_v8');
     const now = Date.now(); 
 
+    let loadedFromCache = false;
     if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
-      setLoadProgress(100, "Loading from cache...");
-      groupedRoutes = JSON.parse(cachedGrouped);
-      routeStopsCache = JSON.parse(cachedStops);
-    } else {
+      try {
+          setLoadProgress(100, "Loading from cache...");
+          groupedRoutes = JSON.parse(cachedGrouped);
+          routeStopsCache = JSON.parse(cachedStops);
+          loadedFromCache = true;
+      } catch (e) {
+          console.error("Cache corrupted. Re-fetching network.", e);
+          safeSetStorage('pulse_cache_time_v8', '0'); // Force refetch
+      }
+    } 
+    
+    if (!loadedFromCache) {
       setLoadProgress(5, "Fetching NLB Routes...");
       
       const groupedMap = new Map();
@@ -698,9 +707,9 @@ async function initApp() {
       groupedRoutes = Array.from(groupedMap.values());
 
       try {
-        localStorage.setItem('pulse_grouped_routes_v8', JSON.stringify(groupedRoutes));
-        localStorage.setItem('pulse_stops_v8', JSON.stringify(routeStopsCache));
-        localStorage.setItem('pulse_cache_time_v8', Date.now().toString());
+        safeSetStorage('pulse_grouped_routes_v8', JSON.stringify(groupedRoutes));
+        safeSetStorage('pulse_stops_v8', JSON.stringify(routeStopsCache));
+        safeSetStorage('pulse_cache_time_v8', Date.now().toString());
       } catch (e) {}
       
       setLoadProgress(100, "Network Sync Complete");
@@ -708,8 +717,8 @@ async function initApp() {
     
     buildAllStopsList();
 
-    let legacyFavs = localStorage.getItem('pulse_fav_stops');
-    if (legacyFavs && !localStorage.getItem('pulse_fav_stops_v2')) {
+    let legacyFavs = safeGetStorage('pulse_fav_stops');
+    if (legacyFavs && !safeGetStorage('pulse_fav_stops_v2')) {
         try {
             let parsedLegacy = JSON.parse(legacyFavs);
             let migratedFavs = [];
@@ -718,22 +727,22 @@ async function initApp() {
                 if (match) migratedFavs.push(match.stopKey);
             });
             favStops = migratedFavs;
-            localStorage.setItem('pulse_fav_stops_v2', JSON.stringify(favStops));
+            safeSetStorage('pulse_fav_stops_v2', JSON.stringify(favStops));
             localStorage.removeItem('pulse_fav_stops'); 
         } catch(e) {}
     }
 
-    let legacyCurrentStop = localStorage.getItem('pulse_stop');
-    if (legacyCurrentStop && !localStorage.getItem('pulse_stop_key')) {
+    let legacyCurrentStop = safeGetStorage('pulse_stop');
+    if (legacyCurrentStop && !safeGetStorage('pulse_stop_key')) {
          let match = allStops.find(s => s.stopName_e === legacyCurrentStop);
          if (match) {
-             localStorage.setItem('pulse_stop_key', match.stopKey);
+             safeSetStorage('pulse_stop_key', match.stopKey);
          }
          localStorage.removeItem('pulse_stop');
     }
     
-    const savedStop = localStorage.getItem('pulse_stop_key');
-    const savedRoute = localStorage.getItem('pulse_route');
+    const savedStop = safeGetStorage('pulse_stop_key');
+    const savedRoute = safeGetStorage('pulse_route');
     
     if (savedRoute) currentRouteKey = savedRoute;
     updateRouteSelectText();
@@ -789,7 +798,7 @@ function buildAllStopsList() {
 
 function getStopsForGroup(group) {
   const uniqueMap = new Map();
-  if (!group.routeIds || group.routeIds.length === 0) return [];
+  if (!group || !group.routeIds || group.routeIds.length === 0) return [];
   const primaryRouteId = group.routeIds[0]; 
   
   let seq = 1;
@@ -1025,16 +1034,31 @@ function renderModalList() {
     }
 }
 
+async function resetToHome() {
+    currentRouteKey = 'ALL';
+    safeSetStorage('pulse_route', 'ALL');
+    updateRouteSelectText();
+    
+    autoGpsEnabled = true;
+    updateGpsUi();
+    
+    document.getElementById('routeList').innerHTML = `<div style="padding: 40px 20px; color: var(--text-secondary); text-align: center; font-weight: 600;">Locating nearest stop...</div>`;
+    
+    await locateNearestStopPromise(true);
+    updateStopSelectText();
+    resetAndFetch();
+}
+
 function selectModalItem(type, value) {
     if (type === 'route') {
         currentRouteKey = value;
-        localStorage.setItem('pulse_route', currentRouteKey);
+        safeSetStorage('pulse_route', currentRouteKey);
         updateRouteSelectText();
         
         const targetStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
         if (targetStops.length > 0 && !targetStops.some(s => s.stopKey === currentStopKey)) {
             currentStopKey = targetStops[0].stopKey;
-            localStorage.setItem('pulse_stop_key', currentStopKey);
+            safeSetStorage('pulse_stop_key', currentStopKey);
             updateStopSelectText();
         }
         
@@ -1046,7 +1070,7 @@ function selectModalItem(type, value) {
         updateGpsUi();
         
         currentStopKey = value;
-        localStorage.setItem('pulse_stop_key', currentStopKey);
+        safeSetStorage('pulse_stop_key', currentStopKey);
         updateStopSelectText();
         resetAndFetch();
     }
@@ -1058,7 +1082,7 @@ function toggleFavoriteStop() {
     const idx = favStops.indexOf(currentStopKey);
     if (idx > -1) favStops.splice(idx, 1);
     else favStops.push(currentStopKey);
-    localStorage.setItem('pulse_fav_stops_v2', JSON.stringify(favStops));
+    safeSetStorage('pulse_fav_stops_v2', JSON.stringify(favStops));
     updateFavButtonUI();
 }
 
@@ -1067,7 +1091,7 @@ function toggleFavoriteRoute() {
     const idx = favRoutes.indexOf(currentRouteKey);
     if (idx > -1) favRoutes.splice(idx, 1);
     else favRoutes.push(currentRouteKey);
-    localStorage.setItem('pulse_fav_routes_v2', JSON.stringify(favRoutes));
+    safeSetStorage('pulse_fav_routes_v2', JSON.stringify(favRoutes));
     updateFavButtonUI();
 }
 
@@ -1077,10 +1101,10 @@ function updateFavButtonUI() {
     
     if (stopBtn) {
         if (currentStopKey && favStops.includes(currentStopKey)) {
-            stopBtn.className = 'bottom-fav-btn btn-rm-fav';
+            stopBtn.className = 'bottom-btn btn-rm-fav';
             stopBtn.innerText = '❌ Stop';
         } else {
-            stopBtn.className = 'bottom-fav-btn btn-add-fav';
+            stopBtn.className = 'bottom-btn btn-add-fav';
             stopBtn.innerText = '⭐ Save Stop';
         }
     }
@@ -1091,10 +1115,10 @@ function updateFavButtonUI() {
         } else {
             routeBtn.style.display = 'flex';
             if (favRoutes.includes(currentRouteKey)) {
-                routeBtn.className = 'bottom-fav-btn btn-rm-fav';
+                routeBtn.className = 'bottom-btn btn-rm-fav';
                 routeBtn.innerText = '❌ Route';
             } else {
-                routeBtn.className = 'bottom-fav-btn btn-add-fav';
+                routeBtn.className = 'bottom-btn btn-add-fav';
                 routeBtn.innerText = '⭐ Save Route';
             }
         }
@@ -1120,33 +1144,13 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
 }
 
 function updateGpsUi() {
-    const btn = document.getElementById('gpsBtn');
-    const icon = document.getElementById('gpsIcon');
-    const label = document.getElementById('gpsBtnLabel');
     const status = document.getElementById('gpsStatus');
-    
-    if (autoGpsEnabled) {
-        btn.classList.add('active-gps');
-        icon.innerText = '📍';
-        icon.style.opacity = '1';
-        label.innerText = 'Auto';
-        status.style.color = 'var(--accent-green)';
-    } else {
-        btn.classList.remove('active-gps');
-        icon.innerText = '📌';
-        icon.style.opacity = '0.7';
-        label.innerText = 'Manual';
+    if (!autoGpsEnabled) {
         status.innerText = 'Manual Selection';
         status.style.color = 'var(--text-secondary)';
+    } else {
+        status.style.color = 'var(--accent-green)';
     }
-}
-
-async function manualGpsSync() {
-    autoGpsEnabled = true;
-    updateGpsUi();
-    document.getElementById('gpsStatus').innerText = 'Locating...';
-    await locateNearestStopPromise(true);
-    resetAndFetch();
 }
 
 function locateNearestStopPromise(isManualClick = false) {
@@ -1157,7 +1161,22 @@ function locateNearestStopPromise(isManualClick = false) {
         }
         if (isManualClick) document.getElementById('gpsStatus').innerText = getT('locating');
 
+        let resolved = false;
+        
+        // Critical iOS Safari Timeout Fallback
+        const fallbackTimeout = setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                if (isManualClick) document.getElementById('gpsStatus').innerText = 'Location access disabled';
+                resolve(false);
+            }
+        }, 5000);
+
         navigator.geolocation.getCurrentPosition((pos) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(fallbackTimeout);
+            
             lastKnownPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
             
             let closest = null, minDistance = Infinity;
@@ -1175,7 +1194,7 @@ function locateNearestStopPromise(isManualClick = false) {
                 
                 if (closest.stopKey !== currentStopKey) {
                     currentStopKey = closest.stopKey;
-                    localStorage.setItem('pulse_stop_key', currentStopKey);
+                    safeSetStorage('pulse_stop_key', currentStopKey);
                     updateStopSelectText();
                     for (let key in busStateMap) delete busStateMap[key];
                     resolve(true); 
@@ -1187,15 +1206,18 @@ function locateNearestStopPromise(isManualClick = false) {
                 resolve(false);
             }
         }, () => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(fallbackTimeout);
             if (isManualClick) document.getElementById('gpsStatus').innerText = getT('gpsDenied');
             resolve(false);
-        }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 });
+        }, { enableHighAccuracy: true, timeout: 4500, maximumAge: 10000 });
     });
 }
 
 function changeLanguage(lang) {
   currentLang = lang;
-  localStorage.setItem('pulse_lang', lang);
+  safeSetStorage('pulse_lang', lang);
   updateRouteSelectText();
   updateStopSelectText();
   const btn = document.getElementById('backBtn');
@@ -1948,3 +1970,4 @@ initApp();
 </script>
 </body>
 </html>
+
