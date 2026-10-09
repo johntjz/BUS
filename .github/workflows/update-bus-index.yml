@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   update-index:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Pinned to clear the Ubuntu migration notice
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24' # Upgraded to 24 to clear the deprecation warning
 
       - name: Run Builder Script
         run: node build-index.js
