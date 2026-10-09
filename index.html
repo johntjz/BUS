@@ -17,12 +17,6 @@
     --accent-green: #30d158;
     --accent-orange: #ff9f0a;
     --accent-blue: #0a84ff;
-    
-    --dir-blue: #0a84ff;    /* Tung Chung */
-    --dir-purple: #bf5af2;  /* Mui Wo */
-    --dir-cyan: #32ade6;    /* Tai O / Kowloon */
-    --dir-indigo: #5e5ce6;  /* Airport/Port / NT */
-    --dir-pink: #ff375f;    /* Tong Fuk / HK Island */
   }
   
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -70,7 +64,7 @@
     background-color: var(--card-bg); border-top: 1px solid var(--card-border);
     display: flex; justify-content: space-around; align-items: center;
     height: 65px; flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom);
-    z-index: 1001;
+    z-index: 1001; /* Keeps tabs above modals */
   }
   .tab {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -97,7 +91,7 @@
   .commute-btn:active { background: #3a3a3c; }
   .commute-edit { font-size: 0.7rem; color: var(--text-secondary); padding: 4px; border: 1px solid #444; border-radius: 6px; }
 
-  /* Advanced Route Cards (From Original Code) */
+  /* Advanced Route Cards */
   .route-card {
     display: flex; flex-direction: column; align-items: stretch;
     padding: 16px 16px 16px 12px; border-bottom: 1px solid var(--card-border); gap: 0;
@@ -110,7 +104,6 @@
 
   .route-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
   .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; color: var(--text-primary); }
-  .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; background: #2c2c2e; padding: 2px 4px; border-radius: 4px; display: inline-block; }
   .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--text-primary); }
   
@@ -146,13 +139,10 @@
   .sub-eta-label { font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
   .sub-eta-time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
   
-  /* Search View specific lists */
+  /* Search View */
   .search-box-container { padding: 16px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; z-index: 10;}
   .search-input { width: 100%; padding: 16px; border: 2px solid var(--card-border); border-radius: 12px; font-size: 1.3rem; outline: none; text-align: center; background: var(--bg-color); color: var(--text-primary); font-weight: 700; }
   .search-input:focus { border-color: var(--accent-blue); }
-  .region-filters { display: flex; gap: 8px; justify-content: space-between; }
-  .region-btn { flex: 1; padding: 12px 0; border-radius: 10px; border: 1px solid var(--card-border); background: var(--bg-color); color: var(--text-secondary); font-size: 0.9rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
-  .region-btn.active { background: var(--accent-blue); color: white; border-color: var(--accent-blue); }
   
   .simple-list-item { display: flex; padding: 16px; border-bottom: 1px solid var(--card-border); align-items: center; gap: 16px; cursor: pointer; background: var(--bg-color); transition: background 0.2s; }
   .simple-list-item:active { background: var(--card-bg); }
@@ -182,16 +172,17 @@
   .stop-item.active-stop .stop-dot { background: var(--accent-red); box-shadow: 0 0 0 4px rgba(227,24,55,0.3); }
   .stop-name { font-size: 1.15rem; font-weight: 600; color: var(--text-primary); }
 
-  /* Modal Overlays (Commute & Favorites) */
+  /* Modal Overlays */
   .modal-overlay {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.85); z-index: 2000;
+      background: rgba(0,0,0,0.85); z-index: 1000; /* Set to 1000 so bottom-tabs (1001) stay accessible! */
       display: none; justify-content: center; align-items: flex-end;
   }
   .modal-content {
       background: var(--bg-color); width: 100%; height: 90vh;
       border-top-left-radius: 20px; border-top-right-radius: 20px;
       display: flex; flex-direction: column; overflow: hidden;
+      padding-bottom: 65px; /* Ensures list items are not hidden behind the bottom tabs */
   }
   .modal-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); border-bottom: 1px solid var(--card-border); }
   .modal-header h3 { font-size: 1.25rem; font-weight: 800; margin: 0; }
@@ -205,12 +196,10 @@
   /* Utilities */
   .text-center { text-align: center; padding: 40px 20px; color: var(--text-secondary); font-size: 1.15rem; }
   .init-loader { padding: 80px 20px; text-align: center; }
-  .progress-bar { width: 85%; height: 6px; background: var(--card-border); margin: 24px auto; border-radius: 4px; overflow: hidden; }
-  .progress-fill { height: 100%; background: var(--accent-green); width: 0%; transition: 0.3s; }
   .dark-tiles { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
   .custom-user-icon div { width: 100% !important; height: 100% !important; background: #0a84ff !important; border-radius: 50% !important; border: 3px solid white !important; box-shadow: 0 0 12px rgba(0,0,0,0.8) !important; }
 
-  /* Favorites Specfic */
+  /* Favorites Specific */
   .add-fav-btn { margin: 24px; padding: 20px; background: var(--card-bg); border: 2px dashed var(--card-border); border-radius: 16px; text-align: center; color: var(--accent-blue); font-size: 1.1rem; font-weight: 800; cursor: pointer; transition: background 0.2s; }
   .add-fav-btn:active { background: #2c2c2e; }
   .del-fav-btn { background: rgba(227, 24, 55, 0.15); border: 1px solid rgba(227, 24, 55, 0.3); color: var(--accent-red); border-radius: 8px; padding: 14px 18px; font-size: 1.2rem; cursor: pointer; }
@@ -246,7 +235,6 @@
   <div id="mainRouteList">
       <div class="init-loader">
           <div id="loadText" style="font-size:1.1rem; color:var(--text-primary); font-weight: 700;">Connecting to network...</div>
-          <div class="progress-bar"><div class="progress-fill" id="loadBar"></div></div>
       </div>
   </div>
 </main>
@@ -254,13 +242,7 @@
 <!-- Search View -->
 <main id="view-search" class="view-container">
   <div class="search-box-container">
-    <div class="region-filters">
-        <button class="region-btn active" id="filter-ALL" onclick="setRegionFilter('ALL')">All</button>
-        <button class="region-btn" id="filter-KMB" onclick="setRegionFilter('KMB')">KMB</button>
-        <button class="region-btn" id="filter-LWB" onclick="setRegionFilter('LWB')">LWB</button>
-        <button class="region-btn" id="filter-NLB" onclick="setRegionFilter('NLB')">NLB</button>
-    </div>
-    <input type="text" id="searchInput" class="search-input" placeholder="Enter Route Number" oninput="renderSearchResults()" autocomplete="off">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search Route Number..." oninput="renderSearchResults()" autocomplete="off">
   </div>
   <div id="searchResults" style="flex:1; overflow-y:auto;"></div>
 </main>
@@ -273,7 +255,7 @@
             <div class="sheet-title" id="sheet-title">Stop Name</div>
             <button class="sheet-close" onclick="closeMapSheet()">✕</button>
         </div>
-        <div id="sheet-route-list"></div>
+        <div id="sheet-route-list" style="padding-bottom: 20px;"></div>
     </div>
 </main>
 
@@ -345,7 +327,6 @@
 <script>
 // --- Configuration & State ---
 const NLB_API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
-const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 let currentView = 'main';
@@ -355,17 +336,15 @@ let allStops = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
 let busStateMap = {}; // Kalman filter tracker state
-let favRoutes = JSON.parse(localStorage.getItem('kmb_fav_routes_v8') || '[]');
+let favRoutes = JSON.parse(localStorage.getItem('nlb_fav_routes_v9') || '[]');
 
 let lastKnownPos = null;
 let currentNearestStopKey = null;
-let activeRegionFilter = 'ALL';
 let activeCommuteSetupType = '';
-let sheetExpandedGroupKey = null;
+let currentMapSheetStop = null;
 
 // Map & Detail State
 let detailRouteGroup = null;
-let detailExpandedStopIdx = -1;
 let mapInstance = null; 
 let globalMapInstance = null; 
 let mapRouteLayer = null;
@@ -393,32 +372,30 @@ function cleanStopName(name) {
     return name.replace(/\s*[\(（][^\)）]*[\)）]/g, '').trim();
 }
 
-function setLoadProgress(pct, text) {
-  const fill = document.getElementById('loadBar');
+function updateLoadingText(text) {
   const txt = document.getElementById('loadText');
-  if (fill) fill.style.width = `${pct}%`;
   if (txt) txt.innerText = text;
 }
 
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('kmb_grouped_v8');
-    const cachedStops = localStorage.getItem('kmb_stops_v8');
-    const cacheTime = localStorage.getItem('kmb_cache_time_v8');
+    const cachedGrouped = localStorage.getItem('nlb_grouped_v9');
+    const cachedStops = localStorage.getItem('nlb_stops_v9');
+    const cacheTime = localStorage.getItem('nlb_cache_time_v9');
     const now = Date.now(); 
 
     let loadedFromCache = false;
     if (cachedGrouped && cachedStops && cacheTime && (now - parseInt(cacheTime) < CACHE_EXPIRY_MS)) {
       try {
-          setLoadProgress(100, "Loading from cache...");
+          updateLoadingText("Loading cached network...");
           groupedRoutes = JSON.parse(cachedGrouped);
           routeStopsCache = JSON.parse(cachedStops);
           loadedFromCache = true;
-      } catch (e) { localStorage.removeItem('kmb_cache_time_v8'); }
+      } catch (e) { localStorage.removeItem('nlb_cache_time_v9'); }
     } 
     
     if (!loadedFromCache) {
-      setLoadProgress(10, "Fetching Network Data...");
+      updateLoadingText("Fetching Network Data...");
       const groupedMap = new Map();
       routeStopsCache = {};
 
@@ -447,61 +424,15 @@ async function initApp() {
                 routeStopsCache[`NLB_${r.routeId}`] = (res.stops || []).map(s => ({...s, stopName_e: cleanStopName(s.stopName_e)}));
               } catch(e) {}
             }));
-            setLoadProgress(10 + ((i / rawNlbRoutes.length) * 30), "Syncing Lantau Routes...");
+            updateLoadingText("Syncing Lantau Routes...");
           }
-      } catch(e) {}
-
-      try {
-          setLoadProgress(40, "Fetching KMB Network...");
-          const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
-              fetch(`${KMB_API_BASE}/route/`).then(r => r.json()).catch(()=>null),
-              fetch(`${KMB_API_BASE}/stop/`).then(r => r.json()).catch(()=>null),
-              fetch(`${KMB_API_BASE}/route-stop/`).then(r => r.json()).catch(()=>null)
-          ]);
-
-          setLoadProgress(80, "Building System Index...");
-          const allKmbStops = {};
-          if (kmbStopsRes && kmbStopsRes.data) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
-
-          const formatStopName = (name) => name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
-
-          if (kmbRoutesRes && kmbRouteStopsRes) {
-              const kmbRouteStopsMap = {};
-              kmbRouteStopsRes.data.forEach(rs => {
-                  const key = `KMB_${rs.route}_${rs.bound}_${rs.service_type}`;
-                  if (!kmbRouteStopsMap[key]) kmbRouteStopsMap[key] = [];
-                  kmbRouteStopsMap[key].push(rs);
-              });
-
-              kmbRoutesRes.data.forEach(r => {
-                  const rId = `KMB_${r.route}_${r.bound}_${r.service_type}`;
-                  const rsData = kmbRouteStopsMap[rId];
-                  if (!rsData) return;
-
-                  rsData.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
-                  routeStopsCache[rId] = rsData.map(rs => {
-                      const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', lat: '0', long: '0' };
-                      return { stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq };
-                  });
-
-                  const company = (r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S')) ? 'LWB' : 'KMB';
-                  const cleanDestE = formatStopName(cleanStopName(r.dest_en));
-                  const groupKey = `KMB_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-
-                  if (!groupedMap.has(groupKey)) {
-                      groupedMap.set(groupKey, { key: groupKey, routeNo: r.route, dest_e: cleanDestE, routeIds: [rId], company: company });
-                  } else {
-                      groupedMap.get(groupKey).routeIds.push(rId);
-                  }
-              });
-          }
-      } catch(e) {}
+      } catch(e) { console.error("Error fetching NLB network", e); }
 
       groupedRoutes = Array.from(groupedMap.values());
       try {
-        localStorage.setItem('kmb_grouped_v8', JSON.stringify(groupedRoutes));
-        localStorage.setItem('kmb_stops_v8', JSON.stringify(routeStopsCache));
-        localStorage.setItem('kmb_cache_time_v8', Date.now().toString());
+        localStorage.setItem('nlb_grouped_v9', JSON.stringify(groupedRoutes));
+        localStorage.setItem('nlb_stops_v9', JSON.stringify(routeStopsCache));
+        localStorage.setItem('nlb_cache_time_v9', Date.now().toString());
       } catch (e) {}
     }
     
@@ -604,6 +535,10 @@ function locateNearestStopPromise() {
 
 // --- UI Navigation ---
 function switchTab(tabId) {
+    // Close modals on tab switch to ensure clean state
+    closeCommuteModal();
+    closeFavModal();
+    
     if (tabId === 'main') {
         appMode = 'NEAREST';
         document.getElementById('mainLocationText').innerText = 'Locating...';
@@ -642,7 +577,6 @@ function openRouteDetail(groupKey) {
     
     previousView = currentView;
     detailRouteGroup = group;
-    detailExpandedStopIdx = -1;
     currentView = 'detail';
     
     document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
@@ -710,7 +644,6 @@ function triggerCommute(type) {
 function getCommuteRelevantGroups(destStopKey) {
     if (!lastKnownPos) return [];
 
-    // 1. Get Stops near user (< 1km)
     const nearbyStops = allStops.filter(s => calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, parseFloat(s.latitude), parseFloat(s.longitude)) < 1.0);
     if (nearbyStops.length === 0) return [];
     const nearbyKeys = new Set(nearbyStops.map(s => s.stopKey));
@@ -718,13 +651,12 @@ function getCommuteRelevantGroups(destStopKey) {
     let relevantGroups = [];
     let directRoutesFound = false;
 
-    // 2. Find Direct Routes
+    // Direct Routes
     groupedRoutes.forEach(group => {
         for (const rId of group.routeIds) {
             const stops = routeStopsCache[rId] || [];
             const destIdx = stops.findIndex(s => getGlobalStopKey(s) === destStopKey);
             if (destIdx > 0) {
-                // Does this route pass through a nearby stop BEFORE the dest stop?
                 for (let i = 0; i < destIdx; i++) {
                     if (nearbyKeys.has(getGlobalStopKey(stops[i]))) {
                         relevantGroups.push({
@@ -740,7 +672,7 @@ function getCommuteRelevantGroups(destStopKey) {
         }
     });
 
-    // 3. Find 1-Transfer if no direct routes
+    // 1-Transfer Fallback
     if (!directRoutesFound) {
         let destRouteIds = [];
         groupedRoutes.forEach(g => {
@@ -766,7 +698,6 @@ function getCommuteRelevantGroups(destStopKey) {
                     for(const dRoute of destRouteIds) {
                         if (dRoute.g.routeNo === origGroup.routeNo) continue;
                         
-                        // Find common stop
                         for(let i = bestOrigIdx + 1; i < origStops.length; i++) {
                             const intersectionKey = getGlobalStopKey(origStops[i]);
                             const destIntIdx = dRoute.stops.findIndex(ds => getGlobalStopKey(ds) === intersectionKey);
@@ -801,10 +732,70 @@ function getCommuteRelevantGroups(destStopKey) {
     return unique;
 }
 
-// --- Main Advanced View Renderer ---
+// --- Main View & Routing Processing ---
+function buildEtaCardsHTML(relevantGroups, containerId, prefix) {
+    const listEl = document.getElementById(containerId);
+    
+    // Clear init load text
+    const loadEl = document.getElementById('loadText');
+    if (loadEl) loadEl.remove();
+
+    if (relevantGroups.length === 0) {
+        listEl.innerHTML = `<div class="text-center">No active buses available for this selection.</div>`;
+        return;
+    }
+
+    for (const item of relevantGroups) {
+      const group = item.group;
+      const isGroupTerminating = item.matchDetails.every(m => m.isLastStop);
+      const groupKey = group.key + (item.isTransfer ? '_T' : '');
+      const cardId = `${prefix}-route-${groupKey}`;
+      const destName = isGroupTerminating ? 'Terminating Here' : group.dest_e;
+      
+      let transferBadgeHtml = item.isTransfer ? `<div style="color: var(--accent-blue); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px;">🔄 ${item.transferName}</div>` : '';
+
+      if (!document.getElementById(cardId)) {
+        listEl.insertAdjacentHTML('beforeend', `
+          <div class="route-card inactive" id="${cardId}" data-smart-mins="9999" onclick="toggleMainEtaCard('${prefix}', '${groupKey}')">
+            ${transferBadgeHtml}
+            <div class="route-main-row">
+                <div class="route-left">
+                  <div style="display:flex; flex-direction:column;">
+                      <div class="route-no" id="${prefix}-no-${groupKey}">${group.routeNo}</div>
+                  </div>
+                  <div class="route-info">
+                      <div class="route-dest" id="${prefix}-dest-${groupKey}">${isGroupTerminating ? '' : 'To '}${destName}</div>
+                      <div class="compact-occupancy" id="${prefix}-occ-sec-${groupKey}" style="display:none;">
+                         <span id="${prefix}-bars-${groupKey}" class="occ-pill"></span>
+                      </div>
+                  </div>
+                </div>
+                <div class="eta-container">
+                  <div class="eta-box" id="${prefix}-box-smart-${groupKey}">
+                      <span class="eta-label" id="${prefix}-lbl-smart-${groupKey}">Actual</span>
+                      <span class="smart-eta" id="${prefix}-smart-${groupKey}">--</span>
+                  </div>
+                </div>
+            </div>
+            <div class="subsequent-etas" id="${prefix}-subs-${groupKey}"></div>
+          </div>
+        `);
+      }
+    }
+
+    const validCardIds = relevantGroups.map(i => `${prefix}-route-${i.group.key + (i.isTransfer ? '_T' : '')}`);
+    document.querySelectorAll(`#${containerId} .route-card`).forEach(c => {
+      if (!validCardIds.includes(c.id)) c.remove();
+    });
+}
+
+function toggleMainEtaCard(prefix, groupKey) {
+    const cardEl = document.getElementById(`${prefix}-route-${groupKey}`);
+    if(cardEl) cardEl.classList.toggle('expanded');
+}
+
 async function updateNetworkTelemetry() {
     if (currentView !== 'main') return;
-    const listEl = document.getElementById('mainRouteList');
     
     let relevantGroups = [];
     if (appMode === 'COMMUTE_WORK') {
@@ -817,7 +808,7 @@ async function updateNetworkTelemetry() {
         relevantGroups = getCommuteRelevantGroups(localStorage.getItem('pulse_home_stop'));
     } else {
         if (!currentNearestStopKey) {
-            listEl.innerHTML = '<div class="text-center">No nearby stops detected.</div>';
+            document.getElementById('mainRouteList').innerHTML = '<div class="text-center">No nearby stops detected.</div>';
             return;
         }
         const stopObj = allStops.find(s => s.stopKey === currentNearestStopKey);
@@ -840,71 +831,19 @@ async function updateNetworkTelemetry() {
         }
     }
 
-    const loadEl = document.getElementById('loadText');
-    if(loadEl) loadEl.remove();
+    const containerId = 'mainRouteList';
+    const prefix = 'main';
+    buildEtaCardsHTML(relevantGroups, containerId, prefix);
+    
+    await Promise.all(relevantGroups.map(item => processSmartArrivals(item, prefix)));
 
-    if (relevantGroups.length === 0) {
-        listEl.innerHTML = `<div class="text-center">No active buses depart from here for this selection.</div>`;
-        return;
-    }
-
-    for (const item of relevantGroups) {
-      const group = item.group;
-      const isGroupTerminating = item.matchDetails.every(m => m.isLastStop);
-      const groupKey = group.key + (item.isTransfer ? '_T' : '');
-      const cardId = `route-${groupKey}`;
-      const destName = isGroupTerminating ? 'Terminating Here' : group.dest_e;
-      
-      let transferBadgeHtml = item.isTransfer ? `<div style="color: var(--accent-blue); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px;">🔄 ${item.transferName}</div>` : '';
-
-      if (!document.getElementById(cardId)) {
-        listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card inactive" id="${cardId}" data-smart-mins="9999" onclick="toggleMainEtaCard('${groupKey}')">
-            ${transferBadgeHtml}
-            <div class="route-main-row">
-                <div class="route-left">
-                  <div style="display:flex; flex-direction:column;">
-                      <div class="route-no" id="no-${groupKey}">${group.routeNo}</div>
-                      ${group.company !== 'NLB' ? `<div class="route-company">${group.company}</div>` : ''}
-                  </div>
-                  <div class="route-info">
-                      <div class="route-dest" id="dest-${groupKey}">${isGroupTerminating ? '' : 'To '}${destName}</div>
-                      <div class="compact-occupancy" id="occ-sec-${groupKey}" style="display:none;">
-                         <span id="bars-${groupKey}" class="occ-pill"></span>
-                      </div>
-                  </div>
-                </div>
-                <div class="eta-container">
-                  <div class="eta-box" id="box-smart-${groupKey}">
-                      <span class="eta-label" id="lbl-smart-${groupKey}">Actual</span>
-                      <span class="smart-eta" id="smart-${groupKey}">--</span>
-                  </div>
-                </div>
-            </div>
-            <div class="subsequent-etas" id="subs-${groupKey}"></div>
-          </div>
-        `);
-      }
-    }
-
-    const validCardIds = relevantGroups.map(i => `route-${i.group.key + (i.isTransfer ? '_T' : '')}`);
-    document.querySelectorAll('.route-card').forEach(c => {
-      if (!validCardIds.includes(c.id)) c.remove();
-    });
-
-    await Promise.all(relevantGroups.map(item => processSmartArrivals(item)));
-
+    const listEl = document.getElementById(containerId);
     const cards = Array.from(listEl.querySelectorAll('.route-card'));
     cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
     cards.forEach(card => listEl.appendChild(card));
 }
 
-function toggleMainEtaCard(groupKey) {
-    const cardEl = document.getElementById(`route-${groupKey}`);
-    if(cardEl) cardEl.classList.toggle('expanded');
-}
-
-// --- Load Factor & Advanced Routing Processing (Original Code) ---
+// --- Load Factor & Core Arrival Processing ---
 class KalmanFilter1D {
   constructor(processNoise, initialEstimate, initialError) { this.q = processNoise; this.x = initialEstimate; this.p = initialError; }
   update(measurement, dt, isOptimistic, dynamicR) {
@@ -950,17 +889,17 @@ function getOccData(state) {
     return { class: 'occ-seating', key: 'Seating', icon: '💺' };
 }
 
-async function processSmartArrivals(item) {
+async function processSmartArrivals(item, prefix = 'main') {
   const group = item.group;
   const matchDetails = item.matchDetails;
   const groupKey = group.key + (item.isTransfer ? '_T' : '');
-  const cardEl = document.getElementById(`route-${groupKey}`);
+  const cardEl = document.getElementById(`${prefix}-route-${groupKey}`);
   
   try {
-    const smartEl = document.getElementById(`smart-${groupKey}`);
-    const occSecEl = document.getElementById(`occ-sec-${groupKey}`);
-    const lblSmartEl = document.getElementById(`lbl-smart-${groupKey}`);
-    const subsEl = document.getElementById(`subs-${groupKey}`);
+    const smartEl = document.getElementById(`${prefix}-smart-${groupKey}`);
+    const occSecEl = document.getElementById(`${prefix}-occ-sec-${groupKey}`);
+    const lblSmartEl = document.getElementById(`${prefix}-lbl-smart-${groupKey}`);
+    const subsEl = document.getElementById(`${prefix}-subs-${groupKey}`);
 
     let combinedArrivals = [];
     const now = Date.now();
@@ -969,26 +908,10 @@ async function processSmartArrivals(item) {
       const targetStop = m.stops[m.targetIndex];
       let targetEtaRes = null;
 
-      if (m.routeId.startsWith('KMB_')) {
-        const parts = m.routeId.split('_');
-        try {
-            const tResp = await fetch(`${KMB_API_BASE}/eta/${targetStop.stopId}/${parts[1]}/${parts[3]}`);
-            if (tResp.ok) {
-                const resObj = await tResp.json();
-                if(resObj && resObj.data) {
-                    targetEtaRes = {
-                        estimatedArrivals: resObj.data.filter(e => e.dir === parts[2] && e.eta).map(e => ({
-                            estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
-                            noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
-                        }))
-                    };
-                }
-            }
-        } catch(e) {}
-      } else {
-        const rawNlbId = m.routeId.replace('NLB_', '');
-        try { targetEtaRes = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`); } catch(e) {}
-      }
+      const rawNlbId = m.routeId.replace('NLB_', '');
+      try { 
+          targetEtaRes = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`); 
+      } catch(e) {}
       
       if (targetEtaRes && targetEtaRes.estimatedArrivals) {
         targetEtaRes.estimatedArrivals.forEach(arr => {
@@ -1052,33 +975,39 @@ async function processSmartArrivals(item) {
         state.filter = new KalmanFilter1D(0.1, rawEtaMins, 1.0); 
     }
 
-    const { pct } = calculateOccupancy(group.routeNo, group.dest_e, activeItem.targetIndex, activeItem.totalStops, now);
-    let occState = pct > 95 ? 'full' : (pct > 75 ? 'standing' : 'seating');
-
     let dwellPenaltyMins = 0;
-    if (pct > 95) dwellPenaltyMins = 2.0;
-    else if (pct > 75) dwellPenaltyMins = 1.0;
+    
+    // Only display occupancy and apply heavy dwell penalty if ETA is <= 30 mins
+    if (rawEtaMins <= 30) {
+        const { pct } = calculateOccupancy(group.routeNo, group.dest_e, activeItem.targetIndex, activeItem.totalStops, now);
+        let occState = pct > 95 ? 'full' : (pct > 75 ? 'standing' : 'seating');
+
+        if (pct > 95) dwellPenaltyMins = 2.0;
+        else if (pct > 75) dwellPenaltyMins = 1.0;
+
+        const barsEl = document.getElementById(`${prefix}-bars-${groupKey}`);
+        const occInfo = getOccData(occState);
+        if (barsEl) {
+            barsEl.className = `occ-pill ${occInfo.class}`;
+            barsEl.innerText = `${occInfo.icon} ${occInfo.key} · ${pct}%`;
+        }
+        if (occSecEl) occSecEl.style.display = 'flex';
+    } else {
+        if (occSecEl) occSecEl.style.display = 'none';
+    }
     
     let effectiveRawEta = rawEtaMins;
     if (rawEtaMins > 3 && !isNoGPS) effectiveRawEta += dwellPenaltyMins;
-
-    const barsEl = document.getElementById(`bars-${groupKey}`);
-    const occInfo = getOccData(occState);
-    if (barsEl) {
-        barsEl.className = `occ-pill ${occInfo.class}`;
-        barsEl.innerText = `${occInfo.icon} ${occInfo.key} · ${pct}%`;
-    }
-    if (occSecEl) occSecEl.style.display = 'flex';
 
     let smartMins = effectiveRawEta;
     if (rawEtaMins >= 0) {
       if (isNoGPS) {
         smartMins = rawEtaMins; 
-        lblSmartEl.innerText = `Scheduled`;
-        smartEl.style.color = 'var(--accent-orange)';
+        if (lblSmartEl) lblSmartEl.innerText = `Scheduled`;
+        if (smartEl) smartEl.style.color = 'var(--accent-orange)';
       } else {
-        lblSmartEl.innerText = `Actual`;
-        smartEl.style.color = ''; 
+        if (lblSmartEl) lblSmartEl.innerText = `Actual`;
+        if (smartEl) smartEl.style.color = ''; 
         const dtMins = (now - state.timestamp) / 60000;
         if (dtMins > 0) {
            const isOptimistic = (effectiveRawEta < state.filter.x);
@@ -1109,11 +1038,11 @@ async function processSmartArrivals(item) {
     }
     
     if (finalSmartMins === 0) {
-        smartEl.innerText = 'Due';
-        smartEl.className = 'smart-eta arriving';
+        if(smartEl) smartEl.innerText = 'Due';
+        if(smartEl) smartEl.className = 'smart-eta arriving';
     } else {
-      smartEl.innerText = `${finalSmartMins}m`;
-      smartEl.className = 'smart-eta';
+      if(smartEl) smartEl.innerText = `${finalSmartMins}m`;
+      if(smartEl) smartEl.className = 'smart-eta';
     }
 
   } catch (err) {
@@ -1124,9 +1053,9 @@ async function processSmartArrivals(item) {
   }
 }
 
-// --- Map Logic (Code 2 preserved) ---
+// --- Map Logic ---
 function initDetailMap() {
-    mapInstance = L.map('map-container', { zoomControl: false }).setView([22.3, 114.16], 11);
+    mapInstance = L.map('map-container', { zoomControl: false, doubleClickZoom: true, tap: true }).setView([22.3, 114.16], 11);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         className: 'dark-tiles',
         attribution: '&copy; OpenStreetMap'
@@ -1135,7 +1064,7 @@ function initDetailMap() {
 }
 
 function initGlobalMap() {
-    globalMapInstance = L.map('global-map-container', { zoomControl: false }).setView([22.3, 114.16], 15);
+    globalMapInstance = L.map('global-map-container', { zoomControl: false, doubleClickZoom: true, tap: true }).setView([22.3, 114.16], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         className: 'dark-tiles',
         attribution: '&copy; OpenStreetMap'
@@ -1196,46 +1125,55 @@ function renderGlobalMapStops() {
 }
 
 function openMapSheet(stopObj) {
+    currentMapSheetStop = stopObj;
     document.getElementById('map-bottom-sheet').classList.add('active');
     document.getElementById('sheet-title').innerText = stopObj.stopName_e;
     
-    let relevantGroups = [];
-    stopObj.routes.forEach(groupKey => {
-        const group = groupedRoutes.find(g => g.key === groupKey);
-        if (group) relevantGroups.push(group); 
-    });
+    refreshMapSheet();
+}
+
+async function refreshMapSheet() {
+    if (!currentMapSheetStop) return;
     
-    const listEl = document.getElementById('sheet-route-list');
-    let html = '';
-    relevantGroups.forEach(g => {
-        html += `<div class="simple-list-item" onclick="openRouteDetail('${g.key}')">
-            <div class="route-no-col" style="font-size:1.4rem; font-weight:900; width:65px; color:var(--accent-red);">${g.routeNo}</div>
-            <div class="route-info-col" style="flex:1;">
-                <div style="font-weight:700;">To ${g.dest_e}</div>
-            </div>
-        </div>`;
+    let relevantGroups = [];
+    currentMapSheetStop.routes.forEach(groupKey => {
+        const group = groupedRoutes.find(g => g.key === groupKey);
+        if (group) {
+            let matchDetails = [];
+            group.routeIds.forEach(rId => {
+                const stops = routeStopsCache[rId] || [];
+                const targetIndex = stops.findIndex(s => getGlobalStopKey(s) === currentMapSheetStop.stopKey);
+                if (targetIndex !== -1) {
+                    matchDetails.push({ routeId: rId, stops, targetIndex, isLastStop: (targetIndex === stops.length - 1) });
+                }
+            });
+            if (matchDetails.length > 0) relevantGroups.push({ group, matchDetails, isTransfer: false });
+        }
     });
-    listEl.innerHTML = html || '<div class="text-center">No routes available</div>';
+
+    const containerId = 'sheet-route-list';
+    const prefix = 'sheet';
+    
+    buildEtaCardsHTML(relevantGroups, containerId, prefix);
+    await Promise.all(relevantGroups.map(item => processSmartArrivals(item, prefix)));
+
+    const listEl = document.getElementById(containerId);
+    const cards = Array.from(listEl.querySelectorAll('.route-card'));
+    cards.sort((a, b) => parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10));
+    cards.forEach(card => listEl.appendChild(card));
 }
 
 function closeMapSheet() {
     document.getElementById('map-bottom-sheet').classList.remove('active');
+    currentMapSheetStop = null;
 }
 
 // --- Search View ---
-function setRegionFilter(region) {
-    activeRegionFilter = region;
-    document.querySelectorAll('.region-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(`filter-${region}`).classList.add('active');
-    renderSearchResults();
-}
-
 function renderSearchResults() {
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     const listEl = document.getElementById('searchResults');
     
     let matches = groupedRoutes;
-    if (activeRegionFilter !== 'ALL') matches = matches.filter(g => g.company === activeRegionFilter);
     if(query) matches = matches.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
     
     if(matches.length === 0) { listEl.innerHTML = '<div class="text-center">No routes found</div>'; return; }
@@ -1246,7 +1184,6 @@ function renderSearchResults() {
             <div class="route-no-col" style="font-size:1.8rem; font-weight:900; width:85px; color:var(--accent-red);">${g.routeNo}</div>
             <div class="route-info-col" style="flex:1;">
                 <div style="font-weight:700; font-size:1.2rem;">To ${g.dest_e}</div>
-                <div style="font-size:0.85rem; color:var(--text-secondary); text-transform:uppercase;">${g.company}</div>
             </div>
         </div>`;
     });
@@ -1271,7 +1208,6 @@ function renderFavList() {
                 <div class="route-no-col" style="font-size:1.8rem; font-weight:900; width:85px; color:var(--accent-red);">${g.routeNo}</div>
                 <div class="route-info-col" style="flex:1;">
                     <div style="font-weight:700; font-size:1.2rem;">To ${g.dest_e}</div>
-                    <div style="font-size:0.85rem; color:var(--text-secondary); text-transform:uppercase;">${g.company}</div>
                 </div>
                 <button class="del-fav-btn" onclick="event.stopPropagation(); removeFavRoute('${g.key}');">🗑️</button>
             </div>`;
@@ -1282,7 +1218,7 @@ function renderFavList() {
 
 function removeFavRoute(key) {
     favRoutes = favRoutes.filter(k => k !== key);
-    localStorage.setItem('kmb_fav_routes_v8', JSON.stringify(favRoutes));
+    localStorage.setItem('nlb_fav_routes_v9', JSON.stringify(favRoutes));
     renderFavList();
 }
 
@@ -1311,7 +1247,7 @@ function renderFavSearch() {
             <div class="route-no-col" style="font-size:1.4rem; font-weight:900; width:65px; color:var(--accent-red);">${g.routeNo}</div>
             <div class="route-info-col" style="flex:1;">
                 <div style="font-weight:700;">To ${g.dest_e}</div>
-                <div style="font-size:0.85rem; color:var(--text-secondary); text-transform:uppercase;">${g.company} ${isSaved ? '(Saved)' : ''}</div>
+                <div style="font-size:0.85rem; color:var(--text-secondary); text-transform:uppercase;">${isSaved ? '(Saved)' : ''}</div>
             </div>
         </div>`;
     });
@@ -1321,7 +1257,7 @@ function renderFavSearch() {
 function addFavFromModal(key) {
     if(!favRoutes.includes(key)) {
         favRoutes.push(key);
-        localStorage.setItem('kmb_fav_routes_v8', JSON.stringify(favRoutes));
+        localStorage.setItem('nlb_fav_routes_v9', JSON.stringify(favRoutes));
     }
     closeFavModal();
     renderFavList();
@@ -1348,7 +1284,7 @@ function startBackgroundLoop() {
   setInterval(() => {
     if (isSyncing) return;
     
-    // Process local Kalman updates for smooth counting downwards
+    // Process local Kalman updates for smooth counting downwards globally
     document.querySelectorAll('.route-card:not(.inactive)').forEach(card => {
         const targetMs = parseInt(card.dataset.targetArrivalTime, 10);
         if (!targetMs || isNaN(targetMs)) return;
@@ -1371,11 +1307,15 @@ function startBackgroundLoop() {
     // Every 15 seconds run full network refresh silently
     if (Date.now() % 15000 < 1000) {
         isSyncing = true;
+        let syncPromises = [];
         if (currentView === 'main') {
-            updateNetworkTelemetry().then(() => { isSyncing = false; });
-        } else {
-            isSyncing = false;
+            syncPromises.push(updateNetworkTelemetry());
         }
+        if (document.getElementById('map-bottom-sheet').classList.contains('active')) {
+            syncPromises.push(refreshMapSheet());
+        }
+        
+        Promise.all(syncPromises).finally(() => { isSyncing = false; });
     }
   }, 1000);
 }
