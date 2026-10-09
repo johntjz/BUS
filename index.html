@@ -138,12 +138,13 @@
     background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-top: 1px solid var(--card-border);
     padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
-    display: flex; justify-content: center; align-items: center; z-index: 50;
+    display: flex; justify-content: center; align-items: center; gap: 12px; z-index: 50;
   }
   .bottom-fav-btn {
-    width: 100%; max-width: 400px; padding: 14px; border-radius: 12px;
-    font-size: 1.05rem; font-weight: 700; cursor: pointer; border: none;
-    transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    flex: 1; max-width: 250px; padding: 14px 8px; border-radius: 12px;
+    font-size: 0.95rem; font-weight: 700; cursor: pointer; border: none;
+    transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px;
+    white-space: nowrap;
   }
   .bottom-fav-btn:active { transform: scale(0.98); }
   .btn-add-fav { background: #2c2c2e; color: #ffd60a; border: 1px solid #3a3a3c; }
@@ -317,9 +318,10 @@
   </div>
 </div>
 
-<!-- Bottom Fav Bar -->
+<!-- Bottom Fav Bar (Split for Stops and Routes) -->
 <div id="bottomFavBar" class="bottom-fav-bar">
-    <button id="bottomFavBtn" class="bottom-fav-btn btn-add-fav" onclick="toggleFavorite()">⭐ Add to Favourites</button>
+    <button id="bottomFavStopBtn" class="bottom-fav-btn btn-add-fav" onclick="toggleFavoriteStop()">⭐ Save Stop</button>
+    <button id="bottomFavRouteBtn" class="bottom-fav-btn btn-add-fav" onclick="toggleFavoriteRoute()" style="display:none;">⭐ Save Route</button>
 </div>
 
 <!-- Search Modal -->
@@ -374,7 +376,7 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Build: 2026-10-09 10:32 AM";
+const APP_TIMESTAMP = "Build: 2026-10-09 10:40 AM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -395,7 +397,7 @@ const i18n = {
     showTerminating: "Show arriving buses", hideTerminating: "Hide arriving buses",
     terminatingHere: "Terminating Here", routeStops: "Journey ETA", nextStop: "Next Stop",
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
-    manual: "Manual Override", favAdded: "Saved to Favourites", favRemoved: "Removed from Favourites",
+    manual: "Manual Override",
     seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full",
     nearbyStops: "📍 Nearby Stops (Walking Distance)", searchResults: "Search Results"
   },
@@ -405,14 +407,14 @@ const i18n = {
     liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
-    to: "往", due: "即即將到達", delayed: "延誤", departing: "剛駛離", departingSoon: "即將開出", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", departingSoon: "即將開出", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "實際預計", scheduled: "預定班次",
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
     showTerminating: "顯示抵達本站巴士", hideTerminating: "隱藏抵達本站巴士",
     terminatingHere: "以此站為終點", routeStops: "車程預計", nextStop: "下一站",
     back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
-    manual: "手動選擇", favAdded: "已加入常用車站", favRemoved: "已移除常用車站",
+    manual: "手動選擇",
     seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿",
     nearbyStops: "📍 步行範圍車站", searchResults: "搜尋結果"
   },
@@ -429,7 +431,7 @@ const i18n = {
     showTerminating: "显示抵达本站巴士", hideTerminating: "隐藏抵达本站巴士",
     terminatingHere: "以此站为终点", routeStops: "车程预计", nextStop: "下一站",
     back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
-    manual: "手动选择", favAdded: "已加入常用车站", favRemoved: "已移除常用车站",
+    manual: "手动选择",
     seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满",
     nearbyStops: "📍 步行范围车站", searchResults: "搜索结果"
   }
@@ -449,7 +451,10 @@ let routeStopsCache = {};
 const busStateMap = {}; 
 let showInactive = false;
 let showTerminating = false;
+
+// Dual Favorites
 let favStops = JSON.parse(localStorage.getItem('pulse_fav_stops_v2') || '[]');
+let favRoutes = JSON.parse(localStorage.getItem('pulse_fav_routes_v2') || '[]');
 
 let autoGpsEnabled = true;
 let lastKnownPos = null;
@@ -782,7 +787,6 @@ function buildAllStopsList() {
   }).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
 
-// Fixed: Now accurately computes and applies sequential numbers for rendering stops along a chosen route
 function getStopsForGroup(group) {
   const uniqueMap = new Map();
   if (!group.routeIds || group.routeIds.length === 0) return [];
@@ -878,28 +882,6 @@ function renderModalList() {
     if (activeModalType === 'route') {
         const isInitialState = !query && routeFilterRegion === 'ALL';
         
-        if (isInitialState) {
-            listEl.innerHTML = `
-                <div class="modal-item" onclick="selectModalItem('route', 'ALL')" style="background: rgba(10,132,255,0.1); border-left: 4px solid var(--accent-blue);">
-                    <span class="modal-item-icon">🌐</span> 
-                    <div style="flex: 1;">
-                        <div style="font-weight: 700; color: var(--accent-blue);">${getT('allLines')}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary);">Show departures for every route passing here</div>
-                    </div>
-                </div>
-                <div style="padding: 60px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
-                    <div style="font-size: 3rem; opacity: 0.5;">🚍</div>
-                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">Find Your Route</div>
-                    <div style="font-size: 0.9rem; max-width: 250px; line-height: 1.4;">Select a region tab above or use the search bar to find a specific bus line.</div>
-                </div>
-            `;
-            return;
-        }
-
-        if ('all'.includes(query) || getT('allLines').toLowerCase().includes(query)) {
-            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🌐</span> <b>${getT('allLines')}</b></div>`);
-        }
-        
         let matches = groupedRoutes.filter(g => {
             if (routeFilterRegion !== 'ALL' && g.company !== routeFilterRegion) return false;
             if (!query) return true;
@@ -912,10 +894,60 @@ function renderModalList() {
             return normRoute.includes(fuzzyQuery) || normDestE.includes(fuzzyQuery) || normDestC.includes(fuzzyQuery) || normDestS.includes(fuzzyQuery);
         });
 
-        if (matches.length > 0) {
-            matches.slice(0, 100).forEach(g => {
+        let favs = matches.filter(g => favRoutes.includes(g.key));
+        let others = matches.filter(g => !favRoutes.includes(g.key));
+
+        if (isInitialState) {
+            listEl.innerHTML = `
+                <div class="modal-item" onclick="selectModalItem('route', 'ALL')" style="${currentRouteKey === 'ALL' ? 'background: rgba(10,132,255,0.15);' : ''} border-left: 4px solid var(--accent-blue);">
+                    <span class="modal-item-icon">🌐</span> 
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--accent-blue);">${getT('allLines')}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">Show departures for every route</div>
+                    </div>
+                </div>
+            `;
+
+            if (favRoutes.length > 0) {
+                let allFavGrouped = groupedRoutes.filter(g => favRoutes.includes(g.key));
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Routes</div>`);
+                allFavGrouped.forEach(g => {
+                    const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+                    const isSelected = (g.key === currentRouteKey);
+                    listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}"><span class="modal-item-icon" style="color:#ffd60a">★</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
+                });
+            }
+
+            listEl.insertAdjacentHTML('beforeend', `
+                <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <div style="font-size: 3rem; opacity: 0.5;">🚍</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">Find Your Route</div>
+                    <div style="font-size: 0.9rem; max-width: 250px; line-height: 1.4;">Select a region tab above or use the search bar to find a specific bus line.</div>
+                </div>
+            `);
+            return;
+        }
+
+        if ('all'.includes(query) || getT('allLines').toLowerCase().includes(query)) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🌐</span> <b>${getT('allLines')}</b></div>`);
+        }
+        
+        if (favs.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Routes</div>`);
+            favs.forEach(g => {
                 const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
-                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> ${prefix}${g.routeNo} (${getT('to')} ${getLocalizedName(g, 'dest')})</div>`);
+                const isSelected = (g.key === currentRouteKey);
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}"><span class="modal-item-icon" style="color:#ffd60a">★</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
+            });
+        }
+
+        if (others.length > 0) {
+            if (favs.length > 0) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Routes</div>`);
+            }
+            others.slice(0, 100).forEach(g => {
+                const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
             });
         }
         
@@ -938,7 +970,7 @@ function renderModalList() {
         }
 
         if (favs.length > 0) {
-            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Favourites</div>`);
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Stops</div>`);
             favs.forEach(s => {
                 const isSelected = (s.stopKey === currentStopKey);
                 const seqBadge = s.routeSeq ? `<span style="background:var(--card-border); color:var(--text-primary); font-size:0.75rem; padding:3px 6px; border-radius:8px; font-weight:700; min-width:26px; text-align:center; display:inline-block; border:1px solid #3a3a3c;">${s.routeSeq}</span>` : `<span class="modal-item-icon" style="color:#ffd60a">★</span>`;
@@ -1021,29 +1053,51 @@ function selectModalItem(type, value) {
     closeModal();
 }
 
-function toggleFavorite() {
+function toggleFavoriteStop() {
     if (!currentStopKey) return;
     const idx = favStops.indexOf(currentStopKey);
-    
-    if (idx > -1) {
-        favStops.splice(idx, 1);
-    } else {
-        favStops.push(currentStopKey);
-    }
+    if (idx > -1) favStops.splice(idx, 1);
+    else favStops.push(currentStopKey);
     localStorage.setItem('pulse_fav_stops_v2', JSON.stringify(favStops));
     updateFavButtonUI();
 }
 
+function toggleFavoriteRoute() {
+    if (currentRouteKey === 'ALL') return;
+    const idx = favRoutes.indexOf(currentRouteKey);
+    if (idx > -1) favRoutes.splice(idx, 1);
+    else favRoutes.push(currentRouteKey);
+    localStorage.setItem('pulse_fav_routes_v2', JSON.stringify(favRoutes));
+    updateFavButtonUI();
+}
+
 function updateFavButtonUI() {
-    const btn = document.getElementById('bottomFavBtn');
-    if (!btn) return;
+    const stopBtn = document.getElementById('bottomFavStopBtn');
+    const routeBtn = document.getElementById('bottomFavRouteBtn');
     
-    if (currentStopKey && favStops.includes(currentStopKey)) {
-        btn.className = 'bottom-fav-btn btn-rm-fav';
-        btn.innerText = '❌ Remove from Favourites';
-    } else {
-        btn.className = 'bottom-fav-btn btn-add-fav';
-        btn.innerText = '⭐ Add to Favourites';
+    if (stopBtn) {
+        if (currentStopKey && favStops.includes(currentStopKey)) {
+            stopBtn.className = 'bottom-fav-btn btn-rm-fav';
+            stopBtn.innerText = '❌ Stop';
+        } else {
+            stopBtn.className = 'bottom-fav-btn btn-add-fav';
+            stopBtn.innerText = '⭐ Save Stop';
+        }
+    }
+    
+    if (routeBtn) {
+        if (currentRouteKey === 'ALL') {
+            routeBtn.style.display = 'none';
+        } else {
+            routeBtn.style.display = 'flex';
+            if (favRoutes.includes(currentRouteKey)) {
+                routeBtn.className = 'bottom-fav-btn btn-rm-fav';
+                routeBtn.innerText = '❌ Route';
+            } else {
+                routeBtn.className = 'bottom-fav-btn btn-add-fav';
+                routeBtn.innerText = '⭐ Save Route';
+            }
+        }
     }
 }
 
