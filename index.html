@@ -98,7 +98,7 @@
     font-size: 1.85rem;
     font-weight: 900;
     text-align: left;
-    color: var(--kmb-red); /* Keep red or color map it in JS */
+    color: var(--text-main);
     letter-spacing: -0.5px;
     line-height: 1.1;
     word-break: break-word;
@@ -166,17 +166,16 @@
   .stop-item.active-stop .stop-dot { background: var(--kmb-red); box-shadow: 0 0 0 4px rgba(227,24,55,0.3); }
   .stop-name { font-size: 1.15rem; font-weight: 600; color: var(--text-main); }
   
-  /* Map View - 50/50 Layout implementation */
-  #global-map-container { width: 100%; height: 100%; transition: height 0.3s cubic-bezier(0.1, 0.8, 0.2, 1); z-index: 1; flex-shrink: 0; }
-  
+  /* Map View */
+  #global-map-container { flex: 1; width: 100%; background: #111; z-index: 1; }
   .map-bottom-sheet {
-    background: var(--bg-white);
-    height: 0; overflow-y: auto; z-index: 2;
-    transition: height 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
-    display: flex; flex-direction: column; flex-shrink: 0;
+    position: absolute; bottom: 0; left: 0; right: 0; background: var(--bg-white);
+    border-top-left-radius: 20px; border-top-right-radius: 20px;
+    max-height: 70vh; overflow-y: auto; z-index: 1000;
+    transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.6); display: flex; flex-direction: column;
   }
-  .map-bottom-sheet.active { height: 50%; border-top: 1px solid var(--border-color); }
-  
+  .map-bottom-sheet.active { transform: translateY(0); }
   .sheet-header { padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--bg-white); z-index: 2; }
   .sheet-title { font-size: 1.25rem; font-weight: 800; }
   .sheet-close { font-size: 1.5rem; font-weight: bold; color: var(--text-sub); cursor: pointer; background: none; border: none; }
@@ -265,7 +264,7 @@
     <div class="refresh-timer" id="refreshTimerMain">--</div>
   </div>
   <div id="mainRouteList">
-      <div class="init-loader" id="loader-container">
+      <div class="init-loader">
           <div id="loadText" style="font-size:1.2rem; color:var(--text-main); font-weight: 700;">Connecting to network...</div>
           <div class="progress-bar"><div class="progress-fill" id="loadBar"></div></div>
       </div>
@@ -361,14 +360,13 @@ let previousView = 'main';
 let allStops = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
-let favRoutes = JSON.parse(localStorage.getItem('hkbus_fav_routes_v15') || '[]');
+let favRoutes = JSON.parse(localStorage.getItem('kmb_fav_routes_v7') || '[]');
 
 let lastKnownPos = null;
 let currentNearestStopKey = null;
 let activeRegionFilter = 'ALL';
 let mainExpandedGroupKey = null;
 let sheetExpandedGroupKey = null;
-let currentMapSheetStop = null;
 
 // Map & Detail State
 let detailRouteGroup = null;
@@ -412,9 +410,9 @@ function setLoadProgress(pct, text) {
 
 async function initApp() {
   try {
-    const cachedGrouped = localStorage.getItem('hkbus_grouped_v15');
-    const cachedStops = localStorage.getItem('hkbus_stops_v15');
-    const cacheTime = localStorage.getItem('hkbus_cache_time_v15');
+    const cachedGrouped = localStorage.getItem('kmb_grouped_v7');
+    const cachedStops = localStorage.getItem('kmb_stops_v7');
+    const cacheTime = localStorage.getItem('kmb_cache_time_v7');
     const now = Date.now(); 
 
     let loadedFromCache = false;
@@ -424,7 +422,7 @@ async function initApp() {
           groupedRoutes = JSON.parse(cachedGrouped);
           routeStopsCache = JSON.parse(cachedStops);
           loadedFromCache = true;
-      } catch (e) { localStorage.removeItem('hkbus_cache_time_v15'); }
+      } catch (e) { localStorage.removeItem('kmb_cache_time_v7'); }
     } 
     
     if (!loadedFromCache) {
@@ -462,12 +460,11 @@ async function initApp() {
       } catch(e) {}
 
       try {
-          setLoadProgress(40, "Fetching KMB/LWB Network...");
-          // Parallel load the three main KMB endpoints to save massive time
+          setLoadProgress(40, "Fetching KMB Network...");
           const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
-              fetchJSON(`${KMB_API_BASE}/route/`).catch(()=>null),
-              fetchJSON(`${KMB_API_BASE}/stop/`).catch(()=>null),
-              fetchJSON(`${KMB_API_BASE}/route-stop/`).catch(()=>null)
+              fetch(`${KMB_API_BASE}/route/`).then(r => r.json()).catch(()=>null),
+              fetch(`${KMB_API_BASE}/stop/`).then(r => r.json()).catch(()=>null),
+              fetch(`${KMB_API_BASE}/route-stop/`).then(r => r.json()).catch(()=>null)
           ]);
 
           setLoadProgress(80, "Building System Index...");
@@ -475,60 +472,44 @@ async function initApp() {
           if (kmbStopsRes && kmbStopsRes.data) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
 
           const formatStopName = (name) => name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
-          const kmbRouteCoMap = {}; 
 
-          if (kmbRoutesRes && kmbRoutesRes.data) {
-              kmbRoutesRes.data.forEach(r => {
-                  const cleanDestE = formatStopName(cleanStopName(r.dest_en));
-                  const co = r.co || 'KMB';
-                  kmbRouteCoMap[`${r.route}_${r.bound}_${r.service_type}`] = co;
-
-                  const groupKey = `${co}_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-                  const rId = `${co}_${r.route}_${r.bound}_${r.service_type}`;
-
-                  if (!groupedMap.has(groupKey)) {
-                      groupedMap.set(groupKey, { key: groupKey, routeNo: r.route, dest_e: cleanDestE, routeIds: [rId], company: co });
-                  } else {
-                      groupedMap.get(groupKey).routeIds.push(rId);
-                  }
-              });
-          }
-
-          if (kmbRouteStopsRes && kmbRouteStopsRes.data) {
+          if (kmbRoutesRes && kmbRouteStopsRes) {
               const kmbRouteStopsMap = {};
               kmbRouteStopsRes.data.forEach(rs => {
-                  const co = kmbRouteCoMap[`${rs.route}_${rs.bound}_${rs.service_type}`] || 'KMB';
-                  const key = `${co}_${rs.route}_${rs.bound}_${rs.service_type}`;
+                  const key = `KMB_${rs.route}_${rs.bound}_${rs.service_type}`;
                   if (!kmbRouteStopsMap[key]) kmbRouteStopsMap[key] = [];
-                  kmbRouteStopsMap[key].push({...rs, co});
+                  kmbRouteStopsMap[key].push(rs);
               });
 
-              Object.keys(kmbRouteStopsMap).forEach(rId => {
+              kmbRoutesRes.data.forEach(r => {
+                  const rId = `KMB_${r.route}_${r.bound}_${r.service_type}`;
                   const rsData = kmbRouteStopsMap[rId];
+                  if (!rsData) return;
+
                   rsData.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
                   routeStopsCache[rId] = rsData.map(rs => {
                       const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', lat: '0', long: '0' };
-                      return { 
-                          stopId: rs.stop, 
-                          stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), 
-                          latitude: stopDetail.lat, 
-                          longitude: stopDetail.long, 
-                          seq: rs.seq,
-                          kmbRoute: rs.route,
-                          kmbServiceType: rs.service_type,
-                          kmbBound: rs.bound,
-                          company: rs.co 
-                      };
+                      return { stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq };
                   });
+
+                  const company = (r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S')) ? 'LWB' : 'KMB';
+                  const cleanDestE = formatStopName(cleanStopName(r.dest_en));
+                  const groupKey = `KMB_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+                  if (!groupedMap.has(groupKey)) {
+                      groupedMap.set(groupKey, { key: groupKey, routeNo: r.route, dest_e: cleanDestE, routeIds: [rId], company: company });
+                  } else {
+                      groupedMap.get(groupKey).routeIds.push(rId);
+                  }
               });
           }
       } catch(e) {}
 
       groupedRoutes = Array.from(groupedMap.values());
       try {
-        localStorage.setItem('hkbus_grouped_v15', JSON.stringify(groupedRoutes));
-        localStorage.setItem('hkbus_stops_v15', JSON.stringify(routeStopsCache));
-        localStorage.setItem('hkbus_cache_time_v15', Date.now().toString());
+        localStorage.setItem('kmb_grouped_v7', JSON.stringify(groupedRoutes));
+        localStorage.setItem('kmb_stops_v7', JSON.stringify(routeStopsCache));
+        localStorage.setItem('kmb_cache_time_v7', Date.now().toString());
       } catch (e) {}
     }
     
@@ -728,8 +709,7 @@ function drawRouteOnMap(group) {
     if(stops.length === 0) return;
     
     const latlngs = stops.map(s => [parseFloat(s.latitude), parseFloat(s.longitude)]);
-    let routeColor = group.company === 'KMB' ? 'var(--kmb-red)' : (group.company === 'LWB' ? 'var(--accent-orange)' : 'var(--accent-blue)');
-    mapRouteLayer = L.polyline(latlngs, {color: routeColor, weight: 6, opacity: 0.9}).addTo(mapInstance);
+    mapRouteLayer = L.polyline(latlngs, {color: 'var(--kmb-red)', weight: 6, opacity: 0.9}).addTo(mapInstance);
     
     const stopIcon = L.divIcon({ className: 'custom-stop-icon', html: '<div style="width:14px;height:14px;background:white;border:3px solid #333;border-radius:50%;"></div>', iconSize: [14, 14] });
     
@@ -762,7 +742,8 @@ function renderGlobalMapStops() {
     nearby.forEach(s => {
         const marker = L.marker([parseFloat(s.latitude), parseFloat(s.longitude)], {icon: stopIcon}).addTo(globalMapInstance);
         marker.on('click', () => {
-            openMapSheet(s, marker);
+            globalMapInstance.setView(marker.getLatLng(), 17, { animate: true });
+            openMapSheet(s);
         });
         globalMarkers.push(marker);
     });
@@ -770,21 +751,9 @@ function renderGlobalMapStops() {
     globalMapInstance.setView([lastKnownPos.lat, lastKnownPos.lon], 16);
 }
 
-function openMapSheet(stopObj, marker) {
-    currentMapSheetStop = stopObj;
+function openMapSheet(stopObj) {
     document.getElementById('map-bottom-sheet').classList.add('active');
     document.getElementById('sheet-title').innerText = stopObj.stopName_e;
-    
-    // Smooth transition logic to scale map to 50% cleanly
-    setTimeout(() => {
-        if (globalMapInstance) {
-            globalMapInstance.invalidateSize();
-            if (marker) globalMapInstance.panTo(marker.getLatLng(), {animate: true});
-        }
-    }, 320);
-    
-    const listEl = document.getElementById('sheet-route-list');
-    listEl.innerHTML = '<div class="text-center">Loading live schedules...</div>';
     
     let relevantGroups = [];
     stopObj.routes.forEach(groupKey => {
@@ -792,28 +761,34 @@ function openMapSheet(stopObj, marker) {
         if (group) relevantGroups.push(group); 
     });
     
+    const listEl = document.getElementById('sheet-route-list');
+    listEl.innerHTML = '<div class="text-center">Loading schedules...</div>';
+    
     Promise.all(relevantGroups.map(async g => {
         try {
-            // Fetch raw ETAs
             const arrs = await fetchEtaRaw(g, stopObj.stopKey);
-            
-            // Filter to ONLY live GPS arriving buses (no scheduled/no-ETA buses) for the Map Sheet
-            const liveArrs = arrs.filter(a => !(a.noGPS === 1 || a.noGPS === '1'));
-            
             let firstEtaMins = Infinity;
-            if (liveArrs.length > 0) {
-                const targetMs = new Date(liveArrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
+            if (arrs.length > 0) {
+                const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
                 firstEtaMins = Math.max(0, Math.floor((targetMs - Date.now())/60000));
             }
-            return { group: g, arrs: liveArrs, firstEtaMins };
+            return { group: g, arrs, firstEtaMins };
         } catch(e) {
             return { group: g, arrs: [], firstEtaMins: Infinity };
         }
     })).then(groupsWithEtas => {
-        // Discard any group that doesn't have a LIVE ETA arriving bus
-        groupsWithEtas = groupsWithEtas.filter(item => item.firstEtaMins !== Infinity);
-        
-        groupsWithEtas.sort((a, b) => a.firstEtaMins - b.firstEtaMins);
+        groupsWithEtas.sort((a, b) => {
+            if (a.firstEtaMins !== Infinity && b.firstEtaMins !== Infinity) {
+                return a.firstEtaMins - b.firstEtaMins;
+            } else if (a.firstEtaMins === Infinity && b.firstEtaMins === Infinity) {
+                const numA = parseInt(a.group.routeNo.replace(/[^0-9]/g, '')) || 999;
+                const numB = parseInt(b.group.routeNo.replace(/[^0-9]/g, '')) || 999;
+                if (numA === numB) return a.group.routeNo.localeCompare(b.group.routeNo);
+                return numA - numB;
+            } else {
+                return a.firstEtaMins === Infinity ? 1 : -1;
+            }
+        });
 
         let html = '';
         groupsWithEtas.forEach(item => {
@@ -821,13 +796,22 @@ function openMapSheet(stopObj, marker) {
             const arrs = item.arrs;
             const mins = item.firstEtaMins;
 
-            let colorCode = g.company === 'KMB' ? 'var(--kmb-red)' : (g.company === 'LWB' ? 'var(--accent-orange)' : 'var(--accent-blue)');
-            let timeHtml = mins === 0 ? 'Due' : `${mins}<span style="font-size:1.1rem; margin-left:2px;">m</span>`;
-            let summaryHtml = `<div class="eta-time" style="color: var(--accent-green)">${timeHtml}</div>`;
+            let summaryHtml = '';
+            let itemClass = '';
+            
+            if (mins !== Infinity) {
+                let timeHtml = mins === 0 ? 'Due' : `${mins}<span style="font-size:1.1rem; margin-left:2px;">m</span>`;
+                let isScheduled = (arrs[0].noGPS === 1 || arrs[0].noGPS === '1');
+                let colorClass = isScheduled ? 'color: var(--accent-orange)' : 'color: var(--accent-green)';
+                summaryHtml = `<div class="eta-time" style="${colorClass}">${timeHtml}</div>`;
+            } else {
+                summaryHtml = `<div class="eta-time" style="color:var(--text-sub)">--</div>`;
+                itemClass = 'inactive-route';
+            }
 
             html += `
-              <div class="route-list-item" onclick="toggleSheetEta('${g.key}', '${stopObj.stopKey}')" id="sheet-item-${g.key}">
-                  <div class="route-no-col" style="color:${colorCode}">${g.routeNo}</div>
+              <div class="route-list-item ${itemClass}" onclick="toggleSheetEta('${g.key}', '${stopObj.stopKey}')" id="sheet-item-${g.key}">
+                  <div class="route-no-col">${g.routeNo}</div>
                   <div class="route-info-col">
                       <div class="route-dest">To ${g.dest_e}</div>
                   </div>
@@ -839,17 +823,13 @@ function openMapSheet(stopObj, marker) {
             `;
         });
         
-        listEl.innerHTML = html || '<div class="text-center" style="padding: 20px;">No buses actively arriving here.</div>';
+        listEl.innerHTML = html || '<div class="text-center">No routes available</div>';
     });
 }
 
 function closeMapSheet() {
     document.getElementById('map-bottom-sheet').classList.remove('active');
     sheetExpandedGroupKey = null;
-    currentMapSheetStop = null;
-    setTimeout(() => {
-        if (globalMapInstance) globalMapInstance.invalidateSize();
-    }, 320);
 }
 
 async function toggleSheetEta(groupKey, stopKey) {
@@ -871,9 +851,7 @@ async function toggleSheetEta(groupKey, stopKey) {
         const group = groupedRoutes.find(g => g.key === groupKey);
         if(group) {
             try {
-                let arrs = await fetchEtaRaw(group, stopKey);
-                // Re-apply live GPS filter to expanded ETAs on the map view
-                arrs = arrs.filter(a => !(a.noGPS === 1 || a.noGPS === '1'));
+                const arrs = await fetchEtaRaw(group, stopKey);
                 expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, stopKey);
             } catch(e) {
                 expandContainer.innerHTML = '<div style="color:var(--kmb-red); padding: 20px; text-align:center;">Failed</div>';
@@ -885,11 +863,6 @@ async function toggleSheetEta(groupKey, stopKey) {
 // --- Main View Core Logic ---
 async function renderMainNearby(isSilentRefresh = false) {
     const listEl = document.getElementById('mainRouteList');
-    
-    // Explicitly remove the initial load gap container
-    const loadContainer = document.getElementById('loader-container');
-    if (loadContainer) loadContainer.remove();
-
     if (!currentNearestStopKey) {
         if (!isSilentRefresh) listEl.innerHTML = '<div class="text-center">Locating...</div>';
         return;
@@ -944,7 +917,6 @@ async function renderMainNearby(isSilentRefresh = false) {
 
         let summaryHtml = '';
         let itemClass = '';
-        let colorCode = g.company === 'KMB' ? 'var(--kmb-red)' : (g.company === 'LWB' ? 'var(--accent-orange)' : 'var(--accent-blue)');
         
         if (mins !== Infinity) {
             let timeHtml = mins === 0 ? 'Due' : `${mins}<span style="font-size:1.1rem; margin-left:2px;">m</span>`;
@@ -959,12 +931,12 @@ async function renderMainNearby(isSilentRefresh = false) {
         const isExpanded = (mainExpandedGroupKey === g.key);
         const expandClass = isExpanded ? 'active' : '';
 
-        // Added color coding to route numbers instead of the sub-company text
         html += `
           <div class="route-list-item ${itemClass}" onclick="toggleMainEta('${g.key}')" id="main-item-${g.key}">
-              <div class="route-no-col" style="color:${colorCode}">${g.routeNo}</div>
+              <div class="route-no-col">${g.routeNo}</div>
               <div class="route-info-col">
                   <div class="route-dest">To ${g.dest_e}</div>
+                  <div class="route-sub">${g.company}</div>
               </div>
               <div class="route-eta-col" id="main-eta-summary-${g.key}">
                  ${summaryHtml}
@@ -1082,12 +1054,12 @@ function renderSearchResults() {
     
     let html = '';
     matches.slice(0, 100).forEach(g => {
-        let colorCode = g.company === 'KMB' ? 'var(--kmb-red)' : (g.company === 'LWB' ? 'var(--accent-orange)' : 'var(--accent-blue)');
         html += `
           <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
-              <div class="route-no-col" style="color:${colorCode};">${g.routeNo}</div>
+              <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
               <div class="route-info-col">
                   <div class="route-dest">To ${g.dest_e}</div>
+                  <div class="route-sub">${g.company}</div>
               </div>
           </div>
         `;
@@ -1114,12 +1086,12 @@ function renderFavList() {
     favRoutes.forEach(k => {
         const g = groupedRoutes.find(r => r.key === k);
         if(g) {
-            let colorCode = g.company === 'KMB' ? 'var(--kmb-red)' : (g.company === 'LWB' ? 'var(--accent-orange)' : 'var(--accent-blue)');
             html += `
               <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
-                  <div class="route-no-col" style="color:${colorCode};">${g.routeNo}</div>
+                  <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
                   <div class="route-info-col">
                       <div class="route-dest">To ${g.dest_e}</div>
+                      <div class="route-sub">${g.company}</div>
                   </div>
                   <button class="del-fav-btn" onclick="event.stopPropagation(); removeFavRoute('${g.key}');">🗑️</button>
               </div>
@@ -1131,7 +1103,7 @@ function renderFavList() {
 
 function removeFavRoute(key) {
     favRoutes = favRoutes.filter(k => k !== key);
-    localStorage.setItem('hkbus_fav_routes_v15', JSON.stringify(favRoutes));
+    localStorage.setItem('kmb_fav_routes_v7', JSON.stringify(favRoutes));
     renderFavList();
 }
 
@@ -1164,13 +1136,12 @@ function renderFavSearch() {
     let html = '';
     matches.slice(0, 50).forEach(g => {
         const isSaved = favRoutes.includes(g.key);
-        let colorCode = g.company === 'KMB' ? 'var(--kmb-red)' : (g.company === 'LWB' ? 'var(--accent-orange)' : 'var(--accent-blue)');
         html += `
           <div class="route-list-item" style="opacity: ${isSaved ? '0.5' : '1'}; pointer-events: ${isSaved ? 'none' : 'auto'};" onclick="addFavFromModal('${g.key}')">
-              <div class="route-no-col" style="color:${colorCode};">${g.routeNo}</div>
+              <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
               <div class="route-info-col">
                   <div class="route-dest">To ${g.dest_e}</div>
-                  <div class="route-sub">${isSaved ? '(Saved)' : ''}</div>
+                  <div class="route-sub">${g.company} ${isSaved ? ' (Saved)' : ''}</div>
               </div>
           </div>
         `;
@@ -1181,7 +1152,7 @@ function renderFavSearch() {
 function addFavFromModal(key) {
     if(!favRoutes.includes(key)) {
         favRoutes.push(key);
-        localStorage.setItem('hkbus_fav_routes_v15', JSON.stringify(favRoutes));
+        localStorage.setItem('kmb_fav_routes_v7', JSON.stringify(favRoutes));
     }
     closeFavModal();
     renderFavList();
@@ -1261,12 +1232,13 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
         
         const targetStop = stops[tIndex];
         
-        if (group.company === 'KMB' || group.company === 'LWB') {
+        if (rId.startsWith('KMB_')) {
+            const parts = rId.split('_');
+            const routeNo = parts[1], dir = parts[2], serviceType = parts[3];
             try {
-                // The correct endpoint format for KMB/LWB API Live ETA
-                const res = await fetchJSON(`${KMB_API_BASE}/eta/${targetStop.stopId}/${targetStop.kmbRoute}/${targetStop.kmbServiceType}`);
+                const res = await fetchJSON(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`);
                 if(res && res.data) {
-                    res.data.filter(e => e.dir === targetStop.kmbBound && e.eta).forEach(e => {
+                    res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
                         combined.push({
                             estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
                             noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
@@ -1275,7 +1247,6 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
                 }
             } catch(e) {}
         } else {
-            // NLB Endpoint
             const rawNlbId = rId.replace('NLB_', '');
             try {
                 const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`);
@@ -1334,8 +1305,15 @@ function startTimer() {
               if(expandContainer) expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
               isSyncing = false;
           }).catch(() => { isSyncing = false; });
-      } else if (currentView === 'map' && currentMapSheetStop) {
-          refreshMapSheet().then(() => { isSyncing = false; });
+      } else if (currentView === 'map' && sheetExpandedGroupKey) {
+          const group = groupedRoutes.find(g => g.key === sheetExpandedGroupKey);
+          if(group && currentNearestStopKey) {
+              fetchEtaRaw(group, currentNearestStopKey).then(arrs => {
+                 const expandContainer = document.getElementById(`sheet-eta-expanded-${sheetExpandedGroupKey}`);
+                 if (expandContainer) expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, currentNearestStopKey);
+                 isSyncing = false;
+              }).catch(() => { isSyncing = false; });
+          } else { isSyncing = false; }
       } else {
           isSyncing = false;
       }
