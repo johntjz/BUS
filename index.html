@@ -625,17 +625,33 @@ function locateNearestStopPromise() {
 
 function initDetailMap() {
     mapInstance = L.map('map-container', { zoomControl: false }).setView([22.3, 114.16], 11);
+    
+    // 1. The Base Map (Roads & Buildings)
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles', attribution: '&copy; Hong Kong GeoData Store'
     }).addTo(mapInstance);
+    
+    // 2. The Labels (Street Names & Landmarks - English)
+    L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png', {
+        className: 'dark-tiles'
+    }).addTo(mapInstance);
+
     L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
 }
 
 function initGlobalMap() {
     globalMapInstance = L.map('global-map-container', { zoomControl: false }).setView([22.3, 114.16], 15);
+    
+    // 1. The Base Map
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles', attribution: '&copy; Hong Kong GeoData Store'
     }).addTo(globalMapInstance);
+    
+    // 2. The Labels
+    L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png', {
+        className: 'dark-tiles'
+    }).addTo(globalMapInstance);
+
     L.control.zoom({ position: 'bottomright' }).addTo(globalMapInstance);
     
     if (lastKnownPos) {
