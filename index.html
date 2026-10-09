@@ -374,7 +374,7 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Build: 2026-10-09 10:15 AM";
+const APP_TIMESTAMP = "Build: 2026-10-09 10:32 AM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -405,7 +405,7 @@ const i18n = {
     liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
     noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
     gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
-    to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", departingSoon: "即將開出", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
+    to: "往", due: "即即將到達", delayed: "延誤", departing: "剛駛離", departingSoon: "即將開出", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
     official: "官方", actual: "實際預計", scheduled: "預定班次",
     arrivingLabel: "狀態", arriving: "即將抵達...",
     showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
@@ -782,17 +782,18 @@ function buildAllStopsList() {
   }).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
 
-// FIX: Removed alphabetical sorting so stops are listed in route sequence
+// Fixed: Now accurately computes and applies sequential numbers for rendering stops along a chosen route
 function getStopsForGroup(group) {
   const uniqueMap = new Map();
   if (!group.routeIds || group.routeIds.length === 0) return [];
   const primaryRouteId = group.routeIds[0]; 
   
+  let seq = 1;
   (routeStopsCache[primaryRouteId] || []).forEach(s => {
      const key = getGlobalStopKey(s);
      if (s && s.stopName_e && !uniqueMap.has(key)) {
         const mainStop = allStops.find(as => as.stopKey === key);
-        uniqueMap.set(key, { ...s, stopKey: key, routeStr: mainStop ? mainStop.routeStr : group.routeNo });
+        uniqueMap.set(key, { ...s, stopKey: key, routeStr: mainStop ? mainStop.routeStr : group.routeNo, routeSeq: seq++ });
      }
   });
   return Array.from(uniqueMap.values());
@@ -919,7 +920,8 @@ function renderModalList() {
         }
         
     } else if (activeModalType === 'stop') {
-        const sourceStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
+        const isAllRoutes = (currentRouteKey === 'ALL');
+        const sourceStops = isAllRoutes ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
         
         let favs = sourceStops.filter(s => favStops.includes(s.stopKey));
         let others = sourceStops.filter(s => !favStops.includes(s.stopKey));
@@ -939,29 +941,50 @@ function renderModalList() {
             listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Favourites</div>`);
             favs.forEach(s => {
                 const isSelected = (s.stopKey === currentStopKey);
+                const seqBadge = s.routeSeq ? `<span style="background:var(--card-border); color:var(--text-primary); font-size:0.75rem; padding:3px 6px; border-radius:8px; font-weight:700; min-width:26px; text-align:center; display:inline-block; border:1px solid #3a3a3c;">${s.routeSeq}</span>` : `<span class="modal-item-icon" style="color:#ffd60a">★</span>`;
+                
                 listEl.insertAdjacentHTML('beforeend', `
                 <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
-                    <span class="modal-item-icon" style="color:#ffd60a">★</span> 
+                    <div style="display: flex; align-items: center; justify-content: center; width: 32px; margin-right: 8px;">
+                        ${seqBadge}
+                    </div>
                     <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
-                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')}</span>
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')} ${!s.routeSeq ? '' : '<span style="color:#ffd60a; font-size:0.8rem; margin-left:4px;">★</span>'}</span>
                         ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
                     </div>
                 </div>`);
             });
         }
 
-        // FIX: Always render other options regardless of Favourites
-        if (others.length > 0) {
+        if (isAllRoutes && !fuzzyQuery) {
             if (favs.length > 0) {
                 listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
             }
-            const renderLimit = fuzzyQuery ? 150 : 250; 
+            listEl.insertAdjacentHTML('beforeend', `
+                <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <div style="font-size: 2.5rem; opacity: 0.5;">🚏</div>
+                    <div style="font-size: 1.05rem; font-weight: 600; color: var(--text-primary);">Search Network</div>
+                    <div style="font-size: 0.85rem; max-width: 250px; line-height: 1.4;">Type a stop name to search the entire map, or close this and select a specific route first to see its stations in sequence.</div>
+                </div>
+            `);
+        } else if (others.length > 0) {
+            if (favs.length > 0 || !isAllRoutes) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${isAllRoutes ? 'Search Results' : 'Route Sequence'}</div>`);
+            }
+            
+            const renderLimit = fuzzyQuery ? 150 : (isAllRoutes ? 0 : 250); 
+            
             others.slice(0, renderLimit).forEach(s => {
+                const isSelected = (s.stopKey === currentStopKey);
+                const seqBadge = s.routeSeq ? `<span style="background:var(--card-border); color:var(--text-primary); font-size:0.75rem; padding:3px 6px; border-radius:8px; font-weight:700; min-width:26px; text-align:center; display:inline-block; border:1px solid #3a3a3c;">${s.routeSeq}</span>` : `<span class="modal-item-icon">🚏</span>`;
+                
                 listEl.insertAdjacentHTML('beforeend', `
-                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
-                    <span class="modal-item-icon">🚏</span> 
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
+                    <div style="display: flex; align-items: center; justify-content: center; width: 32px; margin-right: 8px;">
+                        ${seqBadge}
+                    </div>
                     <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
-                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${getLocalizedName(s, 'stopName')}</span>
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')}</span>
                         ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
                     </div>
                 </div>`);
@@ -1422,7 +1445,6 @@ async function processSmartArrivals(group, matchDetails) {
     if (combinedArrivals.length === 0) {
       const state = busStateMap[groupKey];
       
-      // FIX: Extended ghost bus survival time to 3 mins (180000ms) to prevent frequent shuttles (like S1) from disappearing
       if (state && state.lastEtaMins === 0 && (now - state.lastRealTime < 180000)) {
         if (smartEl) {
           smartEl.innerText = getT('departing'); 
@@ -1478,7 +1500,6 @@ async function processSmartArrivals(group, matchDetails) {
         busStateMap[groupKey] = state;
     } 
 
-    // FIX: Ghost Bus Jump Protection. Prevent 13 min -> 33 min instant snaps.
     let isGhostActive = false;
     let ghostMins = 0;
 
@@ -1496,7 +1517,6 @@ async function processSmartArrivals(group, matchDetails) {
     if (state.isGhosting) {
         ghostMins = Math.max(0, Math.ceil((state.ghostTargetMs - now) / 60000));
         if (ghostMins === 0 && (now - state.ghostTargetMs > 60000)) {
-            // Ghost expired
             state.isGhosting = false;
             state.ghostTargetMs = null;
             state.pseudoBusId = pseudoBusId;
@@ -1568,7 +1588,7 @@ async function processSmartArrivals(group, matchDetails) {
         smartMins = ghostMins;
         lblSmartEl.innerText = getT('actual');
         smartEl.style.color = 'var(--accent-orange)';
-        rawEtaMins = ghostMins; // Override purely for display
+        rawEtaMins = ghostMins; 
     } else if (rawEtaMins >= 0) {
       if (isNoGPS) {
         smartMins = rawEtaMins; 
@@ -1756,7 +1776,6 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
 
   if (!isWeekend) {
     if (hour >= 7 && hour <= 9) {
-      // FIX: Lowered morning feeder base load to 55 to prevent 99% standing capacity on route 38
       if (isFeeder) {
           baseLoad = 55;
       } else {
