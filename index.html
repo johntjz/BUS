@@ -6,6 +6,7 @@
 <title>Bus HK - Transport Network</title>
 <style>
   :root {
+    /* Status Colors */
     --bg-color: #121214;
     --card-bg: #1c1c1e;
     --card-border: #2c2c2e;
@@ -16,6 +17,7 @@
     --accent-orange: #ff9f0a;
     --accent-blue: #0a84ff;
     
+    /* Directional Colors */
     --dir-blue: #0a84ff;    /* Tung Chung */
     --dir-purple: #bf5af2;  /* Mui Wo */
     --dir-cyan: #32ade6;    /* Tai O / Kowloon */
@@ -36,7 +38,6 @@
     flex-direction: column;
     min-height: 100vh;
   }
-  
   .header {
     background-color: var(--accent-red);
     padding: 12px 16px;
@@ -45,92 +46,254 @@
     align-items: center;
     position: sticky;
     top: 0;
-    z-index: 50;
+    z-index: 10;
   }
   .header-left { display: flex; flex-direction: column; cursor: pointer; }
   .title-row { display: flex; align-items: baseline; gap: 8px; }
   .header h1 { margin: 0; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.5px; }
   .build-badge { font-size: 0.55rem; color: rgba(255, 255, 255, 0.7); font-family: monospace; font-weight: 600; letter-spacing: 0.5px; white-space: nowrap; }
+  
   .time-row { display: flex; align-items: baseline; gap: 12px; margin-top: 2px; }
   .clock { font-size: 0.75rem; font-weight: 500; opacity: 0.9; font-variant-numeric: tabular-nums; }
   .refresh-timer { font-size: 0.75rem; color: rgba(255,255,255,0.85); font-weight: 600; font-variant-numeric: tabular-nums; }
   
-  .search-bar-container {
-      padding: 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border);
-      position: sticky; top: 58px; z-index: 40;
+  select.lang-select {
+    background: rgba(0,0,0,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.3);
+    padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; outline: none; cursor: pointer; flex-shrink: 0;
   }
-  .search-input {
-      background: #1c1c1e; border: 1px solid #3a3a3c; padding: 14px 16px; border-radius: 12px;
-      display: flex; align-items: center; justify-content: space-between; cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+
+  /* In-App Alarm Banner */
+  .alarm-banner {
+    position: sticky; top: 58px; left: 0; width: 100%;
+    background: #ffd60a; color: #000;
+    padding: 10px 16px; font-weight: 800; font-size: 0.9rem;
+    display: none; justify-content: space-between; align-items: center; z-index: 11;
+    box-shadow: 0 4px 10px rgba(255,214,10,0.2);
+    transition: background 0.3s;
   }
-  .search-input-text { font-size: 1.05rem; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+  .alarm-banner.alerting { background: var(--accent-red); color: #fff; animation: pulse-full 1s infinite; }
+  .alarm-close { background: rgba(0,0,0,0.1); border: none; font-size: 1rem; cursor: pointer; color: inherit; font-weight: 800; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
 
-  /* Stop Timeline UI */
-  .stop-row { display: flex; align-items: stretch; cursor: pointer; padding-right: 16px; transition: background 0.2s; }
-  .stop-row:active { background-color: rgba(255,255,255,0.05); }
-  .stop-timeline { width: 44px; display: flex; flex-direction: column; align-items: center; position: relative; flex-shrink: 0; }
-  .timeline-line { width: 2px; background: var(--card-border); flex: 1; }
-  .timeline-node { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--card-border); background: var(--bg-color); margin: 20px 0; z-index: 2; transition: all 0.3s; }
-  .stop-content { flex: 1; padding: 18px 0; border-bottom: 1px solid var(--card-border); display: flex; flex-direction: column; justify-content: center; }
-  .stop-name-text { font-size: 1.05rem; font-weight: 600; line-height: 1.3; transition: color 0.3s; }
-  
-  .stop-row.active .timeline-line { background: var(--accent-red); }
-  .stop-row.active .timeline-node { border-color: var(--accent-red); background: var(--accent-red); box-shadow: 0 0 0 4px rgba(227, 24, 55, 0.2); }
-  .stop-row.active .stop-name-text { color: var(--accent-red); }
-  .stop-row.active .stop-content { border-bottom-color: transparent; }
-
-  /* Expanded ETA Panel */
-  .stop-expanded-panel {
-      background: #1c1c1e; border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; 
-      margin-top: 12px; margin-bottom: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  /* Unified Header Flow */
+  .unified-header {
+      background: var(--bg-color);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
   }
-  
-  /* Occupancy Pills */
-  .occ-pill { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; font-variant-numeric: tabular-nums; }
-  .occ-seating { background: rgba(48, 209, 88, 0.15); color: var(--accent-green); }
-  .occ-standing { background: rgba(255, 159, 10, 0.15); color: var(--accent-orange); }
-  .occ-full { background: rgba(227, 24, 55, 0.15); color: var(--accent-red); animation: pulse-full 1.5s infinite; }
+  .main-route-selector {
+      background: #1c1c1e;
+      border: 1px solid #3a3a3c;
+      padding: 12px 16px;
+      border-radius: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+  }
+  .quick-commute-row {
+      display: flex;
+      gap: 10px;
+  }
+  .commute-btn {
+      flex: 1;
+      background: #2c2c2e;
+      color: #fff;
+      border: 1px solid #3a3a3c;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+  }
+  .commute-btn:active { background: #3a3a3c; }
 
-  @keyframes blink-arriving { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-  @keyframes fade-departing { 0% { opacity: 0.9; color: var(--text-secondary); } 50% { opacity: 0.25; color: var(--text-secondary); } 100% { opacity: 0.9; color: var(--text-secondary); } }
-  @keyframes pulse-full { 0% { border-color: rgba(227, 24, 55, 0.3); } 50% { border-color: rgba(227, 24, 55, 1); } 100% { border-color: rgba(227, 24, 55, 0.3); } }
-  
-  .smart-eta { font-size: 2.6rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -1px; }
-  .smart-eta.arriving { color: var(--accent-orange); font-size: 2rem; animation: blink-arriving 1.5s infinite; }
-  .smart-eta.departing { animation: fade-departing 2s infinite; font-size: 1.8rem; font-weight: 700; color: var(--text-secondary); }
+  .stop-selector-bar {
+      background: #1c1c1e;
+      padding: 12px 16px;
+      border-top: 1px solid var(--card-border);
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      position: sticky; top: 58px; z-index: 9;
+  }
+  .stop-icon { font-size: 1.4rem; }
+  .stop-text-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .stop-label { font-size: 0.65rem; color: var(--text-secondary); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stop-name { font-size: 1rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stop-action { font-size: 0.75rem; font-weight: 800; color: var(--accent-green); background: rgba(48, 209, 88, 0.15); padding: 4px 8px; border-radius: 6px; text-transform: uppercase; }
+  .stop-action.manual { color: var(--text-secondary); background: rgba(255, 255, 255, 0.1); }
   
   /* Search Modal */
   .search-modal {
-    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; height: 100dvh; 
-    background: var(--bg-color); z-index: 1000; flex-direction: column; animation: slideUp 0.2s ease-out;
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%; height: 100%; height: 100dvh; 
+    background: var(--bg-color); z-index: 1000; flex-direction: column;
+    animation: slideUp 0.2s ease-out;
   }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .modal-header { display: flex; padding: 16px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); gap: 12px; align-items: center; }
-  .modal-search-bar { flex: 1; background: #1c1c1e; color: #fff; border: 2px solid var(--accent-blue); padding: 14px 16px; border-radius: 12px; font-size: 1.15rem; font-weight: 600; outline: none; }
+  .modal-search-bar {
+    flex: 1; background: #1c1c1e; color: #fff; border: 2px solid var(--accent-blue);
+    padding: 14px 16px; border-radius: 12px; font-size: 1.15rem; font-weight: 600; outline: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
   .modal-search-bar::placeholder { color: #636366; font-weight: 500; }
   .modal-close { color: var(--accent-blue); background: none; border: none; font-size: 1.05rem; font-weight: 600; cursor: pointer; }
-  .region-filters { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border); flex-shrink: 0; scrollbar-width: none; }
+  
+  .region-filters {
+    display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border); flex-shrink: 0; scrollbar-width: none;
+  }
   .region-filters::-webkit-scrollbar { display: none; }
-  .region-btn { background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; font-weight: 600; white-space: nowrap; cursor: pointer; transition: all 0.2s; }
+  .region-btn {
+    background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
+    padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
+    white-space: nowrap; cursor: pointer; transition: all 0.2s;
+  }
   .region-btn.active { background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
-  .modal-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
-  .modal-item { padding: 16px; border-bottom: 1px solid var(--card-border); font-size: 1.05rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+
+  .modal-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
+  .modal-item {
+    padding: 14px 16px; border-bottom: 1px solid var(--card-border);
+    font-size: 0.95rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
   .modal-item:active { background-color: #1e1e20; }
+  .modal-item-icon { font-size: 1.1rem; flex-shrink: 0; }
   .fav-header { padding: 10px 16px; font-size: 0.8rem; font-weight: 800; color: var(--text-secondary); background: #1a1a1c; text-transform: uppercase; letter-spacing: 0.5px; }
 
-  /* Floating GPS Button */
-  .fab-gps {
-      position: fixed; bottom: 30px; right: 20px; width: 56px; height: 56px; border-radius: 28px;
-      background: var(--accent-blue); color: #fff; border: none; font-size: 1.6rem;
-      box-shadow: 0 4px 15px rgba(10,132,255,0.4); cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 50; transition: transform 0.2s;
+  /* Bottom Controls (Quiet Flow) */
+  .bottom-controls {
+    margin-top: auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 12px;
+    background: var(--bg-color); border-top: 1px dashed var(--card-border);
   }
-  .fab-gps:active { transform: scale(0.9); }
+  .bottom-btn {
+    width: 100%; padding: 14px; border-radius: 12px;
+    font-size: 1.05rem; font-weight: 700; cursor: pointer; border: none;
+    transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .bottom-btn:active { transform: scale(0.98); }
+  .btn-reset { background: var(--accent-blue); color: #fff; }
+  .btn-add-fav { background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c; }
+  .btn-rm-fav { background: rgba(255, 214, 10, 0.15); color: #ffd60a; border: 1px solid rgba(255, 214, 10, 0.3); }
+
+  #detailControls { display: none; padding: 12px 16px; background: var(--bg-color); border-bottom: 1px solid var(--card-border); }
+  .back-btn {
+    width: 100%; background: #2c2c2e; color: var(--dir-blue); border: 1px solid #3a3a3c;
+    border-radius: 8px; padding: 12px; font-size: 1.05rem; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background 0.2s;
+  }
+  .back-btn:active { background: #3a3a3c; }
+
+  #routeList { display: flex; flex-direction: column; min-height: 40vh; }
+  
+  .route-card {
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 16px 16px 16px 12px; border-bottom: 1px solid var(--card-border); gap: 0;
+    border-left: 6px solid var(--card-border);
+    cursor: pointer; transition: background-color 0.2s;
+  }
+  .route-card:active { background-color: #1e1e20; }
+  .route-main-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+
+  .route-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+  .route-no { font-size: 1.6rem; font-weight: 900; min-width: 45px; letter-spacing: -0.5px; flex-shrink: 0; color: var(--text-primary); }
+  .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; background: #2c2c2e; padding: 2px 4px; border-radius: 4px; }
+  .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--text-primary); }
+  
+  .eta-container { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; cursor: pointer; padding: 4px; border-radius: 8px; transition: background 0.2s; }
+  .eta-box:active { background: rgba(255,255,255,0.1); }
+  .eta-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-secondary); font-weight: 700; margin-bottom: 2px; text-align: right; display: flex; align-items: center; gap: 4px; }
+  .official-eta { font-size: 1.05rem; font-weight: 600; color: var(--text-secondary); text-decoration: line-through; opacity: 0.7; font-variant-numeric: tabular-nums; }
+  .smart-eta { font-size: 1.45rem; font-weight: 800; color: var(--accent-green); font-variant-numeric: tabular-nums; transition: color 0.3s; }
+  
+  @keyframes blink-arriving { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+  @keyframes blink-delayed { 0% { opacity: 1; color: var(--accent-orange); } 50% { opacity: 0.4; color: var(--accent-red); } 100% { opacity: 1; color: var(--accent-orange); } }
+  @keyframes fade-departing { 0% { opacity: 0.9; color: var(--text-secondary); } 50% { opacity: 0.25; color: var(--text-secondary); } 100% { opacity: 0.9; color: var(--text-secondary); } }
+  @keyframes pulse-full { 0% { border-color: rgba(227, 24, 55, 0.3); } 50% { border-color: rgba(227, 24, 55, 1); } 100% { border-color: rgba(227, 24, 55, 0.3); } }
+  
+  .smart-eta.arriving { color: var(--accent-orange); font-size: 1.25rem; animation: blink-arriving 1.5s infinite; }
+  .smart-eta.delayed { animation: blink-delayed 2s infinite; font-size: 1.15rem; font-weight: 700; }
+  .smart-eta.departing { animation: fade-departing 2s infinite; font-size: 1.05rem; font-weight: 700; color: var(--text-secondary); }
+
+  /* Occupancy Pills */
+  .compact-occupancy { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+  .occ-pill {
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px;
+    font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; font-variant-numeric: tabular-nums;
+  }
+  .occ-seating { background: rgba(48, 209, 88, 0.15); color: var(--accent-green); }
+  .occ-standing { background: rgba(255, 159, 10, 0.15); color: var(--accent-orange); }
+  .occ-full { background: rgba(227, 24, 55, 0.15); color: var(--accent-red); border: 1px solid transparent; animation: pulse-full 1.5s infinite; }
+
+  /* Sub ETAs */
+  .subsequent-etas {
+    display: none; flex-direction: column; gap: 10px;
+    margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--card-border); width: 100%;
+  }
+  .detail-mode .subsequent-etas { display: flex; }
+  .sub-eta-row { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
+  .sub-eta-label { font-size: 0.95rem; color: var(--text-secondary); font-weight: 600; }
+  .sub-eta-time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* Journey Timeline */
+  .timeline-container {
+    margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--card-border);
+    display: flex; flex-direction: column; gap: 0;
+    max-height: 55vh; overflow-y: auto;
+  }
+  .timeline-row {
+    display: flex; justify-content: space-between; align-items: stretch; min-height: 44px; padding-right: 4px;
+  }
+  .timeline-left {
+    display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; position: relative;
+  }
+  .timeline-node {
+    width: 12px; height: 12px; border-radius: 50%; background: var(--bg-color); border: 3px solid var(--card-border); z-index: 2; margin-left: 2px;
+  }
+  .timeline-line {
+    position: absolute; left: 7px; top: 22px; bottom: -22px; width: 2px; background: var(--card-border); z-index: 1;
+  }
+  .timeline-row:last-child .timeline-line { display: none; }
+  .timeline-stop-name {
+    font-size: 0.95rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: 12px;
+  }
+  .timeline-right {
+    display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end; padding-bottom: 12px; margin-top: -2px;
+  }
+  .timeline-time {
+    font-size: 1.05rem; font-weight: 700; color: var(--accent-green); font-variant-numeric: tabular-nums;
+  }
+  .timeline-dur {
+    font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); margin-top: 2px;
+  }
+
+  .route-card.inactive { display: none; }
+  .route-card.terminating { display: none; }
+  .show-inactive .route-card.inactive { display: flex; }
+  .show-terminating .route-card.terminating { display: flex; opacity: 0.7; }
+  .route-card.inactive.terminating { display: none !important; }
+  .show-inactive.show-terminating .route-card.inactive.terminating { display: flex !important; }
+
+  .toggle-btn {
+    background: transparent; color: var(--text-secondary); border: 1px solid var(--card-border);
+    padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; margin: auto; display: block;
+  }
 
   .init-loader-container { padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
   .init-loader-text { color: var(--text-secondary); font-size: 1.05rem; font-weight: 600; }
   .init-loader-bar-bg { width: 100%; max-width: 280px; height: 6px; background: var(--card-border); border-radius: 4px; overflow: hidden; }
   .init-loader-bar { width: 0%; height: 100%; background: var(--accent-green); transition: width 0.3s ease-out; }
+  .init-loader-pct { color: var(--accent-green); font-size: 0.9rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -146,35 +309,72 @@
       <span class="refresh-timer" id="refreshTimer">Initializing...</span>
     </div>
   </div>
+  <select id="langSelect" class="lang-select" onchange="changeLanguage(this.value)">
+    <option value="en">EN</option>
+    <option value="tc">繁體</option>
+    <option value="sc">简体</option>
+  </select>
 </div>
 
-<div class="search-bar-container">
-    <div class="search-input" onclick="openModal()">
-        <span class="search-input-text" id="routeSelectText">🔍 Search Route...</span>
+<div id="alarmBanner" class="alarm-banner">
+    <span id="alarmText">⏰ Alarm set</span>
+    <button class="alarm-close" onclick="clearAlarm()">✕</button>
+</div>
+
+<div class="unified-header">
+    <div class="search-input main-route-selector" onclick="openModal('route')">
+        <div style="display:flex; flex-direction:column;">
+            <span style="font-size:0.7rem; color:var(--text-secondary); text-transform:uppercase; margin-bottom: 2px;">Network Search</span>
+            <span class="search-input-text" id="routeSelectText" style="font-size: 1.15rem; color: var(--accent-blue);">All Routes</span>
+        </div>
+        <span style="opacity:0.5;">▼</span>
+    </div>
+
+    <div class="quick-commute-row">
+        <button class="commute-btn" onclick="triggerCommute('work')">💼 To Work</button>
+        <button class="commute-btn" onclick="triggerCommute('home')">🏠 To Home</button>
     </div>
 </div>
 
-<div id="mainContent">
+<div class="stop-selector-bar" onclick="openModal('stop')" id="stopBarContainer">
+    <div class="stop-icon">📍</div>
+    <div class="stop-text-area">
+        <div class="stop-label">Boarding At</div>
+        <div class="stop-name" id="stopSelectText">Locating nearest stop...</div>
+    </div>
+    <div class="stop-action" id="gpsStatus">AUTO</div>
+</div>
+
+<div id="detailControls">
+  <button class="back-btn" onclick="hideDetail()" id="backBtn">🔙 Back to all routes</button>
+</div>
+
+<div id="routeList">
   <div id="initLoader" class="init-loader-container">
     <div id="loadingText" class="init-loader-text">Connecting to network...</div>
-    <div class="init-loader-bar-bg"><div id="loadingBar" class="init-loader-bar"></div></div>
+    <div class="init-loader-bar-bg">
+        <div id="loadingBar" class="init-loader-bar"></div>
+    </div>
+    <div id="loadingPercent" class="init-loader-pct">0%</div>
   </div>
 </div>
 
-<button id="fabGps" class="fab-gps" onclick="locateNearestStopForActiveRoute()">📍</button>
+<!-- Bottom Controls (Quiet Flow) -->
+<div id="bottomControls" class="bottom-controls">
+    <button class="bottom-btn btn-reset" onclick="resetToHome()">🏠 Reset to Nearest Stop</button>
+    <div style="display: flex; gap: 12px; margin-top: 4px;">
+        <button id="bottomFavStopBtn" class="bottom-btn btn-add-fav" style="flex: 1;" onclick="toggleFavoriteStop()">☆ Save Stop</button>
+        <button id="bottomFavRouteBtn" class="bottom-btn btn-add-fav" style="flex: 1; display:none;" onclick="toggleFavoriteRoute()">☆ Save Route</button>
+    </div>
+</div>
 
-<!-- Route Search Modal -->
+<!-- Search Modal -->
 <div id="searchModal" class="search-modal">
   <div class="modal-header">
-    <input type="text" id="searchInput" class="modal-search-bar" placeholder="Search route number or destination..." oninput="renderModalList()" autocomplete="off">
+    <input type="text" id="searchInput" class="modal-search-bar" placeholder="Type to search..." oninput="renderModalList()" autocomplete="off">
     <button class="modal-close" onclick="closeModal()">Cancel</button>
   </div>
-  <div id="regionFilters" class="region-filters">
-        <button class="region-btn active" onclick="setRouteRegion('ALL')">All Routes</button>
-        <button class="region-btn" onclick="setRouteRegion('NLB')">Lantau (NLB)</button>
-        <button class="region-btn" onclick="setRouteRegion('KMB')">Urban (KMB)</button>
-        <button class="region-btn" onclick="setRouteRegion('LWB')">Airport (LWB)</button>
-  </div>
+  <div id="regionFilters" class="region-filters" style="display: none;"></div>
   <div id="searchList" class="modal-list"></div>
 </div>
 
@@ -184,8 +384,13 @@ const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const REFRESH_INTERVAL = 15; 
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
-function safeSetStorage(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
-function safeGetStorage(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function safeSetStorage(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) {}
+}
+
+function safeGetStorage(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+}
 
 const SPONGE_STOPS = {
   "Tung Chung Station Bus Terminus": { routes: ["3M", "11", "23", "34"], triggerWindows: [{ days: [1, 2, 3, 4, 5], hours: [17, 18, 19, 20] }, { days: [0, 6], hours: [9, 10, 11, 12, 13] }], driftThreshold: 1.5 },
@@ -194,22 +399,92 @@ const SPONGE_STOPS = {
   "Tai O": { routes: ["11", "21", "1"], triggerWindows: [{ days: [0, 6], hours: [15, 16, 17, 18, 19] }], driftThreshold: 2.0 }
 };
 
-const APP_TIMESTAMP = "Build: 2026-10-09 5:13 PM";
+const APP_TIMESTAMP = "Build: 2026-10-09 3:53 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
+let currentLang = safeGetStorage('pulse_lang') || 'en';
+if (document.getElementById('langSelect')) document.getElementById('langSelect').value = currentLang;
+
+const i18n = {
+  en: {
+    allLines: "All Routes", loadingIndex: "Loading station index...",
+    syncing: "Syncing Network Mappings...", building: "Building Station Index...",
+    liveETA: "Fetching live arrivals...", locating: "Locating...", nearest: "Nearest:",
+    noStops: "No stops found", gpsDenied: "GPS Denied / Failed",
+    gpsNotSupported: "GPS Not Supported", noBuses: "No active buses depart from here currently.",
+    to: "To", due: "Due", delayed: "Delayed", departing: "Departing", departingSoon: "Departing soon", min: "m", refresh: "Refresh in", refreshing: "Refreshing...",
+    official: "Official", actual: "Actual ETA", scheduled: "Scheduled", 
+    arrivingLabel: "Status", arriving: "Arriving...",
+    showInactive: "Show inactive routes", hideInactive: "Hide inactive routes",
+    showTerminating: "Show arriving buses", hideTerminating: "Hide arriving buses",
+    terminatingHere: "Terminating Here", routeStops: "Journey ETA", nextStop: "Next Stop",
+    back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
+    manual: "Manual Selection",
+    seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full"
+  },
+  tc: {
+    allLines: "所有路線", loadingIndex: "載入車站索引...",
+    syncing: "同步網絡數據...", building: "建立車站索引...",
+    liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
+    noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
+    gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
+    to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", departingSoon: "即將開出", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
+    official: "官方", actual: "實際預計", scheduled: "預定班次",
+    arrivingLabel: "狀態", arriving: "即將抵達...",
+    showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
+    showTerminating: "顯示抵達本站巴士", hideTerminating: "隱藏抵達本站巴士",
+    terminatingHere: "以此站為終點", routeStops: "車程預計", nextStop: "下一站",
+    back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
+    manual: "手動選擇",
+    seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿"
+  },
+  sc: {
+    allLines: "所有路线", loadingIndex: "载入车站索引...",
+    syncing: "同步网络数据...", building: "建立车站索引...",
+    liveETA: "获取实时班次...", locating: "定位中...", nearest: "最近:",
+    noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
+    gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
+    to: "往", due: "即将到达", delayed: "延误", departing: "刚驶离", departingSoon: "即将开出", min: "分钟", refresh: "更新:", refreshing: "更新中...",
+    official: "官方", actual: "实际预计", scheduled: "预定班次",
+    arrivingLabel: "状态", arriving: "即将抵达...",
+    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
+    showTerminating: "显示抵达本站巴士", hideTerminating: "隐藏抵达本站巴士",
+    terminatingHere: "以此站为终点", routeStops: "车程预计", nextStop: "下一站",
+    back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
+    manual: "手动选择",
+    seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满"
+  }
+};
+
+const getT = (key) => i18n[currentLang][key];
+
 let currentRouteKey = 'ALL';
-let activeStopIndex = null;
+let currentStopKey = '';
 let countdown = REFRESH_INTERVAL;
 let timerInterval;
+let detailModeRouteKey = null;
 
+let allStops = [];
 let groupedRoutes = []; 
 let routeStopsCache = {};
 const busStateMap = {}; 
+let showInactive = false;
+let showTerminating = false;
+
+// Dual Favorites
+let favStops = JSON.parse(safeGetStorage('pulse_fav_stops_v2') || '[]');
 let favRoutes = JSON.parse(safeGetStorage('pulse_fav_routes_v2') || '[]');
 
+let autoGpsEnabled = true;
 let lastKnownPos = null;
+
+let activeModalType = null; 
 let routeFilterRegion = 'ALL'; 
+
+// Alarm Variables
+let activeAlarm = null;
+let alarmIntervalId = null;
 
 function getNow() { return Date.now(); }
 
@@ -218,11 +493,60 @@ function cleanStopName(name) {
     return name.replace(/\s*[\(（][^\)）]*[\)）]/g, '').trim();
 }
 
+function getGlobalStopKey(s) {
+    const lat = parseFloat(s.latitude) || 0;
+    return `${s.stopName_e}_${lat.toFixed(1)}`;
+}
+
 function setLoadProgress(pct, text) {
   const bar = document.getElementById('loadingBar');
+  const pctText = document.getElementById('loadingPercent');
   const txt = document.getElementById('loadingText');
   if (bar) bar.style.width = `${pct}%`;
+  if (pctText) pctText.innerText = `${Math.round(pct)}%`;
   if (txt && text) txt.innerText = text;
+}
+
+function toggleInactive() {
+  showInactive = !showInactive;
+  const listEl = document.getElementById('routeList');
+  if (showInactive) listEl.classList.add('show-inactive');
+  else listEl.classList.remove('show-inactive');
+}
+
+function toggleTerminating() {
+  showTerminating = !showTerminating;
+  const listEl = document.getElementById('routeList');
+  if (showTerminating) listEl.classList.add('show-terminating');
+  else listEl.classList.remove('show-terminating');
+}
+
+function showDetail(groupKey) {
+  if (detailModeRouteKey === groupKey) { hideDetail(); return; }
+  detailModeRouteKey = groupKey;
+  document.getElementById('detailControls').style.display = 'block';
+  document.getElementById('routeList').classList.add('detail-mode');
+  const btn = document.getElementById('backBtn');
+  if (btn) btn.innerText = getT('back');
+  updateNetworkTelemetry();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function hideDetail() {
+  detailModeRouteKey = null;
+  document.getElementById('detailControls').style.display = 'none';
+  document.getElementById('routeList').classList.remove('detail-mode');
+  updateNetworkTelemetry();
+}
+
+function getDirectionColor(dest) {
+  const d = (dest || '').toLowerCase();
+  if (d.includes('tung chung')) return 'var(--dir-blue)';
+  if (d.includes('mui wo')) return 'var(--dir-purple)';
+  if (d.includes('tai o') || d.includes('kowloon') || d.includes('tsim sha tsui')) return 'var(--dir-cyan)';
+  if (d.includes('airport') || d.includes('yuen long') || d.includes('tuen mun')) return 'var(--dir-indigo)';
+  if (d.includes('tong fuk') || d.includes('causeway bay')) return 'var(--dir-pink)';
+  return 'var(--card-border)';
 }
 
 class KalmanFilter1D {
@@ -250,7 +574,10 @@ function generateDeterministicNoise(routeStr, currentStopIndex, timestamp) {
 setInterval(() => {
   const clockEl = document.getElementById('liveClock');
   if (clockEl) {
-    clockEl.innerText = new Date(getNow()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+    clockEl.innerText = new Date(getNow()).toLocaleTimeString(
+      currentLang === 'en' ? 'en-US' : 'zh-HK', 
+      { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: currentLang==='en' }
+    );
   }
 }, 1000);
 
@@ -258,6 +585,12 @@ async function fetchJSON(url) {
   const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error('API offline');
   return await response.json();
+}
+
+function getLocalizedName(obj, prefix) {
+  if (currentLang === 'tc') return obj[`${prefix}_c`];
+  if (currentLang === 'sc') return obj[`${prefix}_s`];
+  return obj[`${prefix}_e`];
 }
 
 async function initApp() {
@@ -293,11 +626,13 @@ async function initApp() {
           
           rawNlbRoutes.forEach(r => {
             const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
+            const dest_c = r.routeName_c ? r.routeName_c.split(/[>＞]/).pop().trim() : '';
+            const dest_s = r.routeName_s ? r.routeName_s.split(/[>＞]/).pop().trim() : '';
             const cleanDest = cleanStopName(dest_e); 
             const key = `NLB_${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
             if (!groupedMap.has(key)) {
-              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
+              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, dest_c: cleanStopName(dest_c), dest_s: cleanStopName(dest_s), routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
             } else {
               groupedMap.get(key).routeIds.push(`NLB_${r.routeId}`);
             }
@@ -311,7 +646,10 @@ async function initApp() {
                 const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
                 const rawStops = res.stops || [];
                 routeStopsCache[`NLB_${r.routeId}`] = rawStops.map(s => ({
-                    stopId: s.stopId, stopName_e: cleanStopName(s.stopName_e), latitude: s.latitude, longitude: s.longitude
+                    ...s,
+                    stopName_e: cleanStopName(s.stopName_e),
+                    stopName_c: cleanStopName(s.stopName_c),
+                    stopName_s: cleanStopName(s.stopName_s)
                 }));
               } catch(e) { routeStopsCache[`NLB_${r.routeId}`] = []; }
             }));
@@ -319,7 +657,9 @@ async function initApp() {
             const progress = 5 + ((i / rawNlbRoutes.length) * 30);
             setLoadProgress(progress, `Fetching NLB Stops (${Math.round(progress)}%)...`);
           }
-      } catch(e) { cacheSuccess = false; }
+      } catch(e) { 
+          cacheSuccess = false;
+      }
 
       try {
           setLoadProgress(35, "Fetching KMB Network...");
@@ -360,10 +700,12 @@ async function initApp() {
 
                   rsData.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
                   const mappedStops = rsData.map(rs => {
-                      const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', lat: '0', long: '0' };
+                      const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', name_tc: '未知', name_sc: '未知', lat: '0', long: '0' };
                       return {
                           stopId: rs.stop,
                           stopName_e: formatStopName(cleanStopName(stopDetail.name_en)),
+                          stopName_c: cleanStopName(stopDetail.name_tc),
+                          stopName_s: cleanStopName(stopDetail.name_sc || stopDetail.name_tc),
                           latitude: stopDetail.lat,
                           longitude: stopDetail.long,
                           seq: rs.seq
@@ -378,7 +720,9 @@ async function initApp() {
 
                   if (!groupedMap.has(groupKey)) {
                       groupedMap.set(groupKey, {
-                          key: groupKey, routeNo: r.route, dest_e: cleanDestE, routeIds: [rId], company: company
+                          key: groupKey, routeNo: r.route,
+                          dest_e: cleanDestE, dest_c: cleanStopName(r.dest_tc), dest_s: cleanStopName(r.dest_sc),
+                          routeIds: [rId], company: company
                       });
                   } else {
                       groupedMap.get(groupKey).routeIds.push(rId);
@@ -400,13 +744,46 @@ async function initApp() {
       setLoadProgress(100, "Network Sync Complete");
     }
     
-    const savedRoute = safeGetStorage('pulse_route');
-    if (savedRoute && savedRoute !== 'ALL') {
-        selectRoute(savedRoute);
-    } else {
-        updateNetworkTelemetry();
+    buildAllStopsList();
+
+    let legacyFavs = safeGetStorage('pulse_fav_stops_v2');
+    if (legacyFavs && !safeGetStorage('pulse_fav_stops_v2')) {
+        try {
+            let parsedLegacy = JSON.parse(legacyFavs);
+            let migratedFavs = [];
+            parsedLegacy.forEach(legacyName => {
+                let match = allStops.find(s => s.stopName_e === legacyName);
+                if (match) migratedFavs.push(match.stopKey);
+            });
+            favStops = migratedFavs;
+            safeSetStorage('pulse_fav_stops_v2', JSON.stringify(favStops));
+        } catch(e) {}
     }
     
+    const savedStop = safeGetStorage('pulse_stop_key');
+    const savedRoute = safeGetStorage('pulse_route');
+    
+    if (savedRoute) currentRouteKey = savedRoute;
+    updateRouteSelectText();
+    updateFavButtonUI();
+    
+    autoGpsEnabled = true;
+    updateGpsUi();
+    
+    if (savedStop && allStops.some(s => s.stopKey === savedStop)) {
+      currentStopKey = savedStop;
+      updateStopSelectText();
+    } 
+    
+    await locateNearestStopPromise(false);
+    
+    if (!currentStopKey && allStops.length > 0) {
+        const tcStop = allStops.find(s => s.stopName_e === 'Tung Chung Station Bus Terminus');
+        currentStopKey = tcStop ? tcStop.stopKey : allStops[0].stopKey;
+        updateStopSelectText();
+    }
+    
+    resetAndFetch();
     startAppLoop();
 
   } catch (err) {
@@ -414,20 +791,113 @@ async function initApp() {
   }
 }
 
-function openModal() {
-    const modal = document.getElementById('searchModal');
-    const input = document.getElementById('searchInput');
-    document.body.style.overflow = 'hidden';
-    input.value = '';
-    modal.style.display = 'flex';
-    renderRegionFilters();
-    renderModalList();
-    setTimeout(() => { input.focus(); }, 150);
+function buildAllStopsList() {
+  const uniqueStops = new Map();
+  groupedRoutes.forEach(g => {
+    g.routeIds.forEach(id => {
+      (routeStopsCache[id] || []).forEach(s => {
+        if (!s || !s.stopName_e) return;
+        const key = getGlobalStopKey(s);
+        if (!uniqueStops.has(key)) {
+            uniqueStops.set(key, { ...s, stopKey: key, routeLabels: new Set([g.routeNo]) });
+        } else {
+            uniqueStops.get(key).routeLabels.add(g.routeNo);
+        }
+      });
+    });
+  });
+  
+  allStops = Array.from(uniqueStops.values()).map(s => {
+      const arr = Array.from(s.routeLabels);
+      s.routeStr = arr.slice(0, 6).join(', ');
+      if (arr.length > 6) s.routeStr += '...';
+      return s;
+  }).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
 
-function closeModal() {
-    document.getElementById('searchModal').style.display = 'none';
-    document.body.style.overflow = ''; 
+function getStopsForGroup(group) {
+  const uniqueMap = new Map();
+  if (!group || !group.routeIds || group.routeIds.length === 0) return [];
+  const primaryRouteId = group.routeIds[0]; 
+  
+  let seq = 1;
+  (routeStopsCache[primaryRouteId] || []).forEach(s => {
+     const key = getGlobalStopKey(s);
+     if (s && s.stopName_e && !uniqueMap.has(key)) {
+        const mainStop = allStops.find(as => as.stopKey === key);
+        uniqueMap.set(key, { ...s, stopKey: key, routeStr: mainStop ? mainStop.routeStr : group.routeNo, routeSeq: seq++ });
+     }
+  });
+  return Array.from(uniqueMap.values());
+}
+
+function updateRouteSelectText() {
+    const el = document.getElementById('routeSelectText');
+    if (currentRouteKey === 'COMMUTE_WORK') {
+        el.innerText = '💼 Commute to Work';
+    } else if (currentRouteKey === 'COMMUTE_HOME') {
+        el.innerText = '🏠 Commute to Home';
+    } else if (currentRouteKey === 'ALL') {
+        el.innerText = getT('allLines');
+    } else {
+        const targetGroup = groupedRoutes.find(g => g.key === currentRouteKey);
+        el.innerText = targetGroup ? `${targetGroup.company === 'KMB' ? '[KMB] ' : (targetGroup.company === 'LWB' ? '[LWB] ' : '')}${targetGroup.routeNo} (${getT('to')} ${getLocalizedName(targetGroup, 'dest')})` : getT('allLines');
+    }
+}
+
+function updateStopSelectText() {
+    const el = document.getElementById('stopSelectText');
+    if (currentRouteKey && currentRouteKey.startsWith('COMMUTE_')) {
+        el.innerText = "Multi-Stop Journey";
+    } else if (currentStopKey) {
+        const stopObj = allStops.find(s => s.stopKey === currentStopKey);
+        el.innerText = stopObj ? getLocalizedName(stopObj, 'stopName') : currentStopKey.split('_')[0];
+    } else {
+        el.innerText = "Select Stop...";
+    }
+    updateFavButtonUI();
+}
+
+// ==========================================
+// COMMUTE LOGIC
+// ==========================================
+async function triggerCommute(type) {
+    if (!lastKnownPos) await locateNearestStopPromise(false);
+    
+    autoGpsEnabled = false; 
+    currentRouteKey = type === 'work' ? 'COMMUTE_WORK' : 'COMMUTE_HOME';
+    safeSetStorage('pulse_route', currentRouteKey);
+    updateRouteSelectText();
+    updateStopSelectText();
+    updateGpsUi();
+    resetAndFetch();
+}
+
+function openModal(type) {
+    activeModalType = type;
+    const modal = document.getElementById('searchModal');
+    const input = document.getElementById('searchInput');
+    const regionFilters = document.getElementById('regionFilters');
+    
+    document.body.style.overflow = 'hidden';
+    
+    input.value = '';
+    modal.style.display = 'flex';
+    
+    if (type === 'route') {
+        input.placeholder = "Search route number or destination...";
+        regionFilters.style.display = 'flex';
+        renderRegionFilters();
+    } else {
+        input.placeholder = "Type stop name to search...";
+        regionFilters.style.display = 'none';
+    }
+    
+    renderModalList();
+    
+    setTimeout(() => {
+        input.focus();
+    }, 150);
 }
 
 function setRouteRegion(region) {
@@ -437,111 +907,384 @@ function setRouteRegion(region) {
 }
 
 function renderRegionFilters() {
-    const btns = document.querySelectorAll('#regionFilters .region-btn');
-    btns.forEach(b => {
-        if(b.innerText.includes(routeFilterRegion) || (routeFilterRegion === 'ALL' && b.innerText === 'All Routes')) {
-            b.className = 'region-btn active';
-        } else {
-            b.className = 'region-btn';
-        }
-    });
+    const rf = document.getElementById('regionFilters');
+    rf.innerHTML = `
+        <button class="region-btn ${routeFilterRegion === 'ALL' ? 'active' : ''}" onclick="setRouteRegion('ALL')">All Routes</button>
+        <button class="region-btn ${routeFilterRegion === 'NLB' ? 'active' : ''}" onclick="setRouteRegion('NLB')">Lantau (NLB)</button>
+        <button class="region-btn ${routeFilterRegion === 'KMB' ? 'active' : ''}" onclick="setRouteRegion('KMB')">Urban (KMB)</button>
+        <button class="region-btn ${routeFilterRegion === 'LWB' ? 'active' : ''}" onclick="setRouteRegion('LWB')">Airport (LWB)</button>
+    `;
+}
+
+function closeModal() {
+    document.getElementById('searchModal').style.display = 'none';
+    document.body.style.overflow = ''; 
+    activeModalType = null;
 }
 
 function renderModalList() {
     const listEl = document.getElementById('searchList');
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
-    const fuzzyQuery = query.replace(/[^a-z0-9]/g, ''); 
+    const fuzzyQuery = query.replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''); 
     listEl.innerHTML = '';
 
-    const isInitialState = !query && routeFilterRegion === 'ALL';
-    
-    let matches = groupedRoutes.filter(g => {
-        if (routeFilterRegion !== 'ALL' && g.company !== routeFilterRegion) return false;
-        if (!query) return true;
+    if (activeModalType === 'route') {
+        const isInitialState = !query && routeFilterRegion === 'ALL';
         
-        const normRoute = g.routeNo.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const normDestE = g.dest_e.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return normRoute.includes(fuzzyQuery) || normDestE.includes(fuzzyQuery);
-    });
+        let matches = groupedRoutes.filter(g => {
+            if (routeFilterRegion !== 'ALL' && g.company !== routeFilterRegion) return false;
+            if (!query) return true;
+            
+            const normRoute = g.routeNo.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normDestE = getLocalizedName(g, 'dest').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normDestC = g.dest_c || '';
+            const normDestS = g.dest_s || '';
+            
+            return normRoute.includes(fuzzyQuery) || normDestE.includes(fuzzyQuery) || normDestC.includes(fuzzyQuery) || normDestS.includes(fuzzyQuery);
+        });
 
-    let favs = matches.filter(g => favRoutes.includes(g.key));
-    let others = matches.filter(g => !favRoutes.includes(g.key));
+        let favs = matches.filter(g => favRoutes.includes(g.key));
+        let others = matches.filter(g => !favRoutes.includes(g.key));
 
-    if (isInitialState) {
-        listEl.innerHTML = `
-            <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
-                <div style="font-size: 3rem; opacity: 0.5;">🚍</div>
-                <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">Search Route Network</div>
-                <div style="font-size: 0.9rem; max-width: 250px; line-height: 1.4;">Type a bus number or destination above to find your route.</div>
-            </div>
-        `;
-        return;
-    }
-
-    if (favs.length > 0) {
-        listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Routes</div>`);
-        favs.forEach(g => {
-            const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
-            listEl.insertAdjacentHTML('beforeend', `
-            <div class="modal-item" onclick="selectRoute('${g.key}')">
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <span style="color:#ffd60a; font-size: 1.2rem;">★</span> 
-                    <div style="display: flex; flex-direction: column;">
-                        <span style="font-weight: 800; font-size: 1.1rem;">${prefix}${g.routeNo}</span> 
-                        <span style="color:var(--text-secondary); font-size:0.85rem;">To ${g.dest_e}</span>
+        if (isInitialState) {
+            listEl.innerHTML = `
+                <div class="modal-item" onclick="selectModalItem('route', 'ALL')" style="${currentRouteKey === 'ALL' ? 'background: rgba(10,132,255,0.15);' : ''} border-left: 4px solid var(--accent-blue);">
+                    <span class="modal-item-icon">🌐</span> 
+                    <div style="flex: 1;">
+                        <div style="font-weight: 700; color: var(--accent-blue);">${getT('allLines')}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">Show departures for every route</div>
                     </div>
                 </div>
-            </div>`);
-        });
-    }
+            `;
 
-    if (others.length > 0) {
-        if (favs.length > 0) {
-            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Routes</div>`);
+            if (favRoutes.length > 0) {
+                let allFavGrouped = groupedRoutes.filter(g => favRoutes.includes(g.key));
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Routes</div>`);
+                allFavGrouped.forEach(g => {
+                    const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+                    const isSelected = (g.key === currentRouteKey);
+                    listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}"><span class="modal-item-icon" style="color:#ffd60a">★</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
+                });
+            }
+
+            listEl.insertAdjacentHTML('beforeend', `
+                <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <div style="font-size: 3rem; opacity: 0.5;">🚍</div>
+                    <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">Find Your Route</div>
+                    <div style="font-size: 0.9rem; max-width: 250px; line-height: 1.4;">Select a region tab above or use the search bar to find a specific bus line.</div>
+                </div>
+            `);
+            return;
         }
-        others.slice(0, 100).forEach(g => {
-            const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
-            listEl.insertAdjacentHTML('beforeend', `
-            <div class="modal-item" onclick="selectRoute('${g.key}')">
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <span style="color:var(--text-secondary); font-size: 1.2rem;">🚩</span> 
-                    <div style="display: flex; flex-direction: column;">
-                        <span style="font-weight: 800; font-size: 1.1rem;">${prefix}${g.routeNo}</span> 
-                        <span style="color:var(--text-secondary); font-size:0.85rem;">To ${g.dest_e}</span>
+
+        if ('all'.includes(query) || getT('allLines').toLowerCase().includes(query)) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🌐</span> <b>${getT('allLines')}</b></div>`);
+        }
+        
+        if (favs.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Routes</div>`);
+            favs.forEach(g => {
+                const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+                const isSelected = (g.key === currentRouteKey);
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}"><span class="modal-item-icon" style="color:#ffd60a">★</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
+            });
+        }
+
+        if (others.length > 0) {
+            if (favs.length > 0) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Routes</div>`);
+            }
+            others.slice(0, 100).forEach(g => {
+                const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
+            });
+        }
+        
+    } else if (activeModalType === 'stop') {
+        const isAllRoutes = (currentRouteKey === 'ALL' || currentRouteKey.startsWith('COMMUTE_'));
+        const sourceStops = isAllRoutes ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
+        
+        let favs = sourceStops.filter(s => favStops.includes(s.stopKey));
+        let others = sourceStops.filter(s => !favStops.includes(s.stopKey));
+
+        let refPos = lastKnownPos;
+        let nearbyStops = [];
+        
+        if (refPos && !fuzzyQuery) {
+            const WALKING_RADIUS_KM = 0.5;
+            const stopsWithDist = others.map(s => ({
+                ...s,
+                distKm: calculateDistanceKm(refPos.lat, refPos.lon, parseFloat(s.latitude), parseFloat(s.longitude))
+            }));
+            
+            stopsWithDist.sort((a, b) => a.distKm - b.distKm);
+            nearbyStops = stopsWithDist.filter(s => s.distKm <= WALKING_RADIUS_KM).slice(0, 6);
+            
+            const nearbyKeys = nearbyStops.map(s => s.stopKey);
+            others = others.filter(s => !nearbyKeys.includes(s.stopKey));
+        }
+
+        if (fuzzyQuery) {
+            const filterFn = (s) => {
+                const nE = (s.stopName_e || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+                const nC = (s.stopName_c || '').replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+                const nS = (s.stopName_s || '').replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+                return nE.includes(fuzzyQuery) || nC.includes(fuzzyQuery) || nS.includes(fuzzyQuery);
+            };
+            favs = favs.filter(filterFn);
+            others = others.filter(filterFn);
+        }
+
+        if (favs.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Stops</div>`);
+            favs.forEach(s => {
+                const isSelected = (s.stopKey === currentStopKey && !currentRouteKey.startsWith('COMMUTE_'));
+                const seqBadge = s.routeSeq ? `<span style="background:var(--card-border); color:var(--text-primary); font-size:0.75rem; padding:3px 6px; border-radius:8px; font-weight:700; min-width:26px; text-align:center; display:inline-block; border:1px solid #3a3a3c;">${s.routeSeq}</span>` : `<span class="modal-item-icon" style="color:#ffd60a">★</span>`;
+                
+                listEl.insertAdjacentHTML('beforeend', `
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
+                    <div style="display: flex; align-items: center; justify-content: center; width: 32px; margin-right: 8px;">
+                        ${seqBadge}
                     </div>
+                    <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')} ${!s.routeSeq ? '' : '<span style="color:#ffd60a; font-size:0.8rem; margin-left:4px;">★</span>'}</span>
+                        ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
+                    </div>
+                </div>`);
+            });
+        }
+
+        if (nearbyStops.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">📍 Nearby Stops</div>`);
+            nearbyStops.forEach(s => {
+                const isSelected = (s.stopKey === currentStopKey && !currentRouteKey.startsWith('COMMUTE_'));
+                const distStr = s.distKm < 1 ? `${Math.round(s.distKm * 1000)}m` : `${s.distKm.toFixed(1)}km`;
+                const seqBadge = s.routeSeq ? `<span style="background:var(--card-border); color:var(--text-primary); font-size:0.75rem; padding:3px 6px; border-radius:8px; font-weight:700; min-width:26px; text-align:center; display:inline-block; border:1px solid #3a3a3c;">${s.routeSeq}</span>` : `<span class="modal-item-icon">📍</span>`;
+                
+                listEl.insertAdjacentHTML('beforeend', `
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
+                    <div style="display: flex; align-items: center; justify-content: center; width: 32px; margin-right: 8px;">
+                        ${seqBadge}
+                    </div>
+                    <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')}</span>
+                        <span style="font-size:0.75rem; color:var(--accent-green); margin-top:2px;">${distStr} away ${s.routeStr ? `<span style="color:var(--text-secondary); margin-left:6px;">· 🚌 ${s.routeStr}</span>` : ''}</span>
+                    </div>
+                </div>`);
+            });
+        }
+
+        if (isAllRoutes && !fuzzyQuery) {
+            if (favs.length > 0 || nearbyStops.length > 0) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
+            }
+            listEl.insertAdjacentHTML('beforeend', `
+                <div style="padding: 40px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <div style="font-size: 2.5rem; opacity: 0.5;">🚏</div>
+                    <div style="font-size: 1.05rem; font-weight: 600; color: var(--text-primary);">Search Network</div>
+                    <div style="font-size: 0.85rem; max-width: 250px; line-height: 1.4;">Type a stop name to search the entire map, or close this and select a specific route first to see its stations in sequence.</div>
                 </div>
-            </div>`);
-        });
+            `);
+        } else if (others.length > 0) {
+            if (favs.length > 0 || nearbyStops.length > 0 || !isAllRoutes) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">${isAllRoutes ? 'Search Results' : 'Route Sequence'}</div>`);
+            }
+            
+            const renderLimit = fuzzyQuery ? 150 : (isAllRoutes ? 0 : 250); 
+            
+            others.slice(0, renderLimit).forEach(s => {
+                const isSelected = (s.stopKey === currentStopKey && !currentRouteKey.startsWith('COMMUTE_'));
+                const seqBadge = s.routeSeq ? `<span style="background:var(--card-border); color:var(--text-primary); font-size:0.75rem; padding:3px 6px; border-radius:8px; font-weight:700; min-width:26px; text-align:center; display:inline-block; border:1px solid #3a3a3c;">${s.routeSeq}</span>` : `<span class="modal-item-icon">🚏</span>`;
+                
+                listEl.insertAdjacentHTML('beforeend', `
+                <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')" style="${isSelected ? 'background: rgba(10,132,255,0.15);' : ''}">
+                    <div style="display: flex; align-items: center; justify-content: center; width: 32px; margin-right: 8px;">
+                        ${seqBadge}
+                    </div>
+                    <div style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                        <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:${isSelected ? '700' : '500'}">${getLocalizedName(s, 'stopName')}</span>
+                        ${s.routeStr ? `<span style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">🚌 ${s.routeStr}</span>` : ''}
+                    </div>
+                </div>`);
+            });
+        }
     }
 }
 
-function resetToHome() {
+async function resetToHome() {
     currentRouteKey = 'ALL';
     safeSetStorage('pulse_route', 'ALL');
-    document.getElementById('routeSelectText').innerText = '🔍 Search Route...';
-    document.getElementById('fabGps').style.display = 'none';
-    updateNetworkTelemetry();
+    updateRouteSelectText();
+    
+    autoGpsEnabled = true;
+    updateGpsUi();
+    
+    document.getElementById('routeList').innerHTML = `<div style="padding: 40px 20px; color: var(--text-secondary); text-align: center; font-weight: 600;">Locating nearest stop...</div>`;
+    
+    await locateNearestStopPromise(true);
+    updateStopSelectText();
+    resetAndFetch();
 }
 
-function selectRoute(routeKey) {
-    currentRouteKey = routeKey;
-    safeSetStorage('pulse_route', currentRouteKey);
+function selectModalItem(type, value) {
+    if (type === 'route') {
+        currentRouteKey = value;
+        safeSetStorage('pulse_route', currentRouteKey);
+        updateRouteSelectText();
+        
+        const targetStops = (currentRouteKey === 'ALL') ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
+        if (targetStops.length > 0 && !targetStops.some(s => s.stopKey === currentStopKey)) {
+            currentStopKey = targetStops[0].stopKey;
+            safeSetStorage('pulse_stop_key', currentStopKey);
+            updateStopSelectText();
+        }
+        
+        if (autoGpsEnabled) locateNearestStopPromise(false).then(() => resetAndFetch());
+        else resetAndFetch();
+        
+    } else if (type === 'stop') {
+        autoGpsEnabled = false;
+        if(currentRouteKey.startsWith('COMMUTE_')) {
+            currentRouteKey = 'ALL';
+            safeSetStorage('pulse_route', 'ALL');
+            updateRouteSelectText();
+        }
+        updateGpsUi();
+        
+        currentStopKey = value;
+        safeSetStorage('pulse_stop_key', currentStopKey);
+        updateStopSelectText();
+        resetAndFetch();
+    }
     closeModal();
-    document.getElementById('mainContent').innerHTML = `<div style="padding: 40px 20px; color: var(--text-secondary); text-align: center; font-weight: 600;">Loading route...</div>`;
-    document.getElementById('fabGps').style.display = 'flex';
-    
-    locateNearestStopPromise().then(() => {
-        updateNetworkTelemetry();
-    });
+}
+
+function toggleFavoriteStop() {
+    if (!currentStopKey) return;
+    const idx = favStops.indexOf(currentStopKey);
+    if (idx > -1) favStops.splice(idx, 1);
+    else favStops.push(currentStopKey);
+    safeSetStorage('pulse_fav_stops_v2', JSON.stringify(favStops));
+    updateFavButtonUI();
 }
 
 function toggleFavoriteRoute() {
-    if (currentRouteKey === 'ALL') return;
+    if (currentRouteKey === 'ALL' || currentRouteKey.startsWith('COMMUTE_')) return;
     const idx = favRoutes.indexOf(currentRouteKey);
     if (idx > -1) favRoutes.splice(idx, 1);
     else favRoutes.push(currentRouteKey);
     safeSetStorage('pulse_fav_routes_v2', JSON.stringify(favRoutes));
-    updateNetworkTelemetry(); // Refresh header icon
+    updateFavButtonUI();
+}
+
+function updateFavButtonUI() {
+    const stopBtn = document.getElementById('bottomFavStopBtn');
+    const routeBtn = document.getElementById('bottomFavRouteBtn');
+    
+    if (currentRouteKey.startsWith('COMMUTE_')) {
+        if(stopBtn) stopBtn.style.display = 'none';
+        if(routeBtn) routeBtn.style.display = 'none';
+        return;
+    }
+    
+    if (stopBtn) {
+        stopBtn.style.display = 'flex';
+        if (currentStopKey && favStops.includes(currentStopKey)) {
+            stopBtn.className = 'bottom-btn btn-rm-fav';
+            stopBtn.innerHTML = '★ Stop Saved';
+        } else {
+            stopBtn.className = 'bottom-btn btn-add-fav';
+            stopBtn.innerHTML = '☆ Save Stop';
+        }
+    }
+    
+    if (routeBtn) {
+        if (currentRouteKey === 'ALL') {
+            routeBtn.style.display = 'none';
+        } else {
+            routeBtn.style.display = 'flex';
+            if (favRoutes.includes(currentRouteKey)) {
+                routeBtn.className = 'bottom-btn btn-rm-fav';
+                routeBtn.innerHTML = '★ Route Saved';
+            } else {
+                routeBtn.className = 'bottom-btn btn-add-fav';
+                routeBtn.innerHTML = '☆ Save Route';
+            }
+        }
+    }
+}
+
+// ==========================================
+// IN-APP ALARM SYSTEM
+// ==========================================
+function toggleAlarm(routeNo, groupKey) {
+    const cardEl = document.getElementById(`route-${groupKey}`);
+    if (!cardEl) return;
+    
+    const targetMs = parseInt(cardEl.dataset.targetArrivalTime, 10);
+    if (!targetMs || isNaN(targetMs)) return;
+    
+    if (activeAlarm && activeAlarm.groupKey === groupKey) {
+        clearAlarm();
+        return;
+    }
+    
+    activeAlarm = { route: routeNo, groupKey: groupKey, targetMs: targetMs };
+    const banner = document.getElementById('alarmBanner');
+    banner.style.display = 'flex';
+    banner.classList.remove('alerting');
+    
+    clearInterval(alarmIntervalId);
+    alarmIntervalId = setInterval(checkAlarm, 1000);
+    checkAlarm();
+}
+
+function checkAlarm() {
+    if (!activeAlarm) return;
+    
+    const cardEl = document.getElementById(`route-${activeAlarm.groupKey}`);
+    if (cardEl) {
+        const liveTargetMs = parseInt(cardEl.dataset.targetArrivalTime, 10);
+        if (liveTargetMs && !isNaN(liveTargetMs)) {
+            activeAlarm.targetMs = liveTargetMs;
+        }
+    }
+
+    const remainingMs = activeAlarm.targetMs - Date.now();
+    const mins = Math.ceil(remainingMs / 60000);
+    const banner = document.getElementById('alarmBanner');
+    
+    if (mins <= 3 && mins > 0) {
+        document.getElementById('alarmText').innerText = `🚨 Alert: ${activeAlarm.route} arriving in ${mins}m!`;
+        banner.classList.add('alerting');
+        if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+    } else if (mins <= 0) {
+        document.getElementById('alarmText').innerText = `🚍 ${activeAlarm.route} is arriving now!`;
+        banner.classList.add('alerting');
+        if (navigator.vibrate) navigator.vibrate([1000, 500, 1000]);
+        setTimeout(clearAlarm, 10000); 
+    } else {
+        document.getElementById('alarmText').innerText = `⏰ Alarm Set: ${activeAlarm.route} (${mins}m away)`;
+        banner.classList.remove('alerting');
+    }
+}
+
+function clearAlarm() {
+    activeAlarm = null;
+    clearInterval(alarmIntervalId);
+    document.getElementById('alarmBanner').style.display = 'none';
+}
+
+function resetAndFetch() {
+  detailModeRouteKey = null;
+  document.getElementById('detailControls').style.display = 'none';
+  document.getElementById('routeList').classList.remove('detail-mode');
+
+  document.getElementById('routeList').innerHTML = `<div id="loadingText" style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('liveETA')}</div>`;
+  
+  for (let key in busStateMap) delete busStateMap[key];
+  countdown = REFRESH_INTERVAL;
+  updateNetworkTelemetry();
 }
 
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
@@ -550,18 +1293,37 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function locateNearestStopPromise() {
+function updateGpsUi() {
+    const status = document.getElementById('gpsStatus');
+    if (currentRouteKey && currentRouteKey.startsWith('COMMUTE_')) {
+        status.innerText = 'SMART';
+        status.className = 'stop-action';
+    } else if (!autoGpsEnabled) {
+        status.innerText = 'MANUAL';
+        status.className = 'stop-action manual';
+    } else {
+        status.innerText = 'AUTO';
+        status.className = 'stop-action';
+    }
+}
+
+function locateNearestStopPromise(isManualClick = false) {
     return new Promise((resolve) => {
-        if (!navigator.geolocation) return resolve();
-        
+        if (!navigator.geolocation) {
+            if (isManualClick) document.getElementById('gpsStatus').innerText = getT('gpsNotSupported');
+            return resolve(false);
+        }
+        if (isManualClick) document.getElementById('gpsStatus').innerText = getT('locating');
+
         let resolved = false;
+        
         const fallbackTimeout = setTimeout(() => {
             if (!resolved) {
                 resolved = true;
-                activeStopIndex = 0; 
-                resolve();
+                if (isManualClick) document.getElementById('gpsStatus').innerText = 'Location access disabled';
+                resolve(false);
             }
-        }, 3000);
+        }, 5000);
 
         navigator.geolocation.getCurrentPosition((pos) => {
             if (resolved) return;
@@ -570,256 +1332,348 @@ function locateNearestStopPromise() {
             
             lastKnownPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
             
-            if (currentRouteKey !== 'ALL') {
-                const group = groupedRoutes.find(g => g.key === currentRouteKey);
-                if (group) {
-                    const stops = routeStopsCache[group.routeIds[0]] || [];
-                    let minDist = Infinity;
-                    let closestIdx = 0;
-                    stops.forEach((s, idx) => {
-                        const d = calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parseFloat(s.latitude), parseFloat(s.longitude));
-                        if (d < minDist) { minDist = d; closestIdx = idx; }
-                    });
-                    activeStopIndex = closestIdx;
+            let closest = null, minDistance = Infinity;
+            let stopsToCheck = (currentRouteKey === 'ALL' || !currentRouteKey) ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
+            if (!stopsToCheck || stopsToCheck.length === 0) stopsToCheck = allStops;
+
+            stopsToCheck.forEach(s => {
+                const d = calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parseFloat(s.latitude), parseFloat(s.longitude));
+                if (d < minDistance) { minDistance = d; closest = s; }
+            });
+
+            if (closest) {
+                const distMeters = Math.round(minDistance * 1000);
+                if (autoGpsEnabled) document.getElementById('gpsStatus').innerText = `${getT('nearest')} ${distMeters}m`;
+                
+                if (closest.stopKey !== currentStopKey) {
+                    currentStopKey = closest.stopKey;
+                    safeSetStorage('pulse_stop_key', currentStopKey);
+                    updateStopSelectText();
+                    for (let key in busStateMap) delete busStateMap[key];
+                    resolve(true); 
+                } else {
+                    resolve(false); 
                 }
+            } else {
+                if (isManualClick) document.getElementById('gpsStatus').innerText = getT('noStops');
+                resolve(false);
             }
-            resolve();
         }, () => {
             if (resolved) return;
             resolved = true;
             clearTimeout(fallbackTimeout);
-            activeStopIndex = 0;
-            resolve();
-        }, { enableHighAccuracy: true, timeout: 2500, maximumAge: 10000 });
+            if (isManualClick) document.getElementById('gpsStatus').innerText = getT('gpsDenied');
+            resolve(false);
+        }, { enableHighAccuracy: true, timeout: 4500, maximumAge: 10000 });
     });
 }
 
-function locateNearestStopForActiveRoute() {
-    locateNearestStopPromise().then(() => {
-        updateNetworkTelemetry();
-    });
-}
-
-function selectRouteStop(idx) {
-    if (activeStopIndex === idx) return; 
-    activeStopIndex = idx;
-    updateNetworkTelemetry();
+function changeLanguage(lang) {
+  currentLang = lang;
+  safeSetStorage('pulse_lang', lang);
+  updateRouteSelectText();
+  updateStopSelectText();
+  const btn = document.getElementById('backBtn');
+  if (btn) btn.innerText = getT('back');
+  updateNetworkTelemetry();
 }
 
 function updateLiveCountdowns() {
   const now = getNow();
-  for(let i=0; i<=2; i++) {
-      const el = document.getElementById(`eta-time-${i}`);
-      if(!el) continue;
-      const targetMs = parseInt(el.dataset.target, 10);
-      if(!targetMs || isNaN(targetMs)) continue;
-      
-      const remainingMs = targetMs - now;
-      const mins = Math.max(0, Math.ceil(remainingMs / 60000));
-      
-      if (i === 0) {
-          const isOrigin = (activeStopIndex === 0);
-          if (mins === 0) {
-              el.innerText = isOrigin ? 'Departing' : 'Due';
-              el.className = 'smart-eta arriving';
-          } else {
-              el.innerText = `${mins}m`;
-              el.className = 'smart-eta';
-          }
-      } else {
-          el.innerText = mins === 0 ? 'Due' : `${mins}m`;
-      }
-  }
-}
-
-function startTimer() {
-  clearInterval(timerInterval);
-  countdown = REFRESH_INTERVAL;
-  
-  timerInterval = setInterval(async () => {
-    countdown--;
-    updateLiveCountdowns();
-
-    if (countdown <= 0) {
-      countdown = REFRESH_INTERVAL;
-      if(currentRouteKey !== 'ALL' && activeStopIndex !== null) {
-          const group = groupedRoutes.find(g => g.key === currentRouteKey);
-          if(group) await fetchAndRenderETAs(group, activeStopIndex);
-      }
-    } 
-  }, 1000);
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    countdown = Math.min(countdown, 1); 
-    startTimer();
-  } else {
-    clearInterval(timerInterval);
-  }
-});
-
-function updateNetworkTelemetry() {
-    const mainEl = document.getElementById('mainContent');
+  document.querySelectorAll('.route-card').forEach(card => {
+    if (card.classList.contains('inactive')) return;
     
-    if (currentRouteKey === 'ALL') {
-        document.getElementById('routeSelectText').innerText = '🔍 Search Route...';
-        document.getElementById('fabGps').style.display = 'none';
-        
-        let favsHtml = `<div style="padding: 24px 16px;">
-            <h2 style="margin-top: 0; font-size: 1.2rem; color: var(--text-secondary); margin-bottom: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">★ Saved Routes</h2>
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-        `;
-        if (favRoutes.length === 0) {
-            favsHtml += `<div style="padding: 30px 20px; text-align: center; color: var(--text-secondary); background: var(--card-bg); border-radius: 12px; font-weight: 500; line-height: 1.5;">You haven't saved any routes yet.<br>Tap the search bar above to find a bus.</div>`;
-        } else {
-            favRoutes.forEach(rk => {
-                const g = groupedRoutes.find(gr => gr.key === rk);
-                if (g) {
-                    const dirColor = getDirectionColor(g.dest_e);
-                    favsHtml += `
-                    <div style="background: var(--card-bg); padding: 20px 16px; border-radius: 12px; border-left: 6px solid ${dirColor}; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: background 0.2s;" onclick="selectRoute('${g.key}')">
-                        <div style="display: flex; gap: 16px; align-items: center;">
-                            <div style="font-size: 1.8rem; font-weight: 900; letter-spacing: -0.5px;">${g.routeNo}</div>
-                            <div style="display: flex; flex-direction: column;">
-                                <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 800;">To / 往</span>
-                                <span style="font-size: 1.2rem; font-weight: 700;">${g.dest_e}</span>
-                            </div>
-                        </div>
-                        <div style="color: var(--accent-blue); font-size: 1.2rem; font-weight: 800;">➔</div>
-                    </div>
-                    `;
-                }
-            });
+    const targetMs = parseInt(card.dataset.targetArrivalTime, 10);
+    const smartEl = card.querySelector('.smart-eta');
+
+    if (smartEl && smartEl.classList.contains('departing')) return; 
+
+    if (!targetMs || isNaN(targetMs)) return;
+
+    const remainingMs = targetMs - now;
+    const mins = Math.max(0, Math.ceil(remainingMs / 60000));
+    
+    card.dataset.smartMins = mins;
+
+    if (smartEl) {
+      if (mins > 0) {
+        smartEl.innerText = `${mins}${getT('min')}`;
+        if (!smartEl.style.color) {
+           smartEl.className = 'smart-eta';
         }
-        favsHtml += `</div></div>`;
-        mainEl.innerHTML = favsHtml;
-        return;
+      } else {
+        if (smartEl.innerText.includes(getT('min'))) {
+           smartEl.innerText = getT('due');
+           smartEl.className = 'smart-eta arriving';
+        }
+      }
     }
-
-    const group = groupedRoutes.find(g => g.key === currentRouteKey);
-    if (!group) return;
-
-    document.getElementById('routeSelectText').innerText = `🚍 ${group.routeNo} To ${group.dest_e}`;
-    document.getElementById('fabGps').style.display = 'flex';
-
-    const stops = routeStopsCache[group.routeIds[0]] || [];
-    
-    let html = `
-        <div style="padding: 20px 16px; background: var(--card-bg); border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 122px; z-index: 30;">
-            <div style="display: flex; align-items: center; gap: 16px;">
-                <div style="font-size: 2.5rem; font-weight: 900; color: var(--text-primary); letter-spacing: -1px; line-height: 1;">${group.routeNo}</div>
-                <div style="display: flex; flex-direction: column;">
-                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 800; margin-bottom: 2px;">To / 往</span>
-                    <span style="font-size: 1.2rem; font-weight: 700; color: #fff;">${group.dest_e}</span>
-                </div>
-            </div>
-            <button onclick="toggleFavoriteRoute()" style="background: none; border: none; font-size: 2rem; cursor: pointer; color: ${favRoutes.includes(group.key) ? '#ffd60a' : 'var(--text-secondary)'}; transition: transform 0.2s;">
-                ${favRoutes.includes(group.key) ? '★' : '☆'}
-            </button>
-        </div>
-        <div style="display: flex; flex-direction: column; background: var(--bg-color); padding-top: 8px;">
-    `;
-
-    stops.forEach((s, idx) => {
-        const isExpanded = (idx === activeStopIndex);
-        html += `
-        <div class="stop-row ${isExpanded ? 'active' : ''}" id="stop-row-${idx}" onclick="selectRouteStop(${idx})">
-            <div class="stop-timeline">
-                <div class="timeline-line" style="${idx === 0 ? 'top: 50%; height: 50%;' : ''} ${idx === stops.length-1 ? 'bottom: 50%; height: 50%; flex: none;' : ''}"></div>
-                <div class="timeline-node"></div>
-            </div>
-            <div class="stop-content" style="${idx === stops.length-1 ? 'border-bottom: none;' : ''}">
-                <div class="stop-name-text">${idx + 1}. ${s.stopName_e}</div>
-                
-                ${isExpanded ? `
-                <div class="stop-expanded-panel" onclick="event.stopPropagation();">
-                    <div id="expanded-loader" style="font-size: 0.95rem; font-weight: 600; color: var(--text-secondary); text-align: center; padding: 10px 0;">Loading live ETA...</div>
-                    <div id="expanded-data" style="display: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid #3a3a3c; padding-bottom: 16px; margin-bottom: 16px;">
-                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                <span id="eta-label-0" style="font-size: 0.75rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Status</span>
-                                <span id="occ-pill" class="occ-pill" style="width: max-content; font-size: 0.8rem; padding: 4px 10px;">--</span>
-                            </div>
-                            <div id="eta-time-0" class="smart-eta" data-target="" style="font-size: 3rem; line-height: 0.9; letter-spacing: -1.5px;">--</div>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <span style="font-size: 1.05rem; color: var(--text-secondary); font-weight: 600;">Next Bus</span>
-                            <span id="eta-time-1" data-target="" style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">--</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 1.05rem; color: var(--text-secondary); font-weight: 600;">3rd Bus</span>
-                            <span id="eta-time-2" data-target="" style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary);">--</span>
-                        </div>
-                    </div>
-                </div>
-                ` : ''}
-            </div>
-        </div>
-        `;
-    });
-    html += `</div>`;
-    mainEl.innerHTML = html;
-
-    if (activeStopIndex !== null) {
-        fetchAndRenderETAs(group, activeStopIndex);
-        setTimeout(() => {
-            const row = document.getElementById('stop-row-' + activeStopIndex);
-            if (row) {
-                const y = row.getBoundingClientRect().top + window.scrollY - 200;
-                window.scrollTo({top: y, behavior: 'smooth'});
-            }
-        }, 50);
-    }
+  });
 }
 
-async function fetchAndRenderETAs(group, targetIndex) {
-    const stops = routeStopsCache[group.routeIds[0]] || [];
-    if(targetIndex < 0 || targetIndex >= stops.length) return;
-    
-    const targetStop = stops[targetIndex];
-    const upstreamStop = targetIndex > 0 ? stops[targetIndex - 1] : null;
-    let combinedArrivals = [];
-    
-    let targetEtaRes = null, upstreamEtaRes = null;
+function startAppLoop() {
+  updateNetworkTelemetry();
+  startTimer();
+}
 
-    if (group.company === 'KMB' || group.company === 'LWB') {
-      const parts = group.routeIds[0].split('_');
-      const routeNo = parts[1], dir = parts[2], serviceType = parts[3];
-      
-      try {
-          const [tResp, uResp] = await Promise.all([
-              fetch(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null),
-              upstreamStop ? fetch(`${KMB_API_BASE}/eta/${upstreamStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null) : Promise.resolve(null)
-          ]);
-          
-          const mapKmbEta = (resObj) => {
-              if (!resObj || !resObj.data) return null;
-              const valid = resObj.data.filter(e => e.dir === dir && e.eta);
-              return { estimatedArrivals: valid.map(e => ({
-                      estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
-                      noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
-                  }))
-              };
-          };
-          if (tResp && tResp.ok) targetEtaRes = mapKmbEta(await tResp.json());
-          if (uResp && uResp.ok) upstreamEtaRes = mapKmbEta(await uResp.json());
-      } catch(e) {}
+async function updateNetworkTelemetry() {
+  if (!currentStopKey && !currentRouteKey.startsWith('COMMUTE_')) return;
+  
+  try {
+    let relevantGroups = [];
+
+    if (currentRouteKey === 'COMMUTE_WORK') {
+        let r3M = groupedRoutes.find(g => g.routeNo === '3M' && g.dest_e.toLowerCase().includes('tung chung'));
+        if (r3M) {
+            let originStops = getStopsForGroup(r3M);
+            let originIndex = originStops.findIndex(s => s.stopName_e.includes('Lo Uk Tsuen'));
+            if (originIndex > -1) relevantGroups.push({ group: r3M, matchDetails: [{ routeId: r3M.routeIds[0], stops: originStops, targetIndex: originIndex, isLastStop: false }] });
+        }
+        
+        let rE36 = groupedRoutes.find(g => g.routeNo === 'E36' && g.dest_e.toLowerCase().includes('yuen long'));
+        if (rE36) {
+            let tStops = getStopsForGroup(rE36);
+            let tIndex = tStops.findIndex(s => s.stopName_e.includes('Tung Chung Cable Car'));
+            if (tIndex > -1) relevantGroups.push({ group: rE36, matchDetails: [{ routeId: rE36.routeIds[0], stops: tStops, targetIndex: tIndex, isLastStop: false }], isTransfer: true, transferName: 'Walk to Cable Car Terminal' });
+        }
+    } else if (currentRouteKey === 'COMMUTE_HOME') {
+        let rE36 = groupedRoutes.find(g => g.routeNo === 'E36' && g.dest_e.toLowerCase().includes('airport'));
+        if (rE36) {
+            let oStops = getStopsForGroup(rE36);
+            let oIndex = oStops.findIndex(s => s.stopName_e.includes('YOHO Mall I'));
+            if (lastKnownPos) {
+                let closest = null, minDist = Infinity;
+                oStops.forEach((s, idx) => {
+                    let d = calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, parseFloat(s.latitude), parseFloat(s.longitude));
+                    if (d < minDist) { minDist = d; closest = idx; }
+                });
+                if (closest !== null && minDist < 2.0) oIndex = closest; 
+            }
+            if (oIndex > -1) relevantGroups.push({ group: rE36, matchDetails: [{ routeId: rE36.routeIds[0], stops: oStops, targetIndex: oIndex, isLastStop: false }] });
+        }
+        
+        let r3M = groupedRoutes.find(g => g.routeNo === '3M' && g.dest_e.toLowerCase().includes('mui wo'));
+        if (r3M) {
+            let tStops = getStopsForGroup(r3M);
+            let tIndex = tStops.findIndex(s => s.stopName_e.includes('Tung Chung Station Bus Terminus'));
+            if (tIndex > -1) relevantGroups.push({ group: r3M, matchDetails: [{ routeId: r3M.routeIds[0], stops: tStops, targetIndex: tIndex, isLastStop: false }], isTransfer: true, transferName: 'Walk to Bus Terminus' });
+        }
     } else {
-      const rawNlbId = group.routeIds[0].replace('NLB_', '');
-      try {
-          [targetEtaRes, upstreamEtaRes] = await Promise.all([
-              fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`).catch(()=>null),
-              upstreamStop ? fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${upstreamStop.stopId}&language=en`).catch(()=>null) : Promise.resolve(null)
-          ]);
-      } catch(e) {}
+        let groupsToCheck = currentRouteKey === 'ALL' ? groupedRoutes : groupedRoutes.filter(g => g.key === currentRouteKey);
+        for (const group of groupsToCheck) {
+          const matchDetails = [];
+          for (const routeId of group.routeIds) {
+            const stops = routeStopsCache[routeId] || [];
+            const targetIndex = stops.findIndex(s => getGlobalStopKey(s) === currentStopKey);
+            
+            if (targetIndex !== -1) {
+              const isLastStop = (targetIndex === stops.length - 1);
+              matchDetails.push({ routeId, stops, targetIndex, isLastStop });
+            }
+          }
+          if (matchDetails.length > 0) relevantGroups.push({ group, matchDetails });
+        }
     }
+
+    if (detailModeRouteKey) {
+        relevantGroups = relevantGroups.filter(i => {
+            let k = i.group.key + (i.isTransfer ? '_T' : '');
+            return k === detailModeRouteKey;
+        });
+    }
+
+    const listEl = document.getElementById('routeList');
     
-    if (targetEtaRes && targetEtaRes.estimatedArrivals) {
-      targetEtaRes.estimatedArrivals.forEach(arr => {
-        combinedArrivals.push({ arrival: arr });
-      });
+    const loadingEl = document.getElementById('loadingText');
+    if (loadingEl) loadingEl.remove();
+
+    if (relevantGroups.length === 0) {
+      listEl.innerHTML = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">${getT('noBuses')}</div>`;
+      return;
     }
+
+    for (const item of relevantGroups) {
+      const group = item.group;
+      const isGroupTerminating = item.matchDetails.every(m => m.isLastStop);
+      const groupKey = group.key + (item.isTransfer ? '_T' : '');
+      const cardId = `route-${groupKey}`;
+      const destName = isGroupTerminating ? getT('terminatingHere') : getLocalizedName(group, 'dest');
+      const terminatingClass = isGroupTerminating ? 'terminating' : '';
+      const dirColor = getDirectionColor(group.dest_e);
+      
+      let transferBadgeHtml = item.isTransfer ? `<div style="color: var(--dir-blue); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">🔄 ${item.transferName}</div>` : '';
+
+      if (!document.getElementById(cardId)) {
+        listEl.insertAdjacentHTML('beforeend', `
+          <div class="route-card inactive ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${groupKey}')">
+            ${transferBadgeHtml}
+            <div class="route-main-row">
+                <div class="route-left">
+                <div style="display:flex; flex-direction:column;">
+                    <div class="route-no" id="no-${groupKey}">${group.routeNo}</div>
+                    ${group.company !== 'NLB' ? `<div class="route-company">${group.company}</div>` : ''}
+                </div>
+                <div class="route-info">
+                    <div class="route-dest" id="dest-${groupKey}">${isGroupTerminating ? '' : getT('to') + ' '}${destName}</div>
+                    <div id="next-stop-${groupKey}" style="font-size:0.75rem; color:var(--text-secondary); margin-top:1px; display:none;"></div>
+                    <div class="compact-occupancy" id="occ-sec-${groupKey}" style="display:none;">
+                       <span id="bars-${groupKey}" class="occ-pill"></span>
+                    </div>
+                </div>
+                </div>
+                <div class="eta-container">
+                <div class="eta-box" id="box-off-${groupKey}" style="display: none;">
+                    <span class="eta-label" id="lbl-off-${groupKey}">${getT('official')}</span>
+                    <span class="official-eta" id="off-${groupKey}">--</span>
+                </div>
+                <div class="eta-box" id="box-smart-${groupKey}" onclick="event.stopPropagation(); toggleAlarm('${group.routeNo}', '${groupKey}')" title="Tap to set alarm">
+                    <span class="eta-label" id="lbl-smart-${groupKey}">🔔 ${getT('actual')}</span>
+                    <span class="smart-eta" id="smart-${groupKey}">--</span>
+                </div>
+                </div>
+            </div>
+            <div class="subsequent-etas" id="subs-${groupKey}"></div>
+          </div>
+        `);
+      } else {
+         const dEl = document.getElementById(`dest-${groupKey}`);
+         if (dEl) dEl.innerText = `${isGroupTerminating ? '' : getT('to') + ' '}${destName}`;
+         
+         const cEl = document.getElementById(cardId);
+         cEl.style.borderLeftColor = dirColor;
+         if (isGroupTerminating) cEl.classList.add('terminating');
+         else cEl.classList.remove('terminating');
+      }
+    }
+
+    const validCardIds = relevantGroups.map(i => `route-${i.group.key + (i.isTransfer ? '_T' : '')}`);
+    document.querySelectorAll('.route-card').forEach(c => {
+      if (!validCardIds.includes(c.id)) c.remove();
+    });
+
+    await Promise.all(relevantGroups.map(item => processSmartArrivals(item)));
+
+    const cards = Array.from(listEl.querySelectorAll('.route-card'));
+    
+    cards.sort((a, b) => {
+        const aTerm = a.classList.contains('terminating');
+        const bTerm = b.classList.contains('terminating');
+        if (aTerm && !bTerm) return 1;  
+        if (!aTerm && bTerm) return -1; 
+        
+        if (currentRouteKey.startsWith('COMMUTE_')) return 0;
+        
+        return parseInt(a.dataset.smartMins, 10) - parseInt(b.dataset.smartMins, 10);
+    });
+    
+    cards.forEach(card => listEl.appendChild(card));
+
+    const oldTermBtn = document.getElementById('terminatingToggleContainer');
+    if (oldTermBtn) oldTermBtn.remove();
+    const oldInacBtn = document.getElementById('inactiveToggleContainer');
+    if (oldInacBtn) oldInacBtn.remove();
+
+    if (!detailModeRouteKey && !currentRouteKey.startsWith('COMMUTE_')) {
+        const terminatingCards = cards.filter(c => c.classList.contains('terminating'));
+        if (terminatingCards.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `
+                <div id="terminatingToggleContainer" style="padding: 15px 20px 0px 20px; text-align: center;">
+                    <button onclick="toggleTerminating()" class="toggle-btn" id="toggleTerminatingBtn">
+                        ${showTerminating ? getT('hideTerminating') : getT('showTerminating')}
+                    </button>
+                </div>
+            `);
+        }
+        
+        const inactiveCards = cards.filter(c => c.classList.contains('inactive') && !c.classList.contains('terminating'));
+        if (inactiveCards.length > 0) {
+            listEl.insertAdjacentHTML('beforeend', `
+                <div id="inactiveToggleContainer" style="padding: 15px 20px 20px 20px; text-align: center;">
+                    <button onclick="toggleInactive()" class="toggle-btn" id="toggleInactiveBtn">
+                        ${showInactive ? getT('hideInactive') : getT('showInactive')}
+                    </button>
+                </div>
+            `);
+        }
+    }
+
+  } catch (err) {}
+}
+
+async function processSmartArrivals(item) {
+  const group = item.group;
+  const matchDetails = item.matchDetails;
+  const groupKey = group.key + (item.isTransfer ? '_T' : '');
+  const cardEl = document.getElementById(`route-${groupKey}`);
+  const isGroupTerminating = cardEl && cardEl.classList.contains('terminating');
+  
+  try {
+    const offEl = document.getElementById(`off-${groupKey}`);
+    const smartEl = document.getElementById(`smart-${groupKey}`);
+    const occSecEl = document.getElementById(`occ-sec-${groupKey}`);
+    const boxOffEl = document.getElementById(`box-off-${groupKey}`);
+    const lblSmartEl = document.getElementById(`lbl-smart-${groupKey}`);
+    const subsEl = document.getElementById(`subs-${groupKey}`);
+    const nextStopEl = document.getElementById(`next-stop-${groupKey}`);
+
+    let combinedArrivals = [];
+
+    await Promise.all(matchDetails.map(async (m) => {
+      const targetStop = m.stops[m.targetIndex];
+      const upstreamStop = m.targetIndex > 0 ? m.stops[m.targetIndex - 1] : null;
+
+      let targetEtaRes = null, upstreamEtaRes = null;
+
+      if (m.routeId.startsWith('KMB_')) {
+        const parts = m.routeId.split('_');
+        const routeNo = parts[1];
+        const dir = parts[2]; 
+        const serviceType = parts[3];
+        
+        try {
+            const [tResp, uResp] = await Promise.all([
+                fetch(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null),
+                upstreamStop ? fetch(`${KMB_API_BASE}/eta/${upstreamStop.stopId}/${routeNo}/${serviceType}`).catch(()=>null) : Promise.resolve(null)
+            ]);
+            
+            const mapKmbEta = (resObj) => {
+                if (!resObj || !resObj.data) return null;
+                const valid = resObj.data.filter(e => e.dir === dir && e.eta);
+                return {
+                    estimatedArrivals: valid.map(e => ({
+                        estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
+                        generateTime: e.data_timestamp.replace('T', ' ').substring(0, 19),
+                        noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                    }))
+                };
+            };
+
+            if (tResp && tResp.ok) targetEtaRes = mapKmbEta(await tResp.json());
+            if (uResp && uResp.ok) upstreamEtaRes = mapKmbEta(await uResp.json());
+        } catch(e) {}
+      } 
+      else {
+        const rawNlbId = m.routeId.replace('NLB_', '');
+        [targetEtaRes, upstreamEtaRes] = await Promise.all([
+            fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`).catch(()=>null),
+            upstreamStop ? fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${upstreamStop.stopId}&language=en`).catch(()=>null) : Promise.resolve(null)
+        ]);
+      }
+      
+      if (targetEtaRes && targetEtaRes.estimatedArrivals) {
+        targetEtaRes.estimatedArrivals.forEach(arr => {
+          combinedArrivals.push({
+            arrival: arr,
+            targetStop,
+            upstreamStop,
+            upstreamEtaRes,
+            targetIndex: m.targetIndex,
+            totalStops: m.stops.length,
+            stops: m.stops 
+          });
+        });
+      }
+    }));
 
     const now = getNow();
     const currentHour = new Date(now).getHours();
@@ -827,59 +1681,103 @@ async function fetchAndRenderETAs(group, targetIndex) {
     const isNight = (currentHour >= 20 || currentHour <= 5);
 
     combinedArrivals.sort((a, b) => a.arrival.estimatedArrivalTime.localeCompare(b.arrival.estimatedArrivalTime));
+    const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
-    const loader = document.getElementById('expanded-loader');
-    const dataPanel = document.getElementById('expanded-data');
-    if(!loader || !dataPanel) return;
-
-    const isOrigin = targetIndex === 0 || targetStop.stopName_e.toLowerCase().includes('terminus');
-
-    // DOM Elements to update
-    const elTime0 = document.getElementById('eta-time-0');
-    const elLabel0 = document.getElementById('eta-label-0');
-    const elOcc = document.getElementById('occ-pill');
-    const elTime1 = document.getElementById('eta-time-1');
-    const elTime2 = document.getElementById('eta-time-2');
-    const stateKey = `${group.key}_${targetIndex}`;
-
-    if (combinedArrivals.length === 0) {
-        const state = busStateMap[stateKey];
-        if (state && state.lastEtaMins === 0 && (now - state.lastRealTime < 180000)) {
-            loader.style.display = 'none';
-            dataPanel.style.display = 'block';
-            elTime0.innerText = 'Departing';
-            elTime0.className = 'smart-eta departing';
-            elTime0.dataset.target = "";
-            elLabel0.innerText = `🔔 Status`;
-            elOcc.style.display = 'none';
-            elTime1.innerText = '--';
-            elTime2.innerText = '--';
-            return;
+    if (nextStopEl && activeItem) {
+        const nextStopObj = activeItem.stops[activeItem.targetIndex + 1];
+        if (nextStopObj && !isGroupTerminating) {
+            nextStopEl.innerText = `${getT('nextStop')}: ${getLocalizedName(nextStopObj, 'stopName')}`;
+            nextStopEl.style.display = 'block';
+        } else {
+            nextStopEl.style.display = 'none';
         }
-        loader.innerText = 'No further departures scheduled.';
-        return;
     }
 
-    loader.style.display = 'none';
-    dataPanel.style.display = 'block';
+    if (subsEl && activeItem) {
+        if (combinedArrivals.length > 1) {
+            let subsHtml = '';
+            for (let i = 1; i < combinedArrivals.length && i <= 2; i++) {
+                const cBus = combinedArrivals[i].arrival;
+                const cArr = new Date(cBus.estimatedArrivalTime.replace(/-/g, '/'));
+                
+                const cRawMins = Math.max(0, Math.floor((cArr.getTime() - now) / 60000));
+                const isNoGPS = cBus.noGPS === 1 || cBus.noGPS === '1';
+                
+                const timeText = cRawMins === 0 ? (activeItem.targetIndex === 0 ? getT('departingSoon') : getT('due')) : `${cRawMins}${getT('min')}`;
+                const labelText = isNoGPS ? getT('scheduled') : getT('actual');
+                const timeColor = isNoGPS ? 'var(--accent-orange)' : 'var(--text-primary)';
+                const seqName = i === 1 ? getT('next1') : getT('next2');
+                
+                subsHtml += `
+                    <div class="sub-eta-row">
+                        <span class="sub-eta-label">${seqName} <span style="font-size:0.75rem; opacity:0.6; margin-left:4px;">(${labelText})</span></span>
+                        <span class="sub-eta-time" style="color: ${timeColor}">${timeText}</span>
+                    </div>
+                `;
+            }
+            subsEl.innerHTML = subsHtml;
+        } else {
+            subsEl.innerHTML = `<div class="sub-eta-row" style="justify-content:center; color: var(--text-secondary); font-size: 0.9rem;">${getT('noMore')}</div>`;
+        }
+    }
 
-    const activeBus = combinedArrivals[0].arrival;
+    if (combinedArrivals.length === 0) {
+      const state = busStateMap[groupKey];
+      
+      if (state && state.lastEtaMins === 0 && (now - state.lastRealTime < 180000)) {
+        if (smartEl) {
+          smartEl.innerText = getT('departing'); 
+          smartEl.className = 'smart-eta departing';
+        }
+        if (offEl) offEl.innerText = '--';
+        if (lblSmartEl) lblSmartEl.innerText = `🔔 ${getT('arrivingLabel')}`;
+        
+        if (cardEl) {
+          cardEl.dataset.smartMins = 0;
+          cardEl.classList.remove('inactive');
+        }
+        if (boxOffEl) boxOffEl.style.display = 'none';
+        return;
+      }
+
+      if (cardEl) {
+        cardEl.dataset.smartMins = 9999;
+        cardEl.dataset.targetArrivalTime = "";
+        cardEl.classList.add('inactive');
+      }
+      if (offEl) offEl.innerText = '--';
+      if (smartEl) smartEl.innerText = '--';
+      if (occSecEl) occSecEl.style.display = 'none';
+      if (boxOffEl) boxOffEl.style.display = 'none';
+      if (nextStopEl) nextStopEl.style.display = 'none';
+      return;
+    }
+
+    const activeBus = activeItem.arrival;
     const arrivalTime = new Date(activeBus.estimatedArrivalTime.replace(/-/g, '/'));
     const pseudoBusId = activeBus.estimatedArrivalTime.replace(/[^0-9]/g, ''); 
     const isNoGPS = activeBus.noGPS === 1 || activeBus.noGPS === '1';
 
     let rawEtaMins = Math.max(0, Math.floor((arrivalTime.getTime() - now) / 60000));
 
-    let state = busStateMap[stateKey];
+    let state = busStateMap[groupKey];
     if (!state) {
         state = {
-            filter: new KalmanFilter1D(0.1, rawEtaMins, 1.0), timestamp: now, pseudoBusId: pseudoBusId, 
-            occState: 'seating', firstZeroTime: (rawEtaMins === 0) ? now : null,
-            lastEtaMins: rawEtaMins, lastRealTime: now, driftVelocity: 0,
-            isSpongeLocked: false, isScheduled: isNoGPS, isGhosting: false, ghostTargetMs: null
+            filter: new KalmanFilter1D(0.1, rawEtaMins, 1.0),
+            timestamp: now, 
+            pseudoBusId: pseudoBusId, 
+            occState: 'seating',
+            firstZeroTime: (rawEtaMins === 0) ? now : null,
+            lastEtaMins: rawEtaMins,
+            lastRealTime: now,
+            driftVelocity: 0,
+            isSpongeLocked: false,
+            isScheduled: isNoGPS,
+            isGhosting: false,
+            ghostTargetMs: null
         };
-        busStateMap[stateKey] = state;
-    }
+        busStateMap[groupKey] = state;
+    } 
 
     let isGhostActive = false;
     let ghostMins = 0;
@@ -898,15 +1796,21 @@ async function fetchAndRenderETAs(group, targetIndex) {
     if (state.isGhosting) {
         ghostMins = Math.max(0, Math.ceil((state.ghostTargetMs - now) / 60000));
         if (ghostMins === 0 && (now - state.ghostTargetMs > 60000)) {
-            state.isGhosting = false; state.ghostTargetMs = null; state.pseudoBusId = pseudoBusId;
+            state.isGhosting = false;
+            state.ghostTargetMs = null;
+            state.pseudoBusId = pseudoBusId;
             state.filter = new KalmanFilter1D(0.1, rawEtaMins, 1.0);
         } else {
             isGhostActive = true;
         }
     } else if (state.pseudoBusId !== pseudoBusId) {
-        state.pseudoBusId = pseudoBusId; state.firstZeroTime = (rawEtaMins === 0) ? now : null;
-        state.lastEtaMins = rawEtaMins; state.lastRealTime = now; state.driftVelocity = 0;
-        state.isSpongeLocked = false; state.isScheduled = isNoGPS;
+        state.pseudoBusId = pseudoBusId;
+        state.firstZeroTime = (rawEtaMins === 0) ? now : null;
+        state.lastEtaMins = rawEtaMins;
+        state.lastRealTime = now;
+        state.driftVelocity = 0;
+        state.isSpongeLocked = false;
+        state.isScheduled = isNoGPS;
         state.filter = new KalmanFilter1D(0.1, rawEtaMins, 1.0); 
     }
 
@@ -921,15 +1825,19 @@ async function fetchAndRenderETAs(group, targetIndex) {
         }
     }
 
-    const spongeConfig = SPONGE_STOPS[targetStop.stopName_e];
+    const currentStopName = activeItem.targetStop.stopName_e;
+    const spongeConfig = SPONGE_STOPS[currentStopName];
+
     if (spongeConfig && spongeConfig.routes.includes(group.routeNo)) {
-        const inActiveWindow = spongeConfig.triggerWindows.some(w => w.days.includes(currentDay) && w.hours.includes(currentHour));
+        const inActiveWindow = spongeConfig.triggerWindows.some(w => 
+            w.days.includes(currentDay) && w.hours.includes(currentHour)
+        );
         if (inActiveWindow && state.driftVelocity >= spongeConfig.driftThreshold) {
             state.isSpongeLocked = true;
         }
     }
 
-    const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), targetIndex, stops.length, now, state.isSpongeLocked);
+    const { pct } = calculateOccupancy(group.routeNo, group.dest_e, combinedArrivals.map(c => c.arrival), activeItem.targetIndex, activeItem.totalStops, now, state.isSpongeLocked);
     let occState = pct > 95 ? 'full' : (pct > 75 ? 'standing' : 'seating');
 
     let dwellPenaltyMins = 0;
@@ -938,30 +1846,40 @@ async function fetchAndRenderETAs(group, targetIndex) {
     else if (pct > 50) dwellPenaltyMins = 0.5;
 
     let effectiveRawEta = rawEtaMins;
-    if (rawEtaMins > 3 && !isNoGPS) effectiveRawEta += dwellPenaltyMins;
+    if (rawEtaMins > 3 && !isNoGPS) {
+        effectiveRawEta += dwellPenaltyMins;
+    }
 
+    const barsEl = document.getElementById(`bars-${groupKey}`);
     const occInfo = getOccData(occState);
-    elOcc.style.display = 'inline-flex';
-    elOcc.className = `occ-pill ${occInfo.class}`;
-    elOcc.innerText = `${occInfo.icon} ${occInfo.key} · ${pct}%`;
+    if (barsEl) {
+        barsEl.className = `occ-pill ${occInfo.class}`;
+        barsEl.innerText = `${occInfo.icon} ${getT(occInfo.key)} · ${pct}%`;
+    }
+    
+    if (isGroupTerminating && occSecEl) {
+       occSecEl.style.display = 'none';
+    } else if (occSecEl) {
+       occSecEl.style.display = 'flex';
+    }
 
     let smartMins = effectiveRawEta;
     
     if (isGhostActive) {
         smartMins = ghostMins;
-        elLabel0.innerText = `🔔 Actual ETA`;
-        elTime0.style.color = 'var(--accent-orange)';
+        lblSmartEl.innerText = `🔔 ${getT('actual')}`;
+        smartEl.style.color = 'var(--accent-orange)';
         rawEtaMins = ghostMins; 
     } else if (rawEtaMins >= 0) {
       if (isNoGPS) {
         smartMins = rawEtaMins; 
-        elLabel0.innerText = `🔔 Scheduled`;
-        elTime0.style.color = 'var(--accent-orange)';
+        lblSmartEl.innerText = `🔔 ${getT('scheduled')}`;
+        smartEl.style.color = 'var(--accent-orange)';
         state.isScheduled = true;
         state.occState = occState;
       } else {
-        elLabel0.innerText = `🔔 Actual ETA`;
-        elTime0.style.color = ''; 
+        lblSmartEl.innerText = `🔔 ${getT('actual')}`;
+        smartEl.style.color = ''; 
         state.occState = occState;
         
         const dtMins = (now - state.timestamp) / 60000;
@@ -974,14 +1892,15 @@ async function fetchAndRenderETAs(group, targetIndex) {
            smartMins = Math.round(state.filter.x);
         }
         
-        if (upstreamStop && upstreamEtaRes && upstreamEtaRes.estimatedArrivals && upstreamEtaRes.estimatedArrivals.length > 0) {
+        if (activeItem.upstreamStop && activeItem.upstreamEtaRes && activeItem.upstreamEtaRes.estimatedArrivals && activeItem.upstreamEtaRes.estimatedArrivals.length > 0) {
           let validUpstreamBus = null;
           let upstreamEtaMins = 0;
           let bestMatchDiff = Infinity;
           
-          for (let uBus of upstreamEtaRes.estimatedArrivals) {
+          for (let uBus of activeItem.upstreamEtaRes.estimatedArrivals) {
               const uArrTime = new Date(uBus.estimatedArrivalTime.replace(/-/g, '/'));
               const uEtaMins = Math.max(0, Math.floor((uArrTime - now) / 60000));
+              
               const diff = effectiveRawEta - uEtaMins;
               if (diff >= -2 && diff <= 15) {
                   if (Math.abs(diff) < bestMatchDiff) {
@@ -994,16 +1913,21 @@ async function fetchAndRenderETAs(group, targetIndex) {
 
           if (validUpstreamBus) {
               const distanceKm = calculateDistanceKm(
-                parseFloat(upstreamStop.latitude), parseFloat(upstreamStop.longitude),
-                parseFloat(targetStop.latitude), parseFloat(targetStop.longitude)
+                parseFloat(activeItem.upstreamStop.latitude), parseFloat(activeItem.upstreamStop.longitude),
+                parseFloat(activeItem.targetStop.latitude), parseFloat(activeItem.targetStop.longitude)
               );
+              
               let effectiveMaxSpeed = (currentHour >= 19 || currentHour <= 6) ? 55.0 : 35.0; 
               const impliedTransitMins = effectiveRawEta - upstreamEtaMins;
               if (impliedTransitMins > 0) {
                   const impliedSpeedKmH = (distanceKm / (impliedTransitMins / 60));
-                  if (impliedSpeedKmH < effectiveMaxSpeed) effectiveMaxSpeed = Math.max(10.0, impliedSpeedKmH); 
+                  if (impliedSpeedKmH < effectiveMaxSpeed) {
+                      effectiveMaxSpeed = Math.max(10.0, impliedSpeedKmH); 
+                  }
               }
+              
               const minTransitMins = Math.max(0.5, (distanceKm / effectiveMaxSpeed) * 60);
+
               if (effectiveRawEta < upstreamEtaMins + Math.floor(minTransitMins)) {
                 smartMins = Math.ceil(upstreamEtaMins + minTransitMins);
                 if (state.filter) state.filter.x = smartMins; 
@@ -1013,58 +1937,253 @@ async function fetchAndRenderETAs(group, targetIndex) {
       }
     } else {
       smartMins = 0;
-      delete busStateMap[stateKey]; 
+      delete busStateMap[groupKey]; 
     }
 
-    const oldTargetMs = parseInt(elTime0.dataset.target, 10);
-    const calculatedTargetMs = now + (smartMins * 60000);
-    let finalTargetMs = calculatedTargetMs;
+    const newArrivalMs = now + (smartMins * 60000);
+    const oldArrivalMs = parseInt(cardEl.dataset.targetArrivalTime, 10);
+    let finalTargetMs = newArrivalMs;
 
-    if (oldTargetMs && !isNaN(oldTargetMs)) {
-        const driftMs = calculatedTargetMs - oldTargetMs;
-        if (driftMs > 0 && driftMs < 60000) finalTargetMs = oldTargetMs;
+    if (oldArrivalMs && !isNaN(oldArrivalMs)) {
+        const driftMs = newArrivalMs - oldArrivalMs;
+        if (driftMs > 0 && driftMs < 60000) {
+            finalTargetMs = oldArrivalMs;
+        }
     }
     
-    elTime0.dataset.target = finalTargetMs;
+    cardEl.dataset.targetArrivalTime = finalTargetMs;
     const finalSmartMins = Math.max(0, Math.ceil((finalTargetMs - now) / 60000));
+    
+    if (cardEl) {
+        cardEl.dataset.smartMins = finalSmartMins;
+        cardEl.classList.remove('inactive');
+    }
+    
+    const isOrigin = activeItem.targetIndex === 0 || currentStopName.toLowerCase().includes('terminus');
+    const departingText = isOrigin ? getT('departingSoon') : getT('due');
+    
+    offEl.innerText = rawEtaMins === 0 ? departingText : `${rawEtaMins}${getT('min')}`;
 
     if (finalSmartMins === 0) {
       const zeroDuration = (state && state.firstZeroTime) ? (now - state.firstZeroTime) : 0;
+      
       if (zeroDuration > 75000 && !isNight) { 
-          elTime0.innerText = 'Delayed';
-          elTime0.className = 'smart-eta delayed';
+          lblSmartEl.innerText = `🔔 ${getT('arrivingLabel')}`;
+          smartEl.innerText = getT('delayed');
+          smartEl.className = 'smart-eta delayed';
       } else {
-          elTime0.innerText = isOrigin ? 'Departing' : 'Due';
-          elTime0.className = 'smart-eta arriving';
+          lblSmartEl.innerText = `🔔 ${getT('arrivingLabel')}`;
+          smartEl.innerText = departingText;
+          smartEl.className = 'smart-eta arriving';
       }
     } else {
-      elTime0.innerText = `${finalSmartMins}m`;
-      elTime0.className = 'smart-eta';
+      smartEl.innerText = `${finalSmartMins}${getT('min')}`;
+      smartEl.className = 'smart-eta';
     }
 
-    // Bus 2 and 3
-    if (combinedArrivals.length > 1) {
-        const c2 = combinedArrivals[1].arrival;
-        const ms2 = new Date(c2.estimatedArrivalTime.replace(/-/g, '/')).getTime();
-        elTime1.dataset.target = ms2;
-        const mins2 = Math.max(0, Math.ceil((ms2 - now) / 60000));
-        elTime1.innerText = mins2 === 0 ? 'Due' : `${mins2}m`;
-    } else {
-        elTime1.dataset.target = "";
-        elTime1.innerText = "--";
+    if (boxOffEl) {
+      boxOffEl.style.display = (finalSmartMins === rawEtaMins && !isGhostActive) ? 'none' : 'flex';
+    }
+    
+    if (detailModeRouteKey === groupKey && !isGroupTerminating) {
+        let timelineHtml = `<div class="timeline-container">
+            <div style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; text-transform:uppercase; margin-bottom:12px; padding-left:24px;">${getT('routeStops')}</div>`;
+        
+        let cumulativeDist = 0;
+        const startIdx = activeItem.targetIndex;
+        const stops = activeItem.stops;
+        const baseColor = getDirectionColor(group.dest_e);
+
+        for (let i = startIdx + 1; i < stops.length; i++) {
+            cumulativeDist += calculateDistanceKm(
+                parseFloat(stops[i-1].latitude), parseFloat(stops[i-1].longitude),
+                parseFloat(stops[i].latitude), parseFloat(stops[i].longitude)
+            );
+
+            const stopsDiff = i - startIdx;
+            const travelMins = Math.round((cumulativeDist * 2.2) + (stopsDiff * 0.6));
+            const stopEtaMins = finalSmartMins + travelMins;
+
+            const arrivalDate = new Date(now + (stopEtaMins * 60000));
+            const timeString = arrivalDate.toLocaleTimeString(
+                currentLang === 'en' ? 'en-US' : 'zh-HK',
+                { hour: 'numeric', minute: '2-digit', hour12: currentLang==='en' }
+            );
+
+            timelineHtml += `
+                <div class="timeline-row">
+                    <div class="timeline-left">
+                        <div class="timeline-node" style="border-color: ${baseColor}"></div>
+                        <div class="timeline-line"></div>
+                        <div class="timeline-stop-name">${getLocalizedName(stops[i], 'stopName')}</div>
+                    </div>
+                    <div class="timeline-right">
+                        <div class="timeline-time">${timeString}</div>
+                        <div class="timeline-dur">+${travelMins}${getT('min')}</div>
+                    </div>
+                </div>
+            `;
+        }
+        timelineHtml += `</div>`;
+        subsEl.innerHTML += timelineHtml;
     }
 
-    if (combinedArrivals.length > 2) {
-        const c3 = combinedArrivals[2].arrival;
-        const ms3 = new Date(c3.estimatedArrivalTime.replace(/-/g, '/')).getTime();
-        elTime2.dataset.target = ms3;
-        const mins3 = Math.max(0, Math.ceil((ms3 - now) / 60000));
-        elTime2.innerText = mins3 === 0 ? 'Due' : `${mins3}m`;
-    } else {
-        elTime2.dataset.target = "";
-        elTime2.innerText = "--";
+  } catch (err) {
+    if (cardEl) {
+        cardEl.dataset.smartMins = 9999;
+        cardEl.classList.add('inactive');
     }
+  }
 }
+
+function getOccData(state) {
+    if (state === 'full') return { class: 'occ-full', key: 'busFull', icon: '⚠️' };
+    if (state === 'standing') return { class: 'occ-standing', key: 'standing', icon: '🧍' };
+    return { class: 'occ-seating', key: 'seatingAvail', icon: '💺' };
+}
+
+function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopIndex, totalStops, currentTimestamp, isSpongeLocked) {
+  if (isSpongeLocked) {
+      return { pct: 100 };
+  }
+
+  const date = new Date(currentTimestamp);
+  const hour = date.getHours();
+  const day = date.getDay(); 
+  const isWeekend = (day === 0 || day === 6);
+  const dest = (destName || '').toLowerCase();
+  
+  let baseLoad = 30; 
+  const isTouristRoute = ['1', '2', '4', '11', '21', '23', 'A35', 'N35'].includes(routeNo);
+  const isE_Route = routeNo.startsWith('E');
+  const isFeeder = ['37M', '38', '39M', 'B4', 'B6'].includes(routeNo);
+
+  let spatialMultiplier = 1.0; 
+  let capacityDivider = 1.0; 
+  let progress = Math.max(0, Math.min(1, currentStopIndex / Math.max(1, totalStops - 1)));
+
+  if (routeNo === '3M') {
+      capacityDivider = 1.1; 
+      if (dest.includes('tung chung')) {
+          baseLoad = (hour >= 10 && hour <= 19) ? 85 : 45;
+          spatialMultiplier = 0.4 + (progress * 0.7); 
+      } else {
+          baseLoad = (hour >= 15 && hour <= 20) ? 80 : 40;
+          spatialMultiplier = 1.1 - (progress * 0.7); 
+      }
+  } else if (!isWeekend) {
+    if (hour >= 7 && hour <= 9) {
+      if (isFeeder) {
+          baseLoad = 55;
+      } else {
+          baseLoad = (dest.includes('tung chung') || dest.includes('mui wo') || isE_Route) ? 80 : 30;
+      }
+      if (isTouristRoute) baseLoad = 25; 
+    } else if (hour >= 10 && hour <= 16) {
+      baseLoad = 30;
+    } else if (hour >= 17 && hour <= 20) {
+      if (isFeeder || isE_Route || dest.includes('tung chung')) {
+          baseLoad = 80;
+      } else if (routeNo === '3M' && dest.includes('mui wo')) {
+          baseLoad = 75; 
+      } else if (isTouristRoute && dest.includes('mui wo')) {
+          baseLoad = 25; 
+      } else {
+          baseLoad = 35;
+      }
+    } else if (hour >= 21) {
+      baseLoad = 15;
+    }
+  } else {
+    if (hour >= 9 && hour <= 14) {
+      baseLoad = isTouristRoute ? 85 : 40; 
+    } else if (hour >= 15 && hour <= 19) {
+      if (dest.includes('tung chung')) {
+          baseLoad = 90; 
+      } else if (isTouristRoute && dest.includes('mui wo')) {
+          baseLoad = 35; 
+      } else {
+          baseLoad = 40;
+      }
+    } else {
+      baseLoad = 20;
+    }
+  }
+
+  if (routeNo !== '3M') {
+      if (isE_Route) {
+          if (progress < 0.15) {
+              spatialMultiplier = 1.2; 
+          } else {
+              spatialMultiplier = baseLoad > 60 ? 1.4 : 0.8; 
+          }
+      } else if (isFeeder) {
+          spatialMultiplier = progress < 0.75 ? 1.0 : Math.max(0, (1 - progress) / 0.25);
+      } else if (isTouristRoute) {
+          if (progress < 0.15) {
+              spatialMultiplier = 0.5;
+          } else if (progress > 0.8) {
+              spatialMultiplier = 0.3; 
+          } else {
+              spatialMultiplier = baseLoad > 60 ? 1.1 : 0.6;
+          }
+      } else {
+          spatialMultiplier = Math.sin(progress * Math.PI);
+      }
+
+      const strictSingle = ['1', '2', '11', '21', '34', '36', 'A35', 'N35'];
+      const strictDouble = ['37M', '38', '39M', 'B2', 'B2P', 'B4', 'B6', '4', 'E36']; 
+      
+      if (strictSingle.includes(routeNo)) capacityDivider = 0.6; 
+      else if (strictDouble.includes(routeNo)) capacityDivider = 1.3; 
+  }
+
+  const stableNoise = generateDeterministicNoise(routeNo, currentStopIndex, currentTimestamp);
+  let rawVolume = (baseLoad * spatialMultiplier) + stableNoise;
+
+  let pct = Math.min(100, Math.max(0, Math.round(rawVolume / capacityDivider)));
+  return { pct };
+}
+
+let isSyncing = false;
+function startTimer() {
+  clearInterval(timerInterval);
+  countdown = REFRESH_INTERVAL;
+  document.getElementById('refreshTimer').innerText = `${getT('refresh')} ${countdown}s`;
+  
+  timerInterval = setInterval(async () => {
+    if (isSyncing) return;
+    countdown--;
+    
+    updateLiveCountdowns();
+
+    if (countdown <= 0) {
+      isSyncing = true;
+      countdown = REFRESH_INTERVAL;
+      document.getElementById('refreshTimer').innerText = getT('refreshing');
+      
+      if (autoGpsEnabled) {
+          await locateNearestStopPromise(false); 
+      }
+      
+      await updateNetworkTelemetry();
+      isSyncing = false;
+    } else {
+      document.getElementById('refreshTimer').innerText = `${getT('refresh')} ${countdown}s`;
+    }
+  }, 1000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    countdown = Math.min(countdown, 1); 
+    startTimer();
+  } else {
+    clearInterval(timerInterval);
+  }
+});
+
+initApp();
 </script>
 </body>
 </html>
