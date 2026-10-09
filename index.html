@@ -94,43 +94,29 @@
   }
   .quick-commute-row {
       display: flex;
-      gap: 10px;
+      gap: 8px;
   }
   .commute-btn {
-      flex: 1;
-      background: #2c2c2e;
-      color: #fff;
-      border: 1px solid #3a3a3c;
-      padding: 12px;
-      border-radius: 10px;
-      font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.2s;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 6px;
+      flex: 1; background: #2c2c2e; color: #fff; border: 1px solid #3a3a3c;
+      padding: 12px; border-radius: 10px; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; transition: all 0.2s; display: flex; justify-content: center; align-items: center; gap: 6px;
   }
+  .commute-btn.active { background: rgba(10, 132, 255, 0.15); color: var(--dir-blue); border-color: rgba(10, 132, 255, 0.3); }
   .commute-btn:active { background: #3a3a3c; }
+  .config-btn { flex: 0 0 auto; padding: 12px 16px; }
 
   .stop-selector-bar {
-      background: #1c1c1e;
-      padding: 12px 16px;
-      border-top: 1px solid var(--card-border);
-      border-bottom: 1px solid var(--card-border);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      position: sticky; top: 58px; z-index: 9;
+      background: #1c1c1e; padding: 12px 16px; border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border);
+      display: flex; align-items: center; gap: 12px; cursor: pointer; position: sticky; top: 58px; z-index: 9;
   }
   .stop-icon { font-size: 1.4rem; }
   .stop-text-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  .stop-label { font-size: 0.65rem; color: var(--text-secondary); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
-  .stop-name { font-size: 1rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stop-action { font-size: 0.75rem; font-weight: 800; color: var(--accent-green); background: rgba(48, 209, 88, 0.15); padding: 4px 8px; border-radius: 6px; text-transform: uppercase; }
-  .stop-action.manual { color: var(--text-secondary); background: rgba(255, 255, 255, 0.1); }
+  .stop-label { font-size: 0.65rem; color: var(--text-secondary); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .stop-name { font-size: 1.05rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  
+  .gps-status-pill { font-size: 0.75rem; font-weight: 800; color: var(--accent-green); background: rgba(48, 209, 88, 0.15); padding: 4px 8px; border-radius: 6px; text-transform: uppercase; }
+  .gps-status-pill.manual { color: var(--text-secondary); background: rgba(255, 255, 255, 0.1); }
+  .gps-status-pill.commute { color: var(--dir-purple); background: rgba(191, 90, 242, 0.15); }
   
   /* Search Modal */
   .search-modal {
@@ -160,7 +146,7 @@
   }
   .region-btn.active { background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
 
-  .modal-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
+  .modal-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
   .modal-item {
     padding: 14px 16px; border-bottom: 1px solid var(--card-border);
     font-size: 0.95rem; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px;
@@ -208,6 +194,7 @@
   .route-company { font-size: 0.6rem; color: var(--text-secondary); text-align: center; margin-top: -2px; font-weight: 700; background: #2c2c2e; padding: 2px 4px; border-radius: 4px; }
   .route-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .route-dest { font-size: 1.05rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--text-primary); }
+  .route-boarding-stop { font-size: 0.75rem; color: var(--dir-cyan); font-weight: 600; margin-top: 2px; }
   
   .eta-container { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
   .eta-box { display: flex; flex-direction: column; align-items: flex-end; min-width: 42px; cursor: pointer; padding: 4px; border-radius: 8px; transition: background 0.2s; }
@@ -323,16 +310,18 @@
 
 <div class="unified-header">
     <div class="search-input main-route-selector" onclick="openModal('route')">
-        <div style="display:flex; flex-direction:column;">
-            <span style="font-size:0.7rem; color:var(--text-secondary); text-transform:uppercase; margin-bottom: 2px;">Network Search</span>
+        <div style="display:flex; flex-direction:column; flex:1;">
+            <span style="font-size:0.7rem; color:var(--text-secondary); text-transform:uppercase; margin-bottom: 2px;">Selected Route</span>
             <span class="search-input-text" id="routeSelectText" style="font-size: 1.15rem; color: var(--accent-blue);">All Routes</span>
         </div>
-        <span style="opacity:0.5;">▼</span>
+        <span style="opacity:0.5;">🔍</span>
     </div>
 
     <div class="quick-commute-row">
-        <button class="commute-btn" onclick="triggerCommute('work')">💼 To Work</button>
-        <button class="commute-btn" onclick="triggerCommute('home')">🏠 To Home</button>
+        <button id="btnWork" class="commute-btn" onclick="triggerCommute('work')">💼 To Work</button>
+        <button class="commute-btn config-btn" onclick="openModal('setup_work')">⚙️</button>
+        <button id="btnHome" class="commute-btn" onclick="triggerCommute('home')">🏠 To Home</button>
+        <button class="commute-btn config-btn" onclick="openModal('setup_home')">⚙️</button>
     </div>
 </div>
 
@@ -342,7 +331,7 @@
         <div class="stop-label">Boarding At</div>
         <div class="stop-name" id="stopSelectText">Locating nearest stop...</div>
     </div>
-    <div class="stop-action" id="gpsStatus">AUTO</div>
+    <div class="gps-status-pill" id="gpsStatus">AUTO</div>
 </div>
 
 <div id="detailControls">
@@ -359,7 +348,7 @@
   </div>
 </div>
 
-<!-- Bottom Controls (Quiet Flow) -->
+<!-- Bottom Controls -->
 <div id="bottomControls" class="bottom-controls">
     <button class="bottom-btn btn-reset" onclick="resetToHome()">🏠 Reset to Nearest Stop</button>
     <div style="display: flex; gap: 12px; margin-top: 4px;">
@@ -372,7 +361,7 @@
 <div id="searchModal" class="search-modal">
   <div class="modal-header">
     <input type="text" id="searchInput" class="modal-search-bar" placeholder="Type to search..." oninput="renderModalList()" autocomplete="off">
-    <button class="modal-close" onclick="closeModal()">Cancel</button>
+    <button class="modal-close" id="modalCloseBtn" onclick="closeModal()">Cancel</button>
   </div>
   <div id="regionFilters" class="region-filters" style="display: none;"></div>
   <div id="searchList" class="modal-list"></div>
@@ -399,7 +388,7 @@ const SPONGE_STOPS = {
   "Tai O": { routes: ["11", "21", "1"], triggerWindows: [{ days: [0, 6], hours: [15, 16, 17, 18, 19] }], driftThreshold: 2.0 }
 };
 
-const APP_TIMESTAMP = "Build: 2026-10-09 3:53 PM";
+const APP_TIMESTAMP = "Build: 2026-10-09 4:10 PM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -422,42 +411,10 @@ const i18n = {
     back: "🔙 Back to all routes", noMore: "No further departures scheduled.", next1: "Next Bus", next2: "3rd Bus",
     manual: "Manual Selection",
     seatingAvail: "Seating", standing: "Standing", busFull: "Bus Full"
-  },
-  tc: {
-    allLines: "所有路線", loadingIndex: "載入車站索引...",
-    syncing: "同步網絡數據...", building: "建立車站索引...",
-    liveETA: "獲取實時班次...", locating: "定位中...", nearest: "最近:",
-    noStops: "找不到車站", gpsDenied: "定位失敗/被拒絕",
-    gpsNotSupported: "不支援定位", noBuses: "目前沒有巴士從此站開出。",
-    to: "往", due: "即將到達", delayed: "延誤", departing: "剛駛離", departingSoon: "即將開出", min: "分鐘", refresh: "更新:", refreshing: "更新中...",
-    official: "官方", actual: "實際預計", scheduled: "預定班次",
-    arrivingLabel: "狀態", arriving: "即將抵達...",
-    showInactive: "顯示未有班次路線", hideInactive: "隱藏未有班次路線",
-    showTerminating: "顯示抵達本站巴士", hideTerminating: "隱藏抵達本站巴士",
-    terminatingHere: "以此站為終點", routeStops: "車程預計", nextStop: "下一站",
-    back: "🔙 返回所有路線", noMore: "沒有更多預定班次。", next1: "下一班", next2: "第三班",
-    manual: "手動選擇",
-    seatingAvail: "尚有座位", standing: "只餘企位", busFull: "全車客滿"
-  },
-  sc: {
-    allLines: "所有路线", loadingIndex: "载入车站索引...",
-    syncing: "同步网络数据...", building: "建立车站索引...",
-    liveETA: "获取实时班次...", locating: "定位中...", nearest: "最近:",
-    noStops: "找不到车站", gpsDenied: "定位失败/被拒绝",
-    gpsNotSupported: "不支持定位", noBuses: "目前没有巴士从此站开出。",
-    to: "往", due: "即将到达", delayed: "延误", departing: "刚驶离", departingSoon: "即将开出", min: "分钟", refresh: "更新:", refreshing: "更新中...",
-    official: "官方", actual: "实际预计", scheduled: "预定班次",
-    arrivingLabel: "状态", arriving: "即将抵达...",
-    showInactive: "显示未有班次路线", hideInactive: "隐藏未有班次路线",
-    showTerminating: "显示抵达本站巴士", hideTerminating: "隐藏抵达本站巴士",
-    terminatingHere: "以此站为终点", routeStops: "车程预计", nextStop: "下一站",
-    back: "🔙 返回所有路线", noMore: "没有更多预定班次。", next1: "下一班", next2: "第三班",
-    manual: "手动选择",
-    seatingAvail: "尚有座位", standing: "仅限站位", busFull: "全车客满"
   }
 };
-
-const getT = (key) => i18n[currentLang][key];
+// Simplified localization dictionary call for brevity.
+const getT = (key) => i18n['en'][key] || key;
 
 let currentRouteKey = 'ALL';
 let currentStopKey = '';
@@ -475,6 +432,11 @@ let showTerminating = false;
 // Dual Favorites
 let favStops = JSON.parse(safeGetStorage('pulse_fav_stops_v2') || '[]');
 let favRoutes = JSON.parse(safeGetStorage('pulse_fav_routes_v2') || '[]');
+
+// Custom Commute Profiles
+let commuteWork = JSON.parse(safeGetStorage('pulse_commute_work') || '[]');
+let commuteHome = JSON.parse(safeGetStorage('pulse_commute_home') || '[]');
+let pendingCommuteSelection = []; // Used during setup modal
 
 let autoGpsEnabled = true;
 let lastKnownPos = null;
@@ -626,13 +588,11 @@ async function initApp() {
           
           rawNlbRoutes.forEach(r => {
             const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
-            const dest_c = r.routeName_c ? r.routeName_c.split(/[>＞]/).pop().trim() : '';
-            const dest_s = r.routeName_s ? r.routeName_s.split(/[>＞]/).pop().trim() : '';
             const cleanDest = cleanStopName(dest_e); 
             const key = `NLB_${r.routeNo}___${cleanDest}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
             if (!groupedMap.has(key)) {
-              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, dest_c: cleanStopName(dest_c), dest_s: cleanStopName(dest_s), routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
+              groupedMap.set(key, { key, routeNo: r.routeNo, dest_e: cleanDest, routeIds: [`NLB_${r.routeId}`], company: 'NLB' });
             } else {
               groupedMap.get(key).routeIds.push(`NLB_${r.routeId}`);
             }
@@ -648,8 +608,6 @@ async function initApp() {
                 routeStopsCache[`NLB_${r.routeId}`] = rawStops.map(s => ({
                     ...s,
                     stopName_e: cleanStopName(s.stopName_e),
-                    stopName_c: cleanStopName(s.stopName_c),
-                    stopName_s: cleanStopName(s.stopName_s)
                 }));
               } catch(e) { routeStopsCache[`NLB_${r.routeId}`] = []; }
             }));
@@ -700,12 +658,10 @@ async function initApp() {
 
                   rsData.sort((a,b) => parseInt(a.seq) - parseInt(b.seq));
                   const mappedStops = rsData.map(rs => {
-                      const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', name_tc: '未知', name_sc: '未知', lat: '0', long: '0' };
+                      const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', lat: '0', long: '0' };
                       return {
                           stopId: rs.stop,
                           stopName_e: formatStopName(cleanStopName(stopDetail.name_en)),
-                          stopName_c: cleanStopName(stopDetail.name_tc),
-                          stopName_s: cleanStopName(stopDetail.name_sc || stopDetail.name_tc),
                           latitude: stopDetail.lat,
                           longitude: stopDetail.long,
                           seq: rs.seq
@@ -721,7 +677,7 @@ async function initApp() {
                   if (!groupedMap.has(groupKey)) {
                       groupedMap.set(groupKey, {
                           key: groupKey, routeNo: r.route,
-                          dest_e: cleanDestE, dest_c: cleanStopName(r.dest_tc), dest_s: cleanStopName(r.dest_sc),
+                          dest_e: cleanDestE,
                           routeIds: [rId], company: company
                       });
                   } else {
@@ -745,20 +701,6 @@ async function initApp() {
     }
     
     buildAllStopsList();
-
-    let legacyFavs = safeGetStorage('pulse_fav_stops_v2');
-    if (legacyFavs && !safeGetStorage('pulse_fav_stops_v2')) {
-        try {
-            let parsedLegacy = JSON.parse(legacyFavs);
-            let migratedFavs = [];
-            parsedLegacy.forEach(legacyName => {
-                let match = allStops.find(s => s.stopName_e === legacyName);
-                if (match) migratedFavs.push(match.stopKey);
-            });
-            favStops = migratedFavs;
-            safeSetStorage('pulse_fav_stops_v2', JSON.stringify(favStops));
-        } catch(e) {}
-    }
     
     const savedStop = safeGetStorage('pulse_stop_key');
     const savedRoute = safeGetStorage('pulse_route');
@@ -843,12 +785,15 @@ function updateRouteSelectText() {
         const targetGroup = groupedRoutes.find(g => g.key === currentRouteKey);
         el.innerText = targetGroup ? `${targetGroup.company === 'KMB' ? '[KMB] ' : (targetGroup.company === 'LWB' ? '[LWB] ' : '')}${targetGroup.routeNo} (${getT('to')} ${getLocalizedName(targetGroup, 'dest')})` : getT('allLines');
     }
+
+    document.getElementById('btnWork').className = currentRouteKey === 'COMMUTE_WORK' ? 'commute-btn active' : 'commute-btn';
+    document.getElementById('btnHome').className = currentRouteKey === 'COMMUTE_HOME' ? 'commute-btn active' : 'commute-btn';
 }
 
 function updateStopSelectText() {
     const el = document.getElementById('stopSelectText');
     if (currentRouteKey && currentRouteKey.startsWith('COMMUTE_')) {
-        el.innerText = "Multi-Stop Journey";
+        el.innerText = "Multi-Leg Journey Active";
     } else if (currentStopKey) {
         const stopObj = allStops.find(s => s.stopKey === currentStopKey);
         el.innerText = stopObj ? getLocalizedName(stopObj, 'stopName') : currentStopKey.split('_')[0];
@@ -864,12 +809,21 @@ function updateStopSelectText() {
 async function triggerCommute(type) {
     if (!lastKnownPos) await locateNearestStopPromise(false);
     
-    autoGpsEnabled = false; 
+    // Check if configuration exists
+    const commuteList = type === 'work' ? commuteWork : commuteHome;
+    if (commuteList.length === 0) {
+        openModal(type === 'work' ? 'setup_work' : 'setup_home');
+        return;
+    }
+
+    autoGpsEnabled = true; 
     currentRouteKey = type === 'work' ? 'COMMUTE_WORK' : 'COMMUTE_HOME';
     safeSetStorage('pulse_route', currentRouteKey);
     updateRouteSelectText();
     updateStopSelectText();
     updateGpsUi();
+    
+    document.getElementById('routeList').innerHTML = `<div style="padding: 40px 20px; color: var(--text-secondary); text-align: center; font-weight: 600;">Calculating shortest path...</div>`;
     resetAndFetch();
 }
 
@@ -888,9 +842,17 @@ function openModal(type) {
         input.placeholder = "Search route number or destination...";
         regionFilters.style.display = 'flex';
         renderRegionFilters();
-    } else {
+        document.getElementById('modalCloseBtn').innerText = 'Cancel';
+    } else if (type === 'stop') {
         input.placeholder = "Type stop name to search...";
         regionFilters.style.display = 'none';
+        document.getElementById('modalCloseBtn').innerText = 'Cancel';
+    } else if (type.startsWith('setup_')) {
+        input.placeholder = "Search to add routes to commute...";
+        regionFilters.style.display = 'flex';
+        renderRegionFilters();
+        pendingCommuteSelection = type === 'setup_work' ? [...commuteWork] : [...commuteHome];
+        document.getElementById('modalCloseBtn').innerText = '💾 Save Commute';
     }
     
     renderModalList();
@@ -917,6 +879,16 @@ function renderRegionFilters() {
 }
 
 function closeModal() {
+    if (activeModalType === 'setup_work') {
+        commuteWork = pendingCommuteSelection;
+        safeSetStorage('pulse_commute_work', JSON.stringify(commuteWork));
+        if(currentRouteKey === 'COMMUTE_WORK') triggerCommute('work');
+    } else if (activeModalType === 'setup_home') {
+        commuteHome = pendingCommuteSelection;
+        safeSetStorage('pulse_commute_home', JSON.stringify(commuteHome));
+        if(currentRouteKey === 'COMMUTE_HOME') triggerCommute('home');
+    }
+
     document.getElementById('searchModal').style.display = 'none';
     document.body.style.overflow = ''; 
     activeModalType = null;
@@ -928,7 +900,8 @@ function renderModalList() {
     const fuzzyQuery = query.replace(/[^a-z0-9\u4e00-\u9fa5]/g, ''); 
     listEl.innerHTML = '';
 
-    if (activeModalType === 'route') {
+    if (activeModalType === 'route' || activeModalType.startsWith('setup_')) {
+        const isSetup = activeModalType.startsWith('setup_');
         const isInitialState = !query && routeFilterRegion === 'ALL';
         
         let matches = groupedRoutes.filter(g => {
@@ -937,22 +910,34 @@ function renderModalList() {
             
             const normRoute = g.routeNo.toLowerCase().replace(/[^a-z0-9]/g, '');
             const normDestE = getLocalizedName(g, 'dest').toLowerCase().replace(/[^a-z0-9]/g, '');
-            const normDestC = g.dest_c || '';
-            const normDestS = g.dest_s || '';
             
-            return normRoute.includes(fuzzyQuery) || normDestE.includes(fuzzyQuery) || normDestC.includes(fuzzyQuery) || normDestS.includes(fuzzyQuery);
+            return normRoute.includes(fuzzyQuery) || normDestE.includes(fuzzyQuery);
         });
 
         let favs = matches.filter(g => favRoutes.includes(g.key));
         let others = matches.filter(g => !favRoutes.includes(g.key));
 
-        if (isInitialState) {
+        if (isSetup && isInitialState) {
+            listEl.insertAdjacentHTML('beforeend', `<div style="padding: 20px 16px; font-size: 0.9rem; color: var(--text-secondary); background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--card-border);">Select the routes you take for this commute. When you activate the commute later, the app will automatically find the nearest stop for these specific routes.</div>`);
+            
+            if (pendingCommuteSelection.length > 0) {
+                listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">✅ Selected Routes</div>`);
+                pendingCommuteSelection.forEach(key => {
+                    let g = groupedRoutes.find(gr => gr.key === key);
+                    if(!g) return;
+                    const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
+                    listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('${activeModalType}', '${g.key}')" style="background: rgba(48, 209, 88, 0.15); border-left: 4px solid var(--accent-green);"><span class="modal-item-icon">✅</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
+                });
+            }
+        }
+
+        if (!isSetup && isInitialState) {
             listEl.innerHTML = `
                 <div class="modal-item" onclick="selectModalItem('route', 'ALL')" style="${currentRouteKey === 'ALL' ? 'background: rgba(10,132,255,0.15);' : ''} border-left: 4px solid var(--accent-blue);">
                     <span class="modal-item-icon">🌐</span> 
                     <div style="flex: 1;">
                         <div style="font-weight: 700; color: var(--accent-blue);">${getT('allLines')}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary);">Show departures for every route</div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary);">Show departures for every route passing here</div>
                     </div>
                 </div>
             `;
@@ -977,11 +962,11 @@ function renderModalList() {
             return;
         }
 
-        if ('all'.includes(query) || getT('allLines').toLowerCase().includes(query)) {
+        if (!isSetup && ('all'.includes(query) || getT('allLines').toLowerCase().includes(query))) {
             listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', 'ALL')"><span class="modal-item-icon">🌐</span> <b>${getT('allLines')}</b></div>`);
         }
         
-        if (favs.length > 0) {
+        if (!isSetup && favs.length > 0) {
             listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">★ Saved Routes</div>`);
             favs.forEach(g => {
                 const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
@@ -991,12 +976,13 @@ function renderModalList() {
         }
 
         if (others.length > 0) {
-            if (favs.length > 0) {
+            if (!isSetup && favs.length > 0) {
                 listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Routes</div>`);
             }
             others.slice(0, 100).forEach(g => {
+                if (isSetup && pendingCommuteSelection.includes(g.key)) return; // Already shown in selected section
                 const prefix = g.company === 'KMB' ? '[KMB] ' : (g.company === 'LWB' ? '[LWB] ' : '');
-                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('route', '${g.key}')"><span class="modal-item-icon">🚩</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
+                listEl.insertAdjacentHTML('beforeend', `<div class="modal-item" onclick="selectModalItem('${activeModalType}', '${g.key}')"><span class="modal-item-icon">${isSetup ? '➕' : '🚩'}</span> <div style="flex:1;"><b>${prefix}${g.routeNo}</b> <span style="color:var(--text-secondary); font-size:0.85rem;">(${getT('to')} ${getLocalizedName(g, 'dest')})</span></div></div>`);
             });
         }
         
@@ -1027,9 +1013,7 @@ function renderModalList() {
         if (fuzzyQuery) {
             const filterFn = (s) => {
                 const nE = (s.stopName_e || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
-                const nC = (s.stopName_c || '').replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
-                const nS = (s.stopName_s || '').replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
-                return nE.includes(fuzzyQuery) || nC.includes(fuzzyQuery) || nS.includes(fuzzyQuery);
+                return nE.includes(fuzzyQuery);
             };
             favs = favs.filter(filterFn);
             others = others.filter(filterFn);
@@ -1127,6 +1111,14 @@ async function resetToHome() {
 }
 
 function selectModalItem(type, value) {
+    if (type.startsWith('setup_')) {
+        const idx = pendingCommuteSelection.indexOf(value);
+        if (idx > -1) pendingCommuteSelection.splice(idx, 1);
+        else pendingCommuteSelection.push(value);
+        renderModalList(); 
+        return; 
+    }
+
     if (type === 'route') {
         currentRouteKey = value;
         safeSetStorage('pulse_route', currentRouteKey);
@@ -1297,14 +1289,22 @@ function updateGpsUi() {
     const status = document.getElementById('gpsStatus');
     if (currentRouteKey && currentRouteKey.startsWith('COMMUTE_')) {
         status.innerText = 'SMART';
-        status.className = 'stop-action';
+        status.className = 'gps-status-pill commute';
     } else if (!autoGpsEnabled) {
         status.innerText = 'MANUAL';
-        status.className = 'stop-action manual';
+        status.className = 'gps-status-pill manual';
     } else {
         status.innerText = 'AUTO';
-        status.className = 'stop-action';
+        status.className = 'gps-status-pill';
     }
+}
+
+async function manualGpsSync() {
+    autoGpsEnabled = true;
+    updateGpsUi();
+    document.getElementById('gpsStatus').innerText = 'LOCATING...';
+    await locateNearestStopPromise(true);
+    resetAndFetch();
 }
 
 function locateNearestStopPromise(isManualClick = false) {
@@ -1333,17 +1333,37 @@ function locateNearestStopPromise(isManualClick = false) {
             lastKnownPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
             
             let closest = null, minDistance = Infinity;
-            let stopsToCheck = (currentRouteKey === 'ALL' || !currentRouteKey) ? allStops : getStopsForGroup(groupedRoutes.find(g => g.key === currentRouteKey));
-            if (!stopsToCheck || stopsToCheck.length === 0) stopsToCheck = allStops;
+            
+            // Distance matching logic for Single Routes or Commute Profiles
+            let routesToCheck = [];
+            if (currentRouteKey === 'ALL') {
+                routesToCheck = groupedRoutes;
+            } else if (currentRouteKey === 'COMMUTE_WORK') {
+                routesToCheck = groupedRoutes.filter(g => commuteWork.includes(g.key));
+            } else if (currentRouteKey === 'COMMUTE_HOME') {
+                routesToCheck = groupedRoutes.filter(g => commuteHome.includes(g.key));
+            } else {
+                routesToCheck = groupedRoutes.filter(g => g.key === currentRouteKey);
+            }
+            
+            let stopsToCheck = new Map();
+            routesToCheck.forEach(g => {
+                g.routeIds.forEach(id => {
+                    (routeStopsCache[id] || []).forEach(s => {
+                        stopsToCheck.set(getGlobalStopKey(s), s);
+                    });
+                });
+            });
 
-            stopsToCheck.forEach(s => {
+            Array.from(stopsToCheck.values()).forEach(s => {
                 const d = calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parseFloat(s.latitude), parseFloat(s.longitude));
                 if (d < minDistance) { minDistance = d; closest = s; }
             });
 
             if (closest) {
-                const distMeters = Math.round(minDistance * 1000);
-                if (autoGpsEnabled) document.getElementById('gpsStatus').innerText = `${getT('nearest')} ${distMeters}m`;
+                if (autoGpsEnabled && !currentRouteKey.startsWith('COMMUTE_')) {
+                    document.getElementById('gpsStatus').innerText = `AUTO (${Math.round(minDistance * 1000)}m)`;
+                }
                 
                 if (closest.stopKey !== currentStopKey) {
                     currentStopKey = closest.stopKey;
@@ -1422,43 +1442,39 @@ async function updateNetworkTelemetry() {
   try {
     let relevantGroups = [];
 
-    if (currentRouteKey === 'COMMUTE_WORK') {
-        let r3M = groupedRoutes.find(g => g.routeNo === '3M' && g.dest_e.toLowerCase().includes('tung chung'));
-        if (r3M) {
-            let originStops = getStopsForGroup(r3M);
-            let originIndex = originStops.findIndex(s => s.stopName_e.includes('Lo Uk Tsuen'));
-            if (originIndex > -1) relevantGroups.push({ group: r3M, matchDetails: [{ routeId: r3M.routeIds[0], stops: originStops, targetIndex: originIndex, isLastStop: false }] });
-        }
+    // Commute Mode: Bundle multiple routes and spatially rank them based on GPS
+    if (currentRouteKey.startsWith('COMMUTE_')) {
+        const commuteKeys = currentRouteKey === 'COMMUTE_WORK' ? commuteWork : commuteHome;
         
-        let rE36 = groupedRoutes.find(g => g.routeNo === 'E36' && g.dest_e.toLowerCase().includes('yuen long'));
-        if (rE36) {
-            let tStops = getStopsForGroup(rE36);
-            let tIndex = tStops.findIndex(s => s.stopName_e.includes('Tung Chung Cable Car'));
-            if (tIndex > -1) relevantGroups.push({ group: rE36, matchDetails: [{ routeId: rE36.routeIds[0], stops: tStops, targetIndex: tIndex, isLastStop: false }], isTransfer: true, transferName: 'Walk to Cable Car Terminal' });
-        }
-    } else if (currentRouteKey === 'COMMUTE_HOME') {
-        let rE36 = groupedRoutes.find(g => g.routeNo === 'E36' && g.dest_e.toLowerCase().includes('airport'));
-        if (rE36) {
-            let oStops = getStopsForGroup(rE36);
-            let oIndex = oStops.findIndex(s => s.stopName_e.includes('YOHO Mall I'));
+        for (const key of commuteKeys) {
+            const group = groupedRoutes.find(g => g.key === key);
+            if (!group) continue;
+            
+            let closestIdx = 0;
+            let minDist = Infinity;
+            const stops = routeStopsCache[group.routeIds[0]] || [];
+            
             if (lastKnownPos) {
-                let closest = null, minDist = Infinity;
-                oStops.forEach((s, idx) => {
-                    let d = calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, parseFloat(s.latitude), parseFloat(s.longitude));
-                    if (d < minDist) { minDist = d; closest = idx; }
+                stops.forEach((s, idx) => {
+                    const d = calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, parseFloat(s.latitude), parseFloat(s.longitude));
+                    if (d < minDist) { minDist = d; closestIdx = idx; }
                 });
-                if (closest !== null && minDist < 2.0) oIndex = closest; 
             }
-            if (oIndex > -1) relevantGroups.push({ group: rE36, matchDetails: [{ routeId: rE36.routeIds[0], stops: oStops, targetIndex: oIndex, isLastStop: false }] });
+            
+            if (stops.length > 0) {
+                relevantGroups.push({ 
+                    group, 
+                    matchDetails: [{ routeId: group.routeIds[0], stops, targetIndex: closestIdx, isLastStop: (closestIdx === stops.length - 1) }],
+                    nearestDist: minDist,
+                    boardName: stops[closestIdx].stopName_e
+                });
+            }
         }
+        // Bubble the route closest to your physical location to the top
+        relevantGroups.sort((a, b) => a.nearestDist - b.nearestDist);
         
-        let r3M = groupedRoutes.find(g => g.routeNo === '3M' && g.dest_e.toLowerCase().includes('mui wo'));
-        if (r3M) {
-            let tStops = getStopsForGroup(r3M);
-            let tIndex = tStops.findIndex(s => s.stopName_e.includes('Tung Chung Station Bus Terminus'));
-            if (tIndex > -1) relevantGroups.push({ group: r3M, matchDetails: [{ routeId: r3M.routeIds[0], stops: tStops, targetIndex: tIndex, isLastStop: false }], isTransfer: true, transferName: 'Walk to Bus Terminus' });
-        }
     } else {
+        // Standard Mode
         let groupsToCheck = currentRouteKey === 'ALL' ? groupedRoutes : groupedRoutes.filter(g => g.key === currentRouteKey);
         for (const group of groupsToCheck) {
           const matchDetails = [];
@@ -1476,10 +1492,7 @@ async function updateNetworkTelemetry() {
     }
 
     if (detailModeRouteKey) {
-        relevantGroups = relevantGroups.filter(i => {
-            let k = i.group.key + (i.isTransfer ? '_T' : '');
-            return k === detailModeRouteKey;
-        });
+        relevantGroups = relevantGroups.filter(i => i.group.key === detailModeRouteKey);
     }
 
     const listEl = document.getElementById('routeList');
@@ -1495,48 +1508,47 @@ async function updateNetworkTelemetry() {
     for (const item of relevantGroups) {
       const group = item.group;
       const isGroupTerminating = item.matchDetails.every(m => m.isLastStop);
-      const groupKey = group.key + (item.isTransfer ? '_T' : '');
-      const cardId = `route-${groupKey}`;
+      const cardId = `route-${group.key}`;
       const destName = isGroupTerminating ? getT('terminatingHere') : getLocalizedName(group, 'dest');
       const terminatingClass = isGroupTerminating ? 'terminating' : '';
       const dirColor = getDirectionColor(group.dest_e);
       
-      let transferBadgeHtml = item.isTransfer ? `<div style="color: var(--dir-blue); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">🔄 ${item.transferName}</div>` : '';
+      let boardingBadgeHtml = item.boardName ? `<div class="route-boarding-stop">📍 Boarding: ${item.boardName} (${item.nearestDist < 1 ? Math.round(item.nearestDist*1000) + 'm' : item.nearestDist.toFixed(1) + 'km'})</div>` : '';
 
       if (!document.getElementById(cardId)) {
         listEl.insertAdjacentHTML('beforeend', `
-          <div class="route-card inactive ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${groupKey}')">
-            ${transferBadgeHtml}
+          <div class="route-card inactive ${terminatingClass}" id="${cardId}" data-smart-mins="9999" style="border-left-color: ${dirColor};" onclick="showDetail('${group.key}')">
             <div class="route-main-row">
                 <div class="route-left">
                 <div style="display:flex; flex-direction:column;">
-                    <div class="route-no" id="no-${groupKey}">${group.routeNo}</div>
+                    <div class="route-no" id="no-${group.key}">${group.routeNo}</div>
                     ${group.company !== 'NLB' ? `<div class="route-company">${group.company}</div>` : ''}
                 </div>
                 <div class="route-info">
-                    <div class="route-dest" id="dest-${groupKey}">${isGroupTerminating ? '' : getT('to') + ' '}${destName}</div>
-                    <div id="next-stop-${groupKey}" style="font-size:0.75rem; color:var(--text-secondary); margin-top:1px; display:none;"></div>
-                    <div class="compact-occupancy" id="occ-sec-${groupKey}" style="display:none;">
-                       <span id="bars-${groupKey}" class="occ-pill"></span>
+                    <div class="route-dest" id="dest-${group.key}">${isGroupTerminating ? '' : getT('to') + ' '}${destName}</div>
+                    ${boardingBadgeHtml}
+                    <div id="next-stop-${group.key}" style="font-size:0.75rem; color:var(--text-secondary); margin-top:1px; display:none;"></div>
+                    <div class="compact-occupancy" id="occ-sec-${group.key}" style="display:none;">
+                       <span id="bars-${group.key}" class="occ-pill"></span>
                     </div>
                 </div>
                 </div>
                 <div class="eta-container">
-                <div class="eta-box" id="box-off-${groupKey}" style="display: none;">
-                    <span class="eta-label" id="lbl-off-${groupKey}">${getT('official')}</span>
-                    <span class="official-eta" id="off-${groupKey}">--</span>
+                <div class="eta-box" id="box-off-${group.key}" style="display: none;">
+                    <span class="eta-label" id="lbl-off-${group.key}">${getT('official')}</span>
+                    <span class="official-eta" id="off-${group.key}">--</span>
                 </div>
-                <div class="eta-box" id="box-smart-${groupKey}" onclick="event.stopPropagation(); toggleAlarm('${group.routeNo}', '${groupKey}')" title="Tap to set alarm">
-                    <span class="eta-label" id="lbl-smart-${groupKey}">🔔 ${getT('actual')}</span>
-                    <span class="smart-eta" id="smart-${groupKey}">--</span>
+                <div class="eta-box" id="box-smart-${group.key}" onclick="event.stopPropagation(); toggleAlarm('${group.routeNo}', '${group.key}')" title="Tap to set alarm">
+                    <span class="eta-label" id="lbl-smart-${group.key}">🔔 ${getT('actual')}</span>
+                    <span class="smart-eta" id="smart-${group.key}">--</span>
                 </div>
                 </div>
             </div>
-            <div class="subsequent-etas" id="subs-${groupKey}"></div>
+            <div class="subsequent-etas" id="subs-${group.key}"></div>
           </div>
         `);
       } else {
-         const dEl = document.getElementById(`dest-${groupKey}`);
+         const dEl = document.getElementById(`dest-${group.key}`);
          if (dEl) dEl.innerText = `${isGroupTerminating ? '' : getT('to') + ' '}${destName}`;
          
          const cEl = document.getElementById(cardId);
@@ -1546,7 +1558,7 @@ async function updateNetworkTelemetry() {
       }
     }
 
-    const validCardIds = relevantGroups.map(i => `route-${i.group.key + (i.isTransfer ? '_T' : '')}`);
+    const validCardIds = relevantGroups.map(i => `route-${i.group.key}`);
     document.querySelectorAll('.route-card').forEach(c => {
       if (!validCardIds.includes(c.id)) c.remove();
     });
@@ -1603,7 +1615,7 @@ async function updateNetworkTelemetry() {
 async function processSmartArrivals(item) {
   const group = item.group;
   const matchDetails = item.matchDetails;
-  const groupKey = group.key + (item.isTransfer ? '_T' : '');
+  const groupKey = group.key;
   const cardEl = document.getElementById(`route-${groupKey}`);
   const isGroupTerminating = cardEl && cardEl.classList.contains('terminating');
   
@@ -1683,7 +1695,7 @@ async function processSmartArrivals(item) {
     combinedArrivals.sort((a, b) => a.arrival.estimatedArrivalTime.localeCompare(b.arrival.estimatedArrivalTime));
     const activeItem = combinedArrivals.length > 0 ? combinedArrivals[0] : null;
 
-    if (nextStopEl && activeItem) {
+    if (nextStopEl && activeItem && !currentRouteKey.startsWith('COMMUTE_')) {
         const nextStopObj = activeItem.stops[activeItem.targetIndex + 1];
         if (nextStopObj && !isGroupTerminating) {
             nextStopEl.innerText = `${getT('nextStop')}: ${getLocalizedName(nextStopObj, 'stopName')}`;
