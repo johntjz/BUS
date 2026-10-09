@@ -34,7 +34,7 @@
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden; 
-    padding-bottom: 80px; /* Space for bottom fav bar */
+    padding-bottom: 80px; 
   }
   .header {
     background-color: var(--accent-red);
@@ -98,7 +98,7 @@
   /* Search Modal */
   .search-modal {
     display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    width: 100%; height: 100%; height: 100dvh; /* Dynamic viewport height fix for iOS keyboard */
+    width: 100%; height: 100%; height: 100dvh; 
     background: var(--bg-color); z-index: 1000; flex-direction: column;
     animation: slideUp 0.2s ease-out;
   }
@@ -374,7 +374,7 @@ const SPONGE_STOPS = {
   }
 };
 
-const APP_TIMESTAMP = "Build: 2026-10-08 9:34 PM";
+const APP_TIMESTAMP = "Build: 2026-10-09 10:15 AM";
 const vEl = document.getElementById("buildVersion");
 if (vEl) vEl.innerText = APP_TIMESTAMP;
 
@@ -782,18 +782,20 @@ function buildAllStopsList() {
   }).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
 }
 
+// FIX: Removed alphabetical sorting so stops are listed in route sequence
 function getStopsForGroup(group) {
   const uniqueMap = new Map();
-  group.routeIds.forEach(id => {
-    (routeStopsCache[id] || []).forEach(s => {
-      const key = getGlobalStopKey(s);
-      if (s && s.stopName_e && !uniqueMap.has(key)) {
-         const mainStop = allStops.find(as => as.stopKey === key);
-         uniqueMap.set(key, { ...s, stopKey: key, routeStr: mainStop ? mainStop.routeStr : group.routeNo });
-      }
-    });
+  if (!group.routeIds || group.routeIds.length === 0) return [];
+  const primaryRouteId = group.routeIds[0]; 
+  
+  (routeStopsCache[primaryRouteId] || []).forEach(s => {
+     const key = getGlobalStopKey(s);
+     if (s && s.stopName_e && !uniqueMap.has(key)) {
+        const mainStop = allStops.find(as => as.stopKey === key);
+        uniqueMap.set(key, { ...s, stopKey: key, routeStr: mainStop ? mainStop.routeStr : group.routeNo });
+     }
   });
-  return Array.from(uniqueMap.values()).sort((a, b) => a.stopName_e.localeCompare(b.stopName_e));
+  return Array.from(uniqueMap.values());
 }
 
 function updateRouteSelectText() {
@@ -823,7 +825,6 @@ function openModal(type) {
     const input = document.getElementById('searchInput');
     const regionFilters = document.getElementById('regionFilters');
     
-    // Lock background scroll to prevent iOS keyboard jump
     document.body.style.overflow = 'hidden';
     
     input.value = '';
@@ -840,7 +841,6 @@ function openModal(type) {
     
     renderModalList();
     
-    // Delay focus slightly so the DOM renders and iOS doesn't panic-scroll
     setTimeout(() => {
         input.focus();
     }, 150);
@@ -864,7 +864,7 @@ function renderRegionFilters() {
 
 function closeModal() {
     document.getElementById('searchModal').style.display = 'none';
-    document.body.style.overflow = ''; // Restore background scroll
+    document.body.style.overflow = ''; 
     activeModalType = null;
 }
 
@@ -950,11 +950,12 @@ function renderModalList() {
             });
         }
 
-        if (others.length > 0 && (fuzzyQuery || favs.length === 0)) {
+        // FIX: Always render other options regardless of Favourites
+        if (others.length > 0) {
             if (favs.length > 0) {
                 listEl.insertAdjacentHTML('beforeend', `<div class="fav-header">All Stops</div>`);
             }
-            const renderLimit = fuzzyQuery ? 150 : 50; 
+            const renderLimit = fuzzyQuery ? 150 : 250; 
             others.slice(0, renderLimit).forEach(s => {
                 listEl.insertAdjacentHTML('beforeend', `
                 <div class="modal-item" onclick="selectModalItem('stop', '${s.stopKey.replace(/'/g, "\\'")}')">
@@ -1421,7 +1422,8 @@ async function processSmartArrivals(group, matchDetails) {
     if (combinedArrivals.length === 0) {
       const state = busStateMap[groupKey];
       
-      if (state && state.lastEtaMins === 0 && (now - state.lastRealTime < 90000)) {
+      // FIX: Extended ghost bus survival time to 3 mins (180000ms) to prevent frequent shuttles (like S1) from disappearing
+      if (state && state.lastEtaMins === 0 && (now - state.lastRealTime < 180000)) {
         if (smartEl) {
           smartEl.innerText = getT('departing'); 
           smartEl.className = 'smart-eta departing';
@@ -1455,8 +1457,7 @@ async function processSmartArrivals(group, matchDetails) {
     const pseudoBusId = activeBus.estimatedArrivalTime.replace(/[^0-9]/g, ''); 
     const isNoGPS = activeBus.noGPS === 1 || activeBus.noGPS === '1';
 
-    const remainingMs = arrivalTime.getTime() - now;
-    const rawEtaMins = Math.max(0, Math.floor(remainingMs / 60000));
+    let rawEtaMins = Math.max(0, Math.floor((arrivalTime.getTime() - now) / 60000));
 
     let state = busStateMap[groupKey];
     if (!state) {
@@ -1470,9 +1471,38 @@ async function processSmartArrivals(group, matchDetails) {
             lastRealTime: now,
             driftVelocity: 0,
             isSpongeLocked: false,
-            isScheduled: isNoGPS
+            isScheduled: isNoGPS,
+            isGhosting: false,
+            ghostTargetMs: null
         };
         busStateMap[groupKey] = state;
+    } 
+
+    // FIX: Ghost Bus Jump Protection. Prevent 13 min -> 33 min instant snaps.
+    let isGhostActive = false;
+    let ghostMins = 0;
+
+    if (state.pseudoBusId !== pseudoBusId && state.lastEtaMins > 0 && state.lastEtaMins <= 20) {
+        const timeDiff = rawEtaMins - state.lastEtaMins;
+        if (timeDiff > 8) {
+            state.isGhosting = true;
+            if (!state.ghostTargetMs) state.ghostTargetMs = now + (state.lastEtaMins * 60000);
+        } else {
+            state.isGhosting = false;
+            state.ghostTargetMs = null;
+        }
+    }
+
+    if (state.isGhosting) {
+        ghostMins = Math.max(0, Math.ceil((state.ghostTargetMs - now) / 60000));
+        if (ghostMins === 0 && (now - state.ghostTargetMs > 60000)) {
+            // Ghost expired
+            state.isGhosting = false;
+            state.ghostTargetMs = null;
+            state.pseudoBusId = pseudoBusId;
+        } else {
+            isGhostActive = true;
+        }
     } else if (state.pseudoBusId !== pseudoBusId) {
         state.pseudoBusId = pseudoBusId;
         state.firstZeroTime = (rawEtaMins === 0) ? now : null;
@@ -1483,13 +1513,15 @@ async function processSmartArrivals(group, matchDetails) {
         state.isScheduled = isNoGPS;
     }
 
-    const realElapsedMins = (now - state.lastRealTime) / 60000;
-    if (realElapsedMins > 0.4) { 
-        const etaDelta = rawEtaMins - state.lastEtaMins;
-        const currentDrift = etaDelta - (-realElapsedMins);
-        state.driftVelocity = (state.driftVelocity * 0.7) + (currentDrift * 0.3);
-        state.lastEtaMins = rawEtaMins;
-        state.lastRealTime = now;
+    if (!isGhostActive) {
+        const realElapsedMins = (now - state.lastRealTime) / 60000;
+        if (realElapsedMins > 0.4) { 
+            const etaDelta = rawEtaMins - state.lastEtaMins;
+            const currentDrift = etaDelta - (-realElapsedMins);
+            state.driftVelocity = (state.driftVelocity * 0.7) + (currentDrift * 0.3);
+            state.lastEtaMins = rawEtaMins;
+            state.lastRealTime = now;
+        }
     }
 
     const currentStopName = activeItem.targetStop.stopName_e;
@@ -1532,7 +1564,12 @@ async function processSmartArrivals(group, matchDetails) {
 
     let smartMins = effectiveRawEta;
     
-    if (rawEtaMins >= 0) {
+    if (isGhostActive) {
+        smartMins = ghostMins;
+        lblSmartEl.innerText = getT('actual');
+        smartEl.style.color = 'var(--accent-orange)';
+        rawEtaMins = ghostMins; // Override purely for display
+    } else if (rawEtaMins >= 0) {
       if (isNoGPS) {
         smartMins = rawEtaMins; 
         lblSmartEl.innerText = getT('scheduled');
@@ -1641,7 +1678,7 @@ async function processSmartArrivals(group, matchDetails) {
     }
 
     if (boxOffEl) {
-      boxOffEl.style.display = (finalSmartMins === rawEtaMins) ? 'none' : 'flex';
+      boxOffEl.style.display = (finalSmartMins === rawEtaMins && !isGhostActive) ? 'none' : 'flex';
     }
     
     if (detailModeRouteKey === groupKey && !isGroupTerminating) {
@@ -1719,7 +1756,12 @@ function calculateOccupancy(routeNo, destName, estimatedArrivals, currentStopInd
 
   if (!isWeekend) {
     if (hour >= 7 && hour <= 9) {
-      baseLoad = (dest.includes('tung chung') || dest.includes('mui wo') || isE_Route) ? 80 : 30;
+      // FIX: Lowered morning feeder base load to 55 to prevent 99% standing capacity on route 38
+      if (isFeeder) {
+          baseLoad = 55;
+      } else {
+          baseLoad = (dest.includes('tung chung') || dest.includes('mui wo') || isE_Route) ? 80 : 30;
+      }
       if (isTouristRoute) baseLoad = 25; 
     } else if (hour >= 10 && hour <= 16) {
       baseLoad = 30;
