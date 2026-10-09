@@ -32,7 +32,7 @@
     color-scheme: dark;
   }
 
-  /* Header - Fixed overlap with symmetrical padding and constrained back button */
+  /* Header - Fixed back button overlap with 50px side clearance */
   .header {
     background-color: var(--kmb-red);
     color: white;
@@ -53,7 +53,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 0 46px; /* Guaranteed clearance for back button on the left */
+    padding-left: 50px;
+    padding-right: 50px;
     width: 100%;
     box-sizing: border-box;
   }
@@ -135,7 +136,7 @@
   .eta-row-left { display: flex; align-items: center; gap: 16px; font-size: 1rem; color: var(--text-sub); }
   .eta-row-seq {
     display: inline-block;
-    min-width: 48px;
+    min-width: 50px;
     font-weight: 900;
     color: var(--text-main);
     font-size: 1.35rem;
@@ -144,7 +145,7 @@
   }
   .eta-row-time { font-size: 2.2rem; font-weight: 900; font-variant-numeric: tabular-nums; }
 
-  /* Search / Route View */
+  /* Route (Search) View */
   .search-box-container { padding: 16px; background: var(--bg-white); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; z-index: 10;}
   .search-input {
     width: 100%; padding: 16px; border: 2px solid var(--border-color); border-radius: 12px;
@@ -262,7 +263,7 @@
   <h1 id="headerTitle">Bus HK</h1>
 </header>
 
-<!-- Nearby (Main) View -->
+<!-- Nearby View -->
 <main id="view-main" class="view-container active">
   <div class="location-header">
     <div style="display:flex; align-items:center; gap:12px;">
@@ -319,7 +320,7 @@
   <div id="stop-list-container"></div>
 </main>
 
-<!-- Bottom Tabs -->
+<!-- Bottom Tabs: Nearby & Route -->
 <nav class="bottom-tabs">
   <div class="tab active" onclick="switchTab('main')" id="tab-main"><span class="tab-icon">📍</span><span>Nearby</span></div>
   <div class="tab" onclick="switchTab('search')" id="tab-search"><span class="tab-icon">🚌</span><span>Route</span></div>
@@ -622,6 +623,9 @@ function locateNearestStopPromise() {
                 if (currentView === 'map' && globalMapInstance) {
                     renderGlobalMapStops();
                 }
+                if (currentView === 'search') {
+                    renderSearchResults();
+                }
             } else {
                 document.getElementById('mainLocationText').innerText = 'No nearby stops';
                 document.getElementById('mainRouteList').innerHTML = '';
@@ -649,7 +653,7 @@ function getNearbyRoutes(maxDistanceKm = 1.0) {
 
     let candidates = stopsWithDist.filter(item => item.dist <= maxDistanceKm);
     if (candidates.length === 0) {
-        candidates = stopsWithDist.slice(0, 3);
+        candidates = stopsWithDist.slice(0, 5);
     }
 
     const seenGroupKeys = new Set();
@@ -697,10 +701,12 @@ function switchTab(tabId) {
     document.getElementById('headerTitle').innerText = 'Bus HK';
     
     if (tabId === 'search') {
-        if (!lastKnownPos) {
-            refreshGPS().then(() => renderSearchResults());
-        }
         renderSearchResults();
+        if (!lastKnownPos) {
+            refreshGPS().then(() => {
+                if (currentView === 'search') renderSearchResults();
+            });
+        }
     }
     if (tabId === 'fav') renderFavList();
     if (tabId === 'map') {
@@ -1100,7 +1106,7 @@ async function toggleMainEta(groupKey) {
     }
 }
 
-// Replaced 1, 2, 3 sequence with group.routeNo
+// Uses route number (e.g. 3M) instead of sequence numbers (1, 2, 3)
 function generateExpandedETAsHtml(arrs, group, stopKey) {
     if (arrs.length === 0) {
         return '<div style="color:var(--text-sub); text-align:center; padding: 20px;">No further departures scheduled.</div>';
@@ -1110,7 +1116,6 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     const stopIdx = stops.findIndex(s => s.stopKey === stopKey);
     
     let html = '';
-    // Show max 3 upcoming departures
     for(let i = 0; i < Math.min(3, arrs.length); i++) {
         const arr = arrs[i];
         const targetMs = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
@@ -1153,7 +1158,7 @@ function renderSearchResults() {
     const query = document.getElementById('searchInput').value.trim().toLowerCase();
     const listEl = document.getElementById('searchResults');
     
-    // When search is empty, show nearby routes based on current GPS
+    // When empty, show nearby routes based on GPS
     if (!query) {
         let nearby = getNearbyRoutes();
         if (activeRegionFilter !== 'ALL') {
@@ -1175,7 +1180,7 @@ function renderSearchResults() {
                 <div class="text-center" style="padding-top:60px;">
                     <div style="font-size:3rem; margin-bottom:12px;">🚌</div>
                     <div style="font-weight:700;">No nearby routes for selected filter</div>
-                    <div style="font-size:0.9rem; color:var(--text-sub); margin-top:8px;">Try selecting "ALL" or search by route number</div>
+                    <div style="font-size:0.9rem; color:var(--text-sub); margin-top:8px;">Try selecting "ALL" or enter a route number above</div>
                 </div>`;
             return;
         }
@@ -1205,7 +1210,7 @@ function renderSearchResults() {
         return;
     }
 
-    // Active search across all routes matching query
+    // Active search across database
     let matches = groupedRoutes;
     if (activeRegionFilter !== 'ALL') {
         matches = matches.filter(g => g.company === activeRegionFilter);
@@ -1500,8 +1505,8 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
             else spatialCurve = 1.0;
 
         } else if (rNo === '3M') {
-            const isToMui Wo = destUpper.includes('MUI WO');
-            if (isToMui Wo) {
+            const isToMuiWo = destUpper.includes('MUI WO');
+            if (isToMuiWo) {
                 if (dayType === 'holiday' || dayType === 'saturday') {
                     if (timeOfDay === 'am_peak') baseLoad = 98;
                     else if (timeOfDay === 'midday') baseLoad = 85;
