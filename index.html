@@ -141,11 +141,7 @@
   .region-btn { flex: 0 0 auto; padding: 14px 20px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-light); color: var(--text-sub); font-size: 1rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
   .region-btn.active { background: var(--kmb-red); color: white; border-color: var(--kmb-red); }
 
-  #map-container { 
-      height: 35vh; width: 100%; background: #111; flex-shrink: 0; 
-      border-bottom: 1px solid var(--border-color); 
-      transition: height 0.35s cubic-bezier(0.25, 0.8, 0.25, 1); 
-  }
+  #map-container { height: 35vh; width: 100%; background: #111; flex-shrink: 0; border-bottom: 1px solid var(--border-color); }
   #stop-list-container { flex: 1; overflow-y: auto; position: relative; background: var(--bg-light); }
   
   .stop-item { position: relative; padding: 24px 16px 24px 50px; border-bottom: 1px solid var(--border-color); cursor: pointer; }
@@ -758,17 +754,17 @@ function initDetailMap() {
     }).addTo(mapInstance);
     L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
 
-    // Expand map dynamically on double-tap
-    mapInstance.on('dblclick', function(e) {
-        const mapEl = document.getElementById('map-container');
-        const isExpanded = mapEl.style.height === '70vh';
-        mapEl.style.height = isExpanded ? '35vh' : '70vh';
-        
-        setTimeout(() => {
-            mapInstance.invalidateSize();
-            mapInstance.panTo(e.latlng, { animate: true });
-        }, 350);
-    });
+    // Custom iOS Bulletproof Double-Tap-To-Zoom
+    let lastTapTime = 0;
+    document.getElementById('map-container').addEventListener('touchstart', function(e) {
+        if (e.touches.length > 1) return;
+        const now = Date.now();
+        if (now - lastTapTime < 400 && now - lastTapTime > 0) {
+            mapInstance.zoomIn();
+            if(e.cancelable) e.preventDefault();
+        }
+        lastTapTime = now;
+    }, { passive: false });
 }
 
 function initGlobalMap() {
@@ -785,6 +781,18 @@ function initGlobalMap() {
         userMarkerGlobal = L.marker([lastKnownPos.lat, lastKnownPos.lon], {icon: makeUserIcon(), zIndexOffset: 1000}).addTo(globalMapInstance);
         globalMapInstance.setView([lastKnownPos.lat, lastKnownPos.lon], 16);
     }
+
+    // Custom iOS Bulletproof Double-Tap-To-Zoom
+    let lastTapTime = 0;
+    document.getElementById('global-map-container').addEventListener('touchstart', function(e) {
+        if (e.touches.length > 1) return;
+        const now = Date.now();
+        if (now - lastTapTime < 400 && now - lastTapTime > 0) {
+            globalMapInstance.zoomIn();
+            if(e.cancelable) e.preventDefault();
+        }
+        lastTapTime = now;
+    }, { passive: false });
 }
 
 function drawRouteOnMap(group) {
@@ -835,18 +843,6 @@ function renderGlobalMapStops() {
 // ==========================================
 // ZONE 5: CORE APP LOGIC & STATE MUTATION
 // ==========================================
-
-function toggleTextSize() {
-    textSizeState = (textSizeState + 1) % 3;
-    localStorage.setItem('bus_hk_text_size_state', textSizeState.toString());
-    
-    document.documentElement.classList.remove('text-sm', 'text-xs');
-    if (textSizeState === 1) document.documentElement.classList.add('text-sm');
-    if (textSizeState === 2) document.documentElement.classList.add('text-xs');
-    
-    if (mapInstance) mapInstance.invalidateSize();
-    if (globalMapInstance) globalMapInstance.invalidateSize();
-}
 
 function updateDetailTimestamp() {
     const el = document.getElementById('detailLastUpdated');
@@ -1579,3 +1575,4 @@ window.onload = initApp;
 </script>
 </body>
 </html>
+
