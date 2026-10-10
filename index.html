@@ -126,11 +126,9 @@
     font-size: 1.3rem; outline: none; text-align: center; background: var(--bg-light); color: var(--text-main); font-weight: 700;
   }
   .search-input:focus { border-color: var(--kmb-red); }
-  .region-filters { display: flex; gap: 8px; justify-content: space-between; }
-  .region-btn {
-    flex: 1; padding: 14px 0; border-radius: 10px; border: 1px solid var(--border-color);
-    background: var(--bg-light); color: var(--text-sub); font-size: 1rem; font-weight: 800; cursor: pointer; text-transform: uppercase;
-  }
+ .region-filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 4px; }
+  .region-filters::-webkit-scrollbar { display: none; }
+  .region-btn { flex: 0 0 auto; padding: 14px 20px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-light); color: var(--text-sub); font-size: 1rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
   .region-btn.active { background: var(--kmb-red); color: white; border-color: var(--kmb-red); }
 
   #map-container { height: 35vh; width: 100%; background: #111; flex-shrink: 0; border-bottom: 1px solid var(--border-color); }
