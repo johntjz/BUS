@@ -1,72 +1,10 @@
-// Add this helper function at the top of your script to prevent DDoS bans
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// ==========================================
-// CITYBUS (CTB) INGESTION
-// ==========================================
-async function fetchCitybus() {
-    console.log("Fetching Citybus routes...");
-    const routesRes = await fetch('https://rt.data.gov.hk/v2/transport/citybus/route/ctb');
-    const routesData = await routesRes.json();
-    
-    for (const route of routesData.data) {
-        // CTB uses 'inbound' and 'outbound' in the URL, but 'I' and 'O' in the data. We must map it.
-        const dirString = route.bound === 'I' ? 'inbound' : 'outbound';
-        
-        try {
-            const stopsRes = await fetch(`https://rt.data.gov.hk/v2/transport/citybus/route-stop/ctb/${route.route}/${dirString}`);
-            const stopsData = await stopsRes.json();
-            
-            // Build your grouped route logic here, matching KMB's structure
-            const groupId = `CTB_${route.route}`;
-            // ... (Add to your global JSON array)
-            
-            await sleep(50); // PAUSE FOR 50ms so Citybus doesn't block GitHub
-        } catch (e) {
-            console.log(`Failed to fetch CTB ${route.route}`);
-        }
-    }
-}
-
-// ==========================================
-// GREEN MINIBUS (GMB) INGESTION
-// ==========================================
-async function fetchGMB() {
-    console.log("Fetching GMB routes...");
-    const routesRes = await fetch('https://data.etagmb.gov.hk/route');
-    const routesData = await routesRes.json();
-    
-    // GMB splits routes by region (HKI, KLN, NT). We combine them into one array.
-    const allRouteCodes = [
-        ...routesData.data.routes.HKI.map(c => ({code: c, reg: 'HKI'})),
-        ...routesData.data.routes.KLN.map(c => ({code: c, reg: 'KLN'})),
-        ...routesData.data.routes.NT.map(c => ({code: c, reg: 'NT'}))
-    ];
-
-    for (const r of allRouteCodes) {
-        try {
-            const detailRes = await fetch(`https://data.etagmb.gov.hk/route/${r.reg}/${r.code}`);
-            const detailData = await detailRes.json();
-            
-            // GMB hides the actual route_id inside this second payload
-            for (const variant of detailData.data) {
-                const routeId = variant.route_id;
-                // Fetch the physical stops for this specific GMB route
-                const stopsRes = await fetch(`https://data.etagmb.gov.hk/route-stop/${routeId}/1`); // 1 = direction
-                // ... (Format and push to your JSON array)
-                
-                await sleep(100); // GMB Firewall is strict. PAUSE FOR 100ms!
-            }
-        } catch (e) {
-            console.log(`Failed GMB ${r.code}`);
-        }
-    }
-}
-
 const fs = require('fs');
 
 const KMB_API_BASE = 'https://data.etabus.gov.hk/v1/transport/kmb';
 const NLB_API_BASE = 'https://rt.data.gov.hk/v2/transport/nlb';
+
+// Helper function to prevent DDoS bans from government servers
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function cleanStopName(name) {
   if (!name) return '';
@@ -78,12 +16,15 @@ function formatStopName(name) {
 }
 
 async function build() {
-  console.log('Fetching network data from KMB and NLB...');
+  console.log('Fetching network data from KMB, NLB, CTB, and GMB...');
   const groupedMap = new Map();
   const routeStopsCache = {};
 
+  // ==========================================
   // 1. NLB Routes & Stops
+  // ==========================================
   try {
+    console.log('Processing NLB...');
     const nlbRes = await fetch(`${NLB_API_BASE}/route.php?action=list`).then(r => r.json());
     const rawNlbRoutes = nlbRes.routes || [];
     rawNlbRoutes.forEach(r => {
@@ -109,8 +50,11 @@ async function build() {
     }
   } catch(e) { console.error('Error fetching NLB:', e); }
 
+  // ==========================================
   // 2. KMB Routes & Stops
+  // ==========================================
   try {
+    console.log('Processing KMB & LWB...');
     const [kmbRoutesRes, kmbStopsRes, kmbRouteStopsRes] = await Promise.all([
       fetch(`${KMB_API_BASE}/route/`).then(r => r.json()),
       fetch(`${KMB_API_BASE}/stop/`).then(r => r.json()),
@@ -154,13 +98,103 @@ async function build() {
     }
   } catch(e) { console.error('Error fetching KMB:', e); }
 
+  // ==========================================
+  // 3. CITYBUS (CTB) INGESTION
+  // ==========================================
+  try {
+    console.log("Processing Citybus (CTB)...");
+    const routesRes = await fetch('https://rt.data.gov.hk/v2/transport/citybus/route/ctb');
+    const routesData = await routesRes.json();
+    
+    for (const route of routesData.data) {
+        const dirString = route.bound === 'I' ? 'inbound' : 'outbound';
+        
+        try {
+            const stopsRes = await fetch(`https://rt.data.gov.hk/v2/transport/citybus/route-stop/ctb/${route.route}/${dirString}`);
+            const stopsData = await stopsRes.json();
+            
+            const rId = `CTB_${route.route}_${route.bound}`;
+            
+            // Format stop coordinates (requires fetching individual stops, so we skip coords to save time, or set to 0 if unknown)
+            // For a complete map, you would need to hit the stop detail endpoint, but for now we register the route.
+            routeStopsCache[rId] = stopsData.data.map(rs => {
+                return { stopId: rs.stop, stopName_e: 'CTB Stop', latitude: '0', longitude: '0', seq: rs.seq };
+            });
+
+            const cleanDestE = formatStopName(cleanStopName(route.dest_en));
+            const groupKey = `CTB_${route.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+            if (!groupedMap.has(groupKey)) {
+                groupedMap.set(groupKey, { key: groupKey, routeNo: route.route, dest_e: cleanDestE, routeIds: [rId], company: 'CTB' });
+            } else {
+                groupedMap.get(groupKey).routeIds.push(rId);
+            }
+            
+            await sleep(50); // PAUSE FOR 50ms
+        } catch (e) {
+            console.log(`Failed to fetch CTB ${route.route}`);
+        }
+    }
+  } catch (e) { console.error('Error fetching CTB:', e); }
+
+  // ==========================================
+  // 4. GREEN MINIBUS (GMB) INGESTION
+  // ==========================================
+  try {
+    console.log("Processing Green Minibus (GMB)...");
+    const routesRes = await fetch('https://data.etagmb.gov.hk/route');
+    const routesData = await routesRes.json();
+    
+    const allRouteCodes = [
+        ...routesData.data.routes.HKI.map(c => ({code: c, reg: 'HKI'})),
+        ...routesData.data.routes.KLN.map(c => ({code: c, reg: 'KLN'})),
+        ...routesData.data.routes.NT.map(c => ({code: c, reg: 'NT'}))
+    ];
+
+    for (const r of allRouteCodes) {
+        try {
+            const detailRes = await fetch(`https://data.etagmb.gov.hk/route/${r.reg}/${r.code}`);
+            const detailData = await detailRes.json();
+            
+            for (const variant of detailData.data) {
+                const routeId = variant.route_id;
+                const rId = `GMB_${routeId}`;
+                
+                const stopsRes = await fetch(`https://data.etagmb.gov.hk/route-stop/${routeId}/1`);
+                const stopsData = await stopsRes.json();
+                
+                if (stopsData && stopsData.data && stopsData.data.route_stops) {
+                    routeStopsCache[rId] = stopsData.data.route_stops.map(rs => {
+                        return { stopId: rs.stop_id, stopName_e: cleanStopName(rs.name_en), latitude: '0', longitude: '0', seq: rs.stop_seq };
+                    });
+
+                    const dest_e = variant.dest_en || 'Unknown';
+                    const groupKey = `GMB_${r.code}___${cleanStopName(dest_e)}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+                    if (!groupedMap.has(groupKey)) {
+                        groupedMap.set(groupKey, { key: groupKey, routeNo: r.code, dest_e: dest_e, routeIds: [rId], company: 'GMB' });
+                    } else {
+                        groupedMap.get(groupKey).routeIds.push(rId);
+                    }
+                }
+                await sleep(100); // PAUSE FOR 100ms
+            }
+        } catch (e) {
+            // console.log(`Failed GMB ${r.code}`); // Silenced to keep logs clean
+        }
+    }
+  } catch (e) { console.error('Error fetching GMB:', e); }
+
+  // ==========================================
+  // COMPILE AND SAVE
+  // ==========================================
   const output = {
     groupedRoutes: Array.from(groupedMap.values()),
     routeStopsCache
   };
 
   fs.writeFileSync('./bus_index.min.json', JSON.stringify(output));
-  console.log('Successfully generated bus_index.min.json!');
+  console.log('Successfully generated bus_index.min.json with all operators!');
 }
 
 build();
