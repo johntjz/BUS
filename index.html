@@ -26,8 +26,10 @@
   
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
   
-  html { font-size: 16px; }
-  html.text-sm { font-size: 13.5px; } 
+  /* 3-Tier Text Scaling */
+  html { font-size: 16px; transition: font-size 0.2s ease-in-out; }
+  html.text-sm { font-size: 14px; } 
+  html.text-xs { font-size: 12px; } 
 
   body {
     background-color: var(--bg-light);
@@ -320,9 +322,10 @@ let countdown = REFRESH_INTERVAL;
 let timerInterval = null;
 let isSyncing = false;
 
-// Apply saved text size immediately
-let isSmallText = localStorage.getItem('bus_hk_text_size') === 'true';
-if (isSmallText) document.documentElement.classList.add('text-sm');
+// Initialize Text Size (0: Normal, 1: Small, 2: Extra Small)
+let textSizeState = parseInt(localStorage.getItem('bus_hk_text_size_state') || '0');
+if (textSizeState === 1) document.documentElement.classList.add('text-sm');
+if (textSizeState === 2) document.documentElement.classList.add('text-xs');
 
 // ==========================================
 // ZONE 2: PURE ALGORITHMS & UTILITIES
@@ -818,13 +821,13 @@ function renderGlobalMapStops() {
 // ==========================================
 
 function toggleTextSize() {
-    isSmallText = !isSmallText;
-    localStorage.setItem('bus_hk_text_size', isSmallText);
-    if (isSmallText) {
-        document.documentElement.classList.add('text-sm');
-    } else {
-        document.documentElement.classList.remove('text-sm');
-    }
+    textSizeState = (textSizeState + 1) % 3;
+    localStorage.setItem('bus_hk_text_size_state', textSizeState.toString());
+    
+    document.documentElement.classList.remove('text-sm', 'text-xs');
+    if (textSizeState === 1) document.documentElement.classList.add('text-sm');
+    if (textSizeState === 2) document.documentElement.classList.add('text-xs');
+    
     if (mapInstance) mapInstance.invalidateSize();
     if (globalMapInstance) globalMapInstance.invalidateSize();
 }
@@ -1270,9 +1273,8 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
             let apiS = Math.floor((apiDiffMs % 60000) / 1000);
             let apiStr = apiM > 0 ? `${apiM}m ${apiS}s` : `${apiS}s`;
 
-            // Display split: -Xm Xs on the far left, API (+4 stop) on the far right
             occBadge = `<span style="font-size:1.6rem; font-weight:900; color:var(--text-sub);">${leftStr}</span>`;
-            mainTimeStr = `<span style="opacity:0;">--</span>`; // Spacer to keep layout intact
+            mainTimeStr = `<span style="opacity:0;">--</span>`; 
             subTimeStr = `API (+${arr.offset} stop): ${apiStr}`;
             color = 'var(--text-sub)';
         } else {
