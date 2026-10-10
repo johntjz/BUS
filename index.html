@@ -210,8 +210,8 @@
     <div class="region-filters">
         <button class="region-btn active" id="filter-ALL" onclick="setRegionFilter('ALL')">All</button>
         <button class="region-btn" id="filter-KMB" onclick="setRegionFilter('KMB')">KMB</button>
-        <button class="region-btn" id="filter-LWB" onclick="setRegionFilter('LWB')">LWB</button>
-        <button class="region-btn" id="filter-NLB" onclick="setRegionFilter('NLB')">NLB</button>
+        <button class="region-btn" id="filter-CTB" onclick="setRegionFilter('CTB')">CTB</button>
+        <button class="region-btn" id="filter-GMB" onclick="setRegionFilter('GMB')">GMB</button>
     </div>
     <input type="text" id="searchInput" class="search-input" placeholder="Enter Route Number" oninput="renderSearchResults()" autocomplete="off">
   </div>
@@ -248,7 +248,7 @@
   <div id="stop-list-container"></div>
 </main>
 
-<!-- Bottom Tabs: Nearby & Route -->
+<!-- Bottom Tabs -->
 <nav class="bottom-tabs">
   <div class="tab active" onclick="switchTab('main')" id="tab-main"><span class="tab-icon">📍</span><span>Nearby</span></div>
   <div class="tab" onclick="switchTab('search')" id="tab-search"><span class="tab-icon">🚌</span><span>Route</span></div>
@@ -270,7 +270,6 @@
     </div>
 </div>
 
-<!-- Local Leaflet JS -->
 <script src="leaflet.js"></script>
 
 <script>
@@ -326,6 +325,7 @@ function cleanStopName(name) {
 }
 
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+  if (lat1 === 0 || lat2 === 0) return Infinity; // Ignore missing coords for GMB/CTB
   const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
@@ -441,7 +441,6 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                 }
                 spatialCurve = 1.0 - Math.pow(progress, 3);
             } else { 
-                // Heading to Tung Chung
                 if (dayType === 'holiday' || dayType === 'saturday') {
                     if (timeOfDay === 'am_peak') baseLoad = 92; 
                     else if (timeOfDay === 'pm_peak') baseLoad = 98;
@@ -452,7 +451,6 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     else if (timeOfDay === 'pm_peak') baseLoad = 60;
                     else baseLoad = 40;
                 }
-                // Passengers accumulate from South Lantau villages crossing the mountain pass
                 spatialCurve = Math.min(1.0, 0.45 + (Math.sqrt(progress) * 0.55));
             }
 
@@ -500,7 +498,6 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                 spatialCurve = Math.pow(progress, 0.5);
             }
         }
-
         const noise = (date.getMinutes() % 7) - 3;
         let finalLoad = Math.round(baseLoad * spatialCurve) + noise;
         return Math.min(100, Math.max(0, finalLoad));
@@ -522,9 +519,13 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
 // ZONE 3: API & DATA FETCHING
 // ==========================================
 async function fetchJSON(url) {
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error('API offline');
-  return await response.json();
+  try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) return null;
+      return await response.json();
+  } catch(e) {
+      return null;
+  }
 }
 
 async function fetchEtaRaw(group, stopKeyToMatch) {
@@ -538,28 +539,52 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
         
         const targetStop = stops[tIndex];
         
-        if (rId.startsWith('KMB_')) {
+        if (rId.startsWith('KMB_') || rId.startsWith('LWB_')) {
             const parts = rId.split('_');
             const routeNo = parts[1], dir = parts[2], serviceType = parts[3];
-            try {
-                const res = await fetchJSON(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`);
-                if(res && res.data) {
-                    res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
-                        combined.push({
-                            estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
-                            noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
-                        });
+            const res = await fetchJSON(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`);
+            if(res && res.data) {
+                res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
+                    combined.push({
+                        estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
+                        noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                    });
+                });
+            }
+        } else if (rId.startsWith('NLB_')) {
+            const rawNlbId = rId.replace('NLB_', '');
+            const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`);
+            if(res && res.estimatedArrivals) {
+                res.estimatedArrivals.forEach(arr => combined.push(arr));
+            }
+        } else if (rId.startsWith('CTB_')) {
+            const parts = rId.split('_');
+            const routeNo = parts[1], dir = parts[2]; 
+            const res = await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${targetStop.stopId}/${routeNo}`);
+            if(res && res.data) {
+                res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
+                    combined.push({
+                        estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
+                        noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                    });
+                });
+            }
+        } else if (rId.startsWith('GMB_')) {
+            const routeId = rId.replace('GMB_', '');
+            const res = await fetchJSON(`https://data.etagmb.gov.hk/eta/stop/${targetStop.stopId}`);
+            if(res && res.data) {
+                const targetData = res.data.find(d => String(d.route_id) === routeId);
+                if (targetData && targetData.eta) {
+                    targetData.eta.forEach(e => {
+                        if(e.timestamp) {
+                            combined.push({
+                                estimatedArrivalTime: e.timestamp.replace('T', ' ').substring(0, 19),
+                                noGPS: 0
+                            });
+                        }
                     });
                 }
-            } catch(e) {}
-        } else {
-            const rawNlbId = rId.replace('NLB_', '');
-            try {
-                const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`);
-                if(res && res.estimatedArrivals) {
-                    res.estimatedArrivals.forEach(arr => combined.push(arr));
-                }
-            } catch(e) {}
+            }
         }
     }));
     
@@ -620,6 +645,7 @@ function locateNearestStopPromise() {
             
             let closest = null, minDistance = Infinity;
             allStops.forEach(s => {
+                if(s.latitude === '0' || s.longitude === '0') return; // Skip stops without GPS mapping
                 const d = calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parseFloat(s.latitude), parseFloat(s.longitude));
                 if (d < minDistance) { minDistance = d; closest = s; }
             });
@@ -631,7 +657,7 @@ function locateNearestStopPromise() {
                 if (currentView === 'map' && globalMapInstance) renderGlobalMapStops();
                 if (currentView === 'search') renderSearchResults();
             } else {
-                document.getElementById('mainLocationText').innerText = 'No nearby stops';
+                document.getElementById('mainLocationText').innerText = 'No nearby stops mapped';
                 document.getElementById('mainRouteList').innerHTML = '';
             }
             resolve(true);
@@ -644,33 +670,23 @@ function locateNearestStopPromise() {
 
 function initDetailMap() {
     mapInstance = L.map('map-container', { zoomControl: false }).setView([22.3, 114.16], 11);
-    
-    // 1. HK GeoData Store Base Map
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles', attribution: '&copy; Hong Kong GeoData Store'
     }).addTo(mapInstance);
-    
-    // 2. HK GeoData Store Labels
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles'
     }).addTo(mapInstance);
-
     L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
 }
 
 function initGlobalMap() {
     globalMapInstance = L.map('global-map-container', { zoomControl: false }).setView([22.3, 114.16], 15);
-    
-    // 1. HK GeoData Store Base Map
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles', attribution: '&copy; Hong Kong GeoData Store'
     }).addTo(globalMapInstance);
-    
-    // 2. HK GeoData Store Labels
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles'
     }).addTo(globalMapInstance);
-
     L.control.zoom({ position: 'bottomright' }).addTo(globalMapInstance);
     
     if (lastKnownPos) {
@@ -685,7 +701,7 @@ function drawRouteOnMap(group) {
     mapMarkers.forEach(m => mapInstance.removeLayer(m));
     mapMarkers = [];
     
-    const stops = getStopsForGroup(group);
+    const stops = getStopsForGroup(group).filter(s => s.latitude !== '0' && s.longitude !== '0');
     if(stops.length === 0) return;
     
     const latlngs = stops.map(s => [parseFloat(s.latitude), parseFloat(s.longitude)]);
@@ -708,13 +724,11 @@ function drawRouteOnMap(group) {
 
 function renderGlobalMapStops() {
     if (!globalMapInstance || !lastKnownPos) return;
-    
     globalMarkers.forEach(m => globalMapInstance.removeLayer(m));
     globalMarkers = [];
-    
     const stopIcon = L.divIcon({ className: 'custom-stop-icon', html: '<div style="width:16px;height:16px;background:white;border:4px solid var(--kmb-red);border-radius:50%; box-shadow: 0 0 6px rgba(0,0,0,0.5);"></div>', iconSize: [16, 16] });
-    let nearby = allStops.filter(s => calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, parseFloat(s.latitude), parseFloat(s.longitude)) <= 0.8);
     
+    let nearby = allStops.filter(s => s.latitude !== '0' && calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, parseFloat(s.latitude), parseFloat(s.longitude)) <= 0.8);
     nearby.forEach(s => {
         const marker = L.marker([parseFloat(s.latitude), parseFloat(s.longitude)], {icon: stopIcon}).addTo(globalMapInstance);
         marker.on('click', () => {
@@ -729,26 +743,37 @@ function renderGlobalMapStops() {
 // ==========================================
 // ZONE 5: CORE APP LOGIC & STATE MUTATION
 // ==========================================
+function updateDetailTimestamp() {
+    const el = document.getElementById('detailLastUpdated');
+    if (el) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        el.innerText = `Updated ${timeStr}`;
+    }
+}
+
+function setLoadProgress(pct, text) {
+  const fill = document.getElementById('loadBar');
+  const txt = document.getElementById('loadText');
+  if (fill) fill.style.width = `${pct}%`;
+  if (txt) txt.innerText = text;
+}
+
 async function initApp() {
   try {
     setLoadProgress(50, "Loading bus network...");
-    
     const indexResponse = await fetch('bus_index.min.json', { cache: 'default' });
     if (!indexResponse.ok) throw new Error('Failed to load network index');
-    
     const db = await indexResponse.json();
     groupedRoutes = db.groupedRoutes;
     routeStopsCache = db.routeStopsCache;
     
     buildAllStopsList();
     initDetailMap(); 
-    
     await locateNearestStopPromise();
     startTimer();
-    
   } catch (err) {
-    document.getElementById('mainRouteList').innerHTML = '<div class="text-center" style="color:var(--kmb-red);">Error connecting to transit network. Check internet connection.</div>';
-    console.error(err);
+    document.getElementById('mainRouteList').innerHTML = '<div class="text-center" style="color:var(--kmb-red);">Error connecting to transit network.</div>';
   }
 }
 
@@ -774,7 +799,6 @@ function getStopsForGroup(group) {
   const uniqueMap = new Map();
   if (!group || !group.routeIds || group.routeIds.length === 0) return [];
   const primaryRouteId = group.routeIds[0]; 
-  
   let seq = 1;
   (routeStopsCache[primaryRouteId] || []).forEach(s => {
      const key = getGlobalStopKey(s);
@@ -787,7 +811,6 @@ function getStopsForGroup(group) {
 
 function getNearbyRoutes(maxDistanceKm = 1.0) {
     if (!lastKnownPos || allStops.length === 0) return [];
-    
     const stopsWithDist = allStops.map(s => {
         const lat = parseFloat(s.latitude);
         const lon = parseFloat(s.longitude);
@@ -796,15 +819,11 @@ function getNearbyRoutes(maxDistanceKm = 1.0) {
     }).filter(item => item.dist !== Infinity).sort((a, b) => a.dist - b.dist);
 
     if (stopsWithDist.length === 0) return [];
-
     let candidates = stopsWithDist.filter(item => item.dist <= maxDistanceKm);
-    if (candidates.length === 0) {
-        candidates = stopsWithDist.slice(0, 5);
-    }
+    if (candidates.length === 0) candidates = stopsWithDist.slice(0, 5);
 
     const seenGroupKeys = new Set();
     const result = [];
-
     candidates.forEach(item => {
         item.stop.routes.forEach(rk => {
             if (!seenGroupKeys.has(rk)) {
@@ -821,76 +840,32 @@ function getNearbyRoutes(maxDistanceKm = 1.0) {
         if (numA === numB) return a.routeNo.localeCompare(b.routeNo);
         return numA - numB;
     });
-
     return result;
-}
-
-async function autoSelectNearestStop(token) {
-    const stops = getStopsForGroup(detailRouteGroup);
-    if (stops.length === 0) return;
-
-    let pos = lastKnownPos;
-    if (!pos) pos = await refreshGPS(5000);
-    if (token !== detailOpenToken) return;
-    if (!pos) return;
-
-    let idx = findNearestStopIdx(stops, pos);
-    if (idx !== -1) await selectNearestStop(idx, stops);
-
-    const fresh = await refreshGPS(4000);
-    if (token !== detailOpenToken || !fresh) return;
-    const newIdx = findNearestStopIdx(stops, fresh);
-    if (newIdx !== -1 && newIdx !== idx && detailExpandedStopIdx === idx) {
-        await selectNearestStop(newIdx, stops);
-    }
 }
 
 // ==========================================
 // ZONE 6: DOM MANIPULATION & UI RENDERING
 // ==========================================
-function updateDetailTimestamp() {
-    const el = document.getElementById('detailLastUpdated');
-    if (el) {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        el.innerText = `Updated ${timeStr}`;
-    }
-}
-
-function setLoadProgress(pct, text) {
-  const fill = document.getElementById('loadBar');
-  const txt = document.getElementById('loadText');
-  if (fill) fill.style.width = `${pct}%`;
-  if (txt) txt.innerText = text;
-}
-
 function switchTab(tabId) {
     if (tabId === 'main') {
         mainExpandedGroupKey = null; 
         document.getElementById('mainLocationText').innerText = 'Locating...';
         locateNearestStopPromise();
     }
-    
     currentView = tabId;
     detailRouteGroup = null; 
     detailOpenToken++; 
     
     document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    
     document.getElementById(`view-${tabId}`).classList.add('active');
     document.getElementById(`tab-${tabId}`).classList.add('active');
-    
     document.getElementById('backBtn').style.display = 'none';
     document.getElementById('headerTitle').innerText = 'Bus HK';
     
     if (tabId === 'search') {
         renderSearchResults();
-        if (!lastKnownPos) {
-            refreshGPS().then(() => {
-                if (currentView === 'search') renderSearchResults();
-            });
-        }
+        if (!lastKnownPos) refreshGPS().then(() => { if (currentView === 'search') renderSearchResults(); });
     }
     if (tabId === 'fav') renderFavList();
     if (tabId === 'map') {
@@ -929,29 +904,7 @@ function openRouteDetail(groupKey, autoNearest = false) {
         if(mapInstance) mapInstance.invalidateSize();
         drawRouteOnMap(group);
         renderStopList();
-        if (autoNearest) { await autoSelectNearestStop(token); }
     }, 100);
-}
-
-async function selectNearestStop(idx, stops) {
-    if (detailNearestIdx !== -1) {
-        const old = document.getElementById(`nearest-tag-${detailNearestIdx}`);
-        if (old) old.remove();
-    }
-    detailNearestIdx = idx;
-    const nameEl = document.querySelector(`#stop-item-${idx} .stop-name`);
-    if (nameEl) nameEl.insertAdjacentHTML('beforeend', `<span class="nearest-tag" id="nearest-tag-${idx}">Nearest</span>`);
-
-    if (detailExpandedStopIdx === idx) {
-        document.getElementById(`detail-eta-expanded-${idx}`).classList.remove('active');
-        document.getElementById(`stop-item-${idx}`).classList.remove('active-stop');
-        detailExpandedStopIdx = -1;
-    }
-    const p = expandStop(idx);
-    const item = document.getElementById(`stop-item-${idx}`);
-    if (item) item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    if (mapInstance && mapMarkers[idx]) mapInstance.panTo(mapMarkers[idx].getLatLng(), { animate: true });
-    await p;
 }
 
 function navigateBack() { switchTab(previousView); }
@@ -970,18 +923,14 @@ function openMapSheet(stopObj) {
     listEl.innerHTML = '<div class="text-center">Loading schedules...</div>';
     
     Promise.all(relevantGroups.map(async g => {
-        try {
-            const arrs = await fetchEtaRaw(g, stopObj.stopKey);
-            let firstEtaMins = Infinity;
-            if (arrs.length > 0) {
-                const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
-                const diffMs = targetMs - Date.now();
-                firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
-            }
-            return { group: g, arrs, firstEtaMins };
-        } catch(e) {
-            return { group: g, arrs: [], firstEtaMins: Infinity };
+        const arrs = await fetchEtaRaw(g, stopObj.stopKey);
+        let firstEtaMins = Infinity;
+        if (arrs.length > 0) {
+            const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
+            const diffMs = targetMs - Date.now();
+            firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
         }
+        return { group: g, arrs, firstEtaMins };
     })).then(groupsWithEtas => {
         sortGroupsWithEtas(groupsWithEtas);
         let html = '';
@@ -989,7 +938,6 @@ function openMapSheet(stopObj) {
             const g = item.group;
             const arrs = item.arrs;
             const mins = item.firstEtaMins;
-
             let summaryHtml = '';
             let itemClass = '';
             
@@ -1009,14 +957,11 @@ function openMapSheet(stopObj) {
                   <div class="route-info-col">
                       <div class="route-dest">To ${g.dest_e}</div>
                   </div>
-                  <div class="route-eta-col" id="sheet-eta-summary-${g.key}">
-                     ${summaryHtml}
-                  </div>
+                  <div class="route-eta-col" id="sheet-eta-summary-${g.key}">${summaryHtml}</div>
               </div>
               <div class="eta-expanded-container" id="sheet-eta-expanded-${g.key}"></div>
             `;
         });
-        
         listEl.innerHTML = html || '<div class="text-center">No routes available</div>';
     });
 }
@@ -1044,12 +989,8 @@ async function toggleSheetEta(groupKey, stopKey) {
         
         const group = groupedRoutes.find(g => g.key === groupKey);
         if(group) {
-            try {
-                const arrs = await fetchEtaRaw(group, stopKey);
-                expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, stopKey);
-            } catch(e) {
-                expandContainer.innerHTML = '<div style="color:var(--kmb-red); padding: 20px; text-align:center;">Failed</div>';
-            }
+            const arrs = await fetchEtaRaw(group, stopKey);
+            expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, stopKey);
         }
     }
 }
@@ -1060,7 +1001,6 @@ async function renderMainNearby(isSilentRefresh = false) {
         if (!isSilentRefresh) listEl.innerHTML = '<div class="text-center">Locating...</div>';
         return;
     }
-    
     const stopObj = allStops.find(s => s.stopKey === currentNearestStopKey);
     if (!stopObj) return;
 
@@ -1075,28 +1015,22 @@ async function renderMainNearby(isSilentRefresh = false) {
     }
 
     let groupsWithEtas = await Promise.all(relevantGroups.map(async g => {
-        try {
-            const arrs = await fetchEtaRaw(g, currentNearestStopKey);
-            let firstEtaMins = Infinity;
-            if (arrs.length > 0) {
-                const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
-                const diffMs = targetMs - Date.now();
-                firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
-            }
-            return { group: g, arrs, firstEtaMins };
-        } catch(e) {
-            return { group: g, arrs: [], firstEtaMins: Infinity };
+        const arrs = await fetchEtaRaw(g, currentNearestStopKey);
+        let firstEtaMins = Infinity;
+        if (arrs.length > 0) {
+            const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
+            const diffMs = targetMs - Date.now();
+            firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
         }
+        return { group: g, arrs, firstEtaMins };
     }));
 
     sortGroupsWithEtas(groupsWithEtas);
-
     let html = '';
     groupsWithEtas.forEach(item => {
         const g = item.group;
         const arrs = item.arrs;
         const mins = item.firstEtaMins;
-
         let summaryHtml = '';
         let itemClass = '';
         
@@ -1120,20 +1054,13 @@ async function renderMainNearby(isSilentRefresh = false) {
                   <div class="route-dest">To ${g.dest_e}</div>
                   <div class="route-sub">${g.company}</div>
               </div>
-              <div class="route-eta-col" id="main-eta-summary-${g.key}">
-                 ${summaryHtml}
-              </div>
+              <div class="route-eta-col" id="main-eta-summary-${g.key}">${summaryHtml}</div>
           </div>
           <div class="eta-expanded-container ${expandClass}" id="main-eta-expanded-${g.key}">
         `;
-        
-        if (isExpanded) {
-            html += generateExpandedETAsHtml(arrs, g, currentNearestStopKey);
-        }
-        
+        if (isExpanded) html += generateExpandedETAsHtml(arrs, g, currentNearestStopKey);
         html += `</div>`;
     });
-
     listEl.innerHTML = html || '<div class="text-center">No routes found for this stop.</div>';
 }
 
@@ -1153,25 +1080,19 @@ async function toggleMainEta(groupKey) {
         
         const group = groupedRoutes.find(g => g.key === groupKey);
         if(group && currentNearestStopKey) {
-            try {
-                const arrs = await fetchEtaRaw(group, currentNearestStopKey);
-                expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, currentNearestStopKey);
-            } catch(e) {
-                expandContainer.innerHTML = '<div style="color:var(--kmb-red); padding: 20px; text-align:center;">Failed to load.</div>';
-            }
+            const arrs = await fetchEtaRaw(group, currentNearestStopKey);
+            expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, currentNearestStopKey);
         }
     }
 }
 
 function generateExpandedETAsHtml(arrs, group, stopKey) {
-    if (arrs.length === 0) {
-        return '<div style="color:var(--text-sub); text-align:center; padding: 20px;">No further departures scheduled.</div>';
-    }
+    if (arrs.length === 0) return '<div style="color:var(--text-sub); text-align:center; padding: 20px;">No departures scheduled.</div>';
     
     const stops = getStopsForGroup(group);
     const stopIdx = stops.findIndex(s => s.stopKey === stopKey);
-    
     let html = '';
+    
     for(let i = 0; i < Math.min(3, arrs.length); i++) {
         const arr = arrs[i];
         const targetMs = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
@@ -1179,11 +1100,10 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
         let mins = Math.floor(diffMs / 60000);
         let isScheduled = (arr.noGPS === 1 || arr.noGPS === '1');
         
-        // Clamp to Due whenever difference is 45 seconds or less
         let timeStr = (diffMs <= 45000) ? 'Due' : `${Math.max(1, mins)} <span style="font-size:1.2rem; font-weight:700;">m</span>`;
         let color = isScheduled ? 'var(--accent-orange)' : 'var(--accent-green)'; 
-        
         let occBadge = '';
+        
         if (i === 0 && mins <= 20) {
             const occPct = calculateOccupancy(group.routeNo, group.dest_e, Math.max(0, stopIdx), stops.length, Date.now());
             let occClass = occPct > 75 ? 'occ-full' : (occPct > 45 ? 'occ-standing' : 'occ-seating');
@@ -1193,10 +1113,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
         
         html += `
             <div class="eta-row">
-                <div class="eta-row-left">
-                    <span class="eta-row-seq">${group.routeNo}</span>
-                    ${occBadge}
-                </div>
+                <div class="eta-row-left"><span class="eta-row-seq">${group.routeNo}</span>${occBadge}</div>
                 <div class="eta-row-time" style="color:${color};">${timeStr}</div>
             </div>
         `;
@@ -1217,48 +1134,30 @@ function renderSearchResults() {
     
     if (!query) {
         let nearby = getNearbyRoutes();
-        if (activeRegionFilter !== 'ALL') {
-            nearby = nearby.filter(g => g.company === activeRegionFilter);
-        }
+        if (activeRegionFilter !== 'ALL') nearby = nearby.filter(g => g.company === activeRegionFilter);
         
         if (!lastKnownPos) {
-            listEl.innerHTML = `
-                <div class="text-center" style="padding-top:60px;">
-                    <div style="font-size:3rem; margin-bottom:12px;">📍</div>
-                    <div style="font-weight:700;">Locating nearby routes...</div>
-                    <div style="font-size:0.9rem; color:var(--text-sub); margin-top:8px;">Or enter a route number above</div>
-                </div>`;
+            listEl.innerHTML = `<div class="text-center" style="padding-top:60px;"><div style="font-size:3rem; margin-bottom:12px;">📍</div><div style="font-weight:700;">Locating nearby routes...</div></div>`;
             return;
         }
-        
         if (nearby.length === 0) {
-            listEl.innerHTML = `
-                <div class="text-center" style="padding-top:60px;">
-                    <div style="font-size:3rem; margin-bottom:12px;">🚌</div>
-                    <div style="font-weight:700;">No nearby routes for selected filter</div>
-                    <div style="font-size:0.9rem; color:var(--text-sub); margin-top:8px;">Try selecting "ALL" or enter a route number above</div>
-                </div>`;
+            listEl.innerHTML = `<div class="text-center" style="padding-top:60px;"><div style="font-size:3rem; margin-bottom:12px;">🚌</div><div style="font-weight:700;">No nearby routes for filter</div></div>`;
             return;
         }
 
         const nearestStop = currentNearestStopKey ? allStops.find(s => s.stopKey === currentNearestStopKey) : null;
         const stopLabel = nearestStop ? nearestStop.stopName_e : 'Current Location';
-
         let html = `
-            <div style="padding: 12px 16px; font-size: 0.85rem; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-white); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5;">
+            <div style="padding: 12px 16px; font-size: 0.85rem; font-weight: 800; color: var(--text-sub); text-transform: uppercase; background: var(--bg-white); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 5;">
                 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%;">📍 Nearby Routes (${stopLabel})</span>
-                <span style="color: var(--accent-blue); font-size: 0.8rem; font-weight: 800; flex-shrink: 0;">${nearby.length} routes</span>
+                <span style="color: var(--accent-blue); font-size: 0.8rem; flex-shrink: 0;">${nearby.length} routes</span>
             </div>
         `;
-
         nearby.forEach(g => {
             html += `
               <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
                   <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
-                  <div class="route-info-col">
-                      <div class="route-dest">To ${g.dest_e}</div>
-                      <div class="route-sub">${g.company}</div>
-                  </div>
+                  <div class="route-info-col"><div class="route-dest">To ${g.dest_e}</div><div class="route-sub">${g.company}</div></div>
               </div>
             `;
         });
@@ -1267,13 +1166,11 @@ function renderSearchResults() {
     }
 
     let matches = groupedRoutes;
-    if (activeRegionFilter !== 'ALL') {
-        matches = matches.filter(g => g.company === activeRegionFilter);
-    }
+    if (activeRegionFilter !== 'ALL') matches = matches.filter(g => g.company === activeRegionFilter);
     matches = matches.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
     
     if(matches.length === 0) {
-        listEl.innerHTML = '<div class="text-center" style="padding-top:60px; font-size:4rem; opacity:0.2;">🚌</div><div class="text-center" style="padding-top:0;">No routes found</div>';
+        listEl.innerHTML = '<div class="text-center" style="padding-top:60px; font-size:4rem; opacity:0.2;">🚌</div><div class="text-center">No routes found</div>';
         return;
     }
     
@@ -1282,10 +1179,7 @@ function renderSearchResults() {
         html += `
           <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
               <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
-              <div class="route-info-col">
-                  <div class="route-dest">To ${g.dest_e}</div>
-                  <div class="route-sub">${g.company}</div>
-              </div>
+              <div class="route-info-col"><div class="route-dest">To ${g.dest_e}</div><div class="route-sub">${g.company}</div></div>
           </div>
         `;
     });
@@ -1294,18 +1188,8 @@ function renderSearchResults() {
 
 function renderFavList() {
     const listEl = document.getElementById('favList');
-    
-    let html = `
-        <div class="add-fav-btn" onclick="openFavModal()">
-            + Add New Favorite Route
-        </div>
-    `;
-
-    if(favRoutes.length === 0) {
-        html += '<div class="text-center">No bookmarks yet.</div>';
-        listEl.innerHTML = html;
-        return;
-    }
+    let html = `<div class="add-fav-btn" onclick="openFavModal()">+ Add New Favorite Route</div>`;
+    if(favRoutes.length === 0) { listEl.innerHTML = html + '<div class="text-center">No bookmarks yet.</div>'; return; }
     
     favRoutes.forEach(k => {
         const g = groupedRoutes.find(r => r.key === k);
@@ -1313,10 +1197,7 @@ function renderFavList() {
             html += `
               <div class="route-list-item" onclick="openRouteDetail('${g.key}', true)">
                   <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
-                  <div class="route-info-col">
-                      <div class="route-dest">To ${g.dest_e}</div>
-                      <div class="route-sub">${g.company}</div>
-                  </div>
+                  <div class="route-info-col"><div class="route-dest">To ${g.dest_e}</div><div class="route-sub">${g.company}</div></div>
                   <button class="del-fav-btn" onclick="event.stopPropagation(); removeFavRoute('${g.key}');">🗑️</button>
               </div>
             `;
@@ -1330,32 +1211,16 @@ function removeFavRoute(key) {
     localStorage.setItem('kmb_fav_routes_v7', JSON.stringify(favRoutes));
     renderFavList();
 }
-
-function openFavModal() {
-    document.getElementById('fav-modal').style.display = 'flex';
-    document.getElementById('favSearchInput').value = '';
-    renderFavSearch();
-}
-
-function closeFavModal() {
-    document.getElementById('fav-modal').style.display = 'none';
-}
+function openFavModal() { document.getElementById('fav-modal').style.display = 'flex'; document.getElementById('favSearchInput').value = ''; renderFavSearch(); }
+function closeFavModal() { document.getElementById('fav-modal').style.display = 'none'; }
 
 function renderFavSearch() {
     const query = document.getElementById('favSearchInput').value.trim().toLowerCase();
     const listEl = document.getElementById('favSearchResults');
-    
-    if(!query) {
-        listEl.innerHTML = '<div class="text-center" style="padding-top:40px; font-size:3rem; opacity:0.2;">🔍</div><div class="text-center" style="padding-top:0;">Type route number to add</div>';
-        return;
-    }
+    if(!query) { listEl.innerHTML = '<div class="text-center" style="padding-top:40px; font-size:3rem; opacity:0.2;">🔍</div><div class="text-center">Type route number</div>'; return; }
 
     const matches = groupedRoutes.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
-    
-    if(matches.length === 0) {
-        listEl.innerHTML = '<div class="text-center" style="padding-top:40px; font-size:3rem; opacity:0.2;">🚌</div><div class="text-center" style="padding-top:0;">No routes found</div>';
-        return;
-    }
+    if(matches.length === 0) { listEl.innerHTML = '<div class="text-center" style="padding-top:40px; font-size:3rem; opacity:0.2;">🚌</div><div class="text-center">No routes found</div>'; return; }
     
     let html = '';
     matches.slice(0, 50).forEach(g => {
@@ -1363,10 +1228,7 @@ function renderFavSearch() {
         html += `
           <div class="route-list-item" style="opacity: ${isSaved ? '0.5' : '1'}; pointer-events: ${isSaved ? 'none' : 'auto'};" onclick="addFavFromModal('${g.key}')">
               <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
-              <div class="route-info-col">
-                  <div class="route-dest">To ${g.dest_e}</div>
-                  <div class="route-sub">${g.company} ${isSaved ? ' (Saved)' : ''}</div>
-              </div>
+              <div class="route-info-col"><div class="route-dest">To ${g.dest_e}</div><div class="route-sub">${g.company} ${isSaved ? '(Saved)' : ''}</div></div>
           </div>
         `;
     });
@@ -1374,18 +1236,13 @@ function renderFavSearch() {
 }
 
 function addFavFromModal(key) {
-    if(!favRoutes.includes(key)) {
-        favRoutes.push(key);
-        localStorage.setItem('kmb_fav_routes_v7', JSON.stringify(favRoutes));
-    }
-    closeFavModal();
-    renderFavList();
+    if(!favRoutes.includes(key)) { favRoutes.push(key); localStorage.setItem('kmb_fav_routes_v7', JSON.stringify(favRoutes)); }
+    closeFavModal(); renderFavList();
 }
 
 function renderStopList() {
     const listEl = document.getElementById('stop-list-container');
     const stops = getStopsForGroup(detailRouteGroup);
-    
     let html = '';
     stops.forEach((s, idx) => {
         html += `
@@ -1404,7 +1261,6 @@ async function expandStop(idx) {
     if (detailExpandedStopIdx === idx) {
         document.getElementById(`detail-eta-expanded-${idx}`).classList.remove('active');
         document.getElementById(`stop-item-${idx}`).classList.remove('active-stop');
-        
         const normalIcon = L.divIcon({ className: 'custom-stop-icon', html: '<div style="width:14px;height:14px;background:white;border:3px solid #333;border-radius:50%;"></div>', iconSize: [14, 14] });
         if (mapMarkers[idx]) mapMarkers[idx].setIcon(normalIcon);
         detailExpandedStopIdx = -1;
@@ -1416,9 +1272,7 @@ async function expandStop(idx) {
         const prevItem = document.getElementById(`stop-item-${detailExpandedStopIdx}`);
         if (prevExp) prevExp.classList.remove('active');
         if (prevItem) prevItem.classList.remove('active-stop');
-        if(mapMarkers[detailExpandedStopIdx]) {
-            mapMarkers[detailExpandedStopIdx].setIcon(L.divIcon({ className: 'custom-stop-icon', html: '<div style="width:14px;height:14px;background:white;border:3px solid #333;border-radius:50%;"></div>', iconSize: [14, 14] }));
-        }
+        if(mapMarkers[detailExpandedStopIdx]) mapMarkers[detailExpandedStopIdx].setIcon(L.divIcon({ className: 'custom-stop-icon', html: '<div style="width:14px;height:14px;background:white;border:3px solid #333;border-radius:50%;"></div>', iconSize: [14, 14] }));
     }
     
     detailExpandedStopIdx = idx;
@@ -1436,14 +1290,10 @@ async function expandStop(idx) {
     const stops = getStopsForGroup(detailRouteGroup);
     const targetStop = stops[idx];
     
-    try {
-        const arrs = await fetchEtaRaw(detailRouteGroup, targetStop.stopKey);
-        if (detailExpandedStopIdx !== idx) return; 
-        expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
-        updateDetailTimestamp();
-    } catch(e) {
-        expandContainer.innerHTML = '<div style="color:var(--kmb-red); padding:20px; text-align:center;">Failed to fetch ETAs.</div>';
-    }
+    const arrs = await fetchEtaRaw(detailRouteGroup, targetStop.stopKey);
+    if (detailExpandedStopIdx !== idx) return; 
+    expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
+    updateDetailTimestamp();
 }
 
 function startTimer() {
@@ -1454,7 +1304,6 @@ function startTimer() {
   timerInterval = setInterval(() => {
     if (isSyncing) return;
     countdown--;
-    
     if (countdown <= 0) {
       isSyncing = true;
       countdown = REFRESH_INTERVAL;
@@ -1470,7 +1319,7 @@ function startTimer() {
               if(expandContainer) expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
               updateDetailTimestamp();
               isSyncing = false;
-          }).catch(() => { isSyncing = false; });
+          });
       } else if (currentView === 'map' && sheetExpandedGroupKey) {
           const group = groupedRoutes.find(g => g.key === sheetExpandedGroupKey);
           if(group && currentNearestStopKey) {
@@ -1478,29 +1327,20 @@ function startTimer() {
                  const expandContainer = document.getElementById(`sheet-eta-expanded-${sheetExpandedGroupKey}`);
                  if (expandContainer) expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, currentNearestStopKey);
                  isSyncing = false;
-              }).catch(() => { isSyncing = false; });
+              });
           } else { isSyncing = false; }
-      } else {
-          isSyncing = false;
-      }
+      } else { isSyncing = false; }
     } else {
       document.getElementById('refreshTimerMain').innerText = `${countdown}s`;
     }
   }, 1000);
 }
 
-// Page Visibility API implementation to save battery and network requests
 document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-        clearInterval(timerInterval);
-    } else {
-        if (groupedRoutes.length > 0) { 
-            startTimer();
-        }
-    }
+    if (document.hidden) clearInterval(timerInterval);
+    else if (groupedRoutes.length > 0) startTimer();
 });
 
-// Init
 window.onload = initApp;
 </script>
 </body>
