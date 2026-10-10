@@ -27,7 +27,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
   
   html { font-size: 16px; }
-  html.text-sm { font-size: 13.5px; } /* Scales down all rem-based fonts proportionally */
+  html.text-sm { font-size: 13.5px; } 
 
   body {
     background-color: var(--bg-light);
@@ -121,9 +121,9 @@
   .eta-expanded-container.active { display: flex; }
   .eta-row { display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-bottom: 1px dashed var(--border-color); }
   .eta-row:last-child { border-bottom: none; }
-  .eta-row-left { display: flex; align-items: center; gap: 16px; font-size: 1rem; color: var(--text-sub); }
-  .eta-row-seq { display: inline-block; min-width: 50px; font-weight: 900; color: var(--text-main); font-size: 1.35rem; line-height: 1; letter-spacing: -0.5px; }
-  .eta-row-time { font-size: 2.2rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .eta-row-left { display: flex; align-items: center; gap: 16px; font-size: 1rem; color: var(--text-sub); flex: 1; }
+  .eta-row-seq { display: inline-block; min-width: 50px; font-weight: 900; color: var(--text-main); font-size: 1.35rem; line-height: 1; letter-spacing: -0.5px; flex-shrink:0; }
+  .eta-row-time { font-size: 2.2rem; font-weight: 900; font-variant-numeric: tabular-nums; flex-shrink:0; }
 
   /* ==========================================
      CSS ZONE 4: SEARCH, MAPS & UTILS
@@ -1252,7 +1252,6 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     
     let occBadgeAssigned = false;
     
-    // Limits the list strictly to a maximum of 4 buses
     for(let i = 0; i < Math.min(4, arrs.length); i++) {
         const arr = arrs[i];
         
@@ -1271,7 +1270,9 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
             let apiS = Math.floor((apiDiffMs % 60000) / 1000);
             let apiStr = apiM > 0 ? `${apiM}m ${apiS}s` : `${apiS}s`;
 
-            mainTimeStr = `<span style="font-size:1.8rem; font-weight:900;">${leftStr}</span>`;
+            // Display split: -Xm Xs on the far left, API (+4 stop) on the far right
+            occBadge = `<span style="font-size:1.6rem; font-weight:900; color:var(--text-sub);">${leftStr}</span>`;
+            mainTimeStr = `<span style="opacity:0;">--</span>`; // Spacer to keep layout intact
             subTimeStr = `API (+${arr.offset} stop): ${apiStr}`;
             color = 'var(--text-sub)';
         } else {
@@ -1286,7 +1287,6 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
             mainTimeStr = (apiM === 0 && apiS <= 45) ? 'Due' : `${Math.max(1, apiM)} <span style="font-size:1.2rem; font-weight:700;">m</span>`;
             subTimeStr = `API (Stop): ${apiStr}`;
             
-            // Only assign occupancy to the VERY FIRST valid arriving bus
             if (!occBadgeAssigned && apiM <= 25) {
                 const occPct = calculateOccupancy(group.routeNo, group.dest_e, Math.max(0, stopIdx), stops.length, Date.now());
                 let occClass = '';
