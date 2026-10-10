@@ -178,13 +178,11 @@ async function build() {
                                   await sleep(10);
                               }
                               
-                              // Extract deep-nested GMB Coordinates
-                              let lat = '0', lon = '0';
-                              if (stopDetail && stopDetail.coordinates) {
-                                  lat = stopDetail.coordinates.coordinates[1] || '0';
-                                  lon = stopDetail.coordinates.coordinates[0] || '0';
-                              }
-                              let name_en = stopDetail && stopDetail.name_en ? stopDetail.name_en : (rs.name_en || 'GMB Stop');
+                              // Bulletproof GPS extraction using Optional Chaining to prevent crashes
+                              let lat = stopDetail?.coordinates?.coordinates?.[1] || rs?.location?.lat || rs?.lat || '0';
+                              let lon = stopDetail?.coordinates?.coordinates?.[0] || rs?.location?.lng || rs?.long || '0';
+                              
+                              let name_en = stopDetail?.name_en || rs?.name_en || 'GMB Stop';
                               
                               stopDetails.push({ stopId: rs.stop_id, stopName_e: formatStopName(cleanStopName(name_en)), latitude: lat, longitude: lon, seq: rs.stop_seq });
                           }
