@@ -126,7 +126,7 @@
     font-size: 1.3rem; outline: none; text-align: center; background: var(--bg-light); color: var(--text-main); font-weight: 700;
   }
   .search-input:focus { border-color: var(--kmb-red); }
- .region-filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 4px; }
+  .region-filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 4px; }
   .region-filters::-webkit-scrollbar { display: none; }
   .region-btn { flex: 0 0 auto; padding: 14px 20px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-light); color: var(--text-sub); font-size: 1rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
   .region-btn.active { background: var(--kmb-red); color: white; border-color: var(--kmb-red); }
@@ -296,7 +296,6 @@ let sheetExpandedGroupKey = null;
 // Map & Detail State
 let detailRouteGroup = null;
 let detailExpandedStopIdx = -1;
-let detailNearestIdx = -1;
 let detailOpenToken = 0;
 let mapInstance = null; 
 let globalMapInstance = null; 
@@ -325,7 +324,7 @@ function cleanStopName(name) {
 }
 
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
-  if (lat1 === 0 || lat2 === 0) return Infinity; // Ignore missing coords for GMB/CTB
+  if (lat1 === 0 || lat2 === 0) return Infinity;
   const R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
@@ -358,9 +357,7 @@ function sortGroupsWithEtas(list) {
     return list;
 }
 
-const HK_PUBLIC_HOLIDAYS = [
-    "01-01", "02-17", "02-18", "02-19", "04-03", "04-04", "04-06", "04-07", "05-01", "05-24", "06-19", "07-01", "10-01", "10-07", "10-29", "12-25", "12-26"
-];
+const HK_PUBLIC_HOLIDAYS = ["01-01", "02-17", "02-18", "02-19", "04-03", "04-04", "04-06", "04-07", "05-01", "05-24", "06-19", "07-01", "10-01", "10-07", "10-29", "12-25", "12-26"];
 
 function isPublicHoliday(date) {
     const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -532,63 +529,68 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
     let combined = [];
     const now = Date.now();
     
+    // Aggressive Try/Catch added to prevent CTB/GMB broken responses from freezing the UI
     await Promise.all(group.routeIds.map(async (rId) => {
-        const stops = routeStopsCache[rId] || [];
-        const tIndex = stops.findIndex(s => getGlobalStopKey(s) === stopKeyToMatch);
-        if (tIndex === -1) return;
-        
-        const targetStop = stops[tIndex];
-        
-        if (rId.startsWith('KMB_') || rId.startsWith('LWB_')) {
-            const parts = rId.split('_');
-            const routeNo = parts[1], dir = parts[2], serviceType = parts[3];
-            const res = await fetchJSON(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`);
-            if(res && res.data) {
-                res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
-                    combined.push({
-                        estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
-                        noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
-                    });
-                });
-            }
-        } else if (rId.startsWith('NLB_')) {
-            const rawNlbId = rId.replace('NLB_', '');
-            const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`);
-            if(res && res.estimatedArrivals) {
-                res.estimatedArrivals.forEach(arr => combined.push(arr));
-            }
-        } else if (rId.startsWith('CTB_')) {
-            const parts = rId.split('_');
-            const routeNo = parts[1], dir = parts[2]; 
-            const res = await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${targetStop.stopId}/${routeNo}`);
-            if(res && res.data) {
-                res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
-                    combined.push({
-                        estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
-                        noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
-                    });
-                });
-            }
-        } else if (rId.startsWith('GMB_')) {
-            const routeId = rId.replace('GMB_', '');
-            const res = await fetchJSON(`https://data.etagmb.gov.hk/eta/stop/${targetStop.stopId}`);
-            if(res && res.data) {
-                const targetData = res.data.find(d => String(d.route_id) === routeId);
-                if (targetData && targetData.eta) {
-                    targetData.eta.forEach(e => {
-                        if(e.timestamp) {
-                            combined.push({
-                                estimatedArrivalTime: e.timestamp.replace('T', ' ').substring(0, 19),
-                                noGPS: 0
-                            });
-                        }
+        try {
+            const stops = routeStopsCache[rId] || [];
+            const tIndex = stops.findIndex(s => getGlobalStopKey(s) === stopKeyToMatch);
+            if (tIndex === -1) return;
+            
+            const targetStop = stops[tIndex];
+            if (!targetStop || !targetStop.stopId) return;
+            
+            if (rId.startsWith('KMB_') || rId.startsWith('LWB_')) {
+                const parts = rId.split('_');
+                const routeNo = parts[1], dir = parts[2], serviceType = parts[3];
+                const res = await fetchJSON(`${KMB_API_BASE}/eta/${targetStop.stopId}/${routeNo}/${serviceType}`);
+                if(res && res.data && Array.isArray(res.data)) {
+                    res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
+                        combined.push({
+                            estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
+                            noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                        });
                     });
                 }
+            } else if (rId.startsWith('NLB_')) {
+                const rawNlbId = rId.replace('NLB_', '');
+                const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${targetStop.stopId}&language=en`);
+                if(res && res.estimatedArrivals && Array.isArray(res.estimatedArrivals)) {
+                    res.estimatedArrivals.forEach(arr => combined.push(arr));
+                }
+            } else if (rId.startsWith('CTB_')) {
+                const parts = rId.split('_');
+                const routeNo = parts[1], dir = parts[2]; 
+                const res = await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${targetStop.stopId}/${routeNo}`);
+                if(res && res.data && Array.isArray(res.data)) {
+                    res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
+                        combined.push({
+                            estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
+                            noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                        });
+                    });
+                }
+            } else if (rId.startsWith('GMB_')) {
+                const routeId = rId.replace('GMB_', '');
+                const res = await fetchJSON(`https://data.etagmb.gov.hk/eta/stop/${targetStop.stopId}`);
+                if(res && res.data && Array.isArray(res.data)) {
+                    const targetData = res.data.find(d => String(d.route_id) === routeId);
+                    if (targetData && targetData.eta && Array.isArray(targetData.eta)) {
+                        targetData.eta.forEach(e => {
+                            if(e.timestamp) {
+                                combined.push({
+                                    estimatedArrivalTime: e.timestamp.replace('T', ' ').substring(0, 19),
+                                    noGPS: 0
+                                });
+                            }
+                        });
+                    }
+                }
             }
+        } catch(e) {
+            console.error("ETA Fetch Ignored:", e); // Silent fail to prevent UI lockup
         }
     }));
     
-    // Purge arrivals older than 15 seconds to prevent ghost departures
     return combined.filter(arr => {
         const arrTime = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
         return !isNaN(arrTime) && arrTime > (now - 15000);
@@ -627,9 +629,7 @@ function locateNearestStopPromise() {
             document.getElementById('mainLocationText').innerText = 'GPS Not Supported';
             renderMainNearby(); resolve(false); return;
         }
-
         document.getElementById('mainLocationText').innerText = 'Locating...';
-
         navigator.geolocation.getCurrentPosition((pos) => {
             lastKnownPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
             const userIcon = makeUserIcon();
@@ -645,7 +645,7 @@ function locateNearestStopPromise() {
             
             let closest = null, minDistance = Infinity;
             allStops.forEach(s => {
-                if(s.latitude === '0' || s.longitude === '0') return; // Skip stops without GPS mapping
+                if(s.latitude === '0' || s.longitude === '0') return; 
                 const d = calculateDistanceKm(pos.coords.latitude, pos.coords.longitude, parseFloat(s.latitude), parseFloat(s.longitude));
                 if (d < minDistance) { minDistance = d; closest = s; }
             });
@@ -812,7 +812,6 @@ function getStopsForGroup(group) {
 function getNearbyRoutes(maxDistanceKm = 1.0, targetCompany = 'ALL') {
     if (!lastKnownPos || allStops.length === 0) return [];
 
-    // 1. Filter stops that actually serve the target company
     let eligibleStops = allStops;
     if (targetCompany !== 'ALL') {
         eligibleStops = allStops.filter(s => {
@@ -823,13 +822,11 @@ function getNearbyRoutes(maxDistanceKm = 1.0, targetCompany = 'ALL') {
         });
     }
 
-    // 2. Safe fallback if company data is updating
     if (eligibleStops.length === 0) {
         if (targetCompany !== 'ALL') return groupedRoutes.filter(g => g.company === targetCompany).slice(0, 15);
         return [];
     }
 
-    // 3. Calculate distance only for eligible stops
     const stopsWithDist = eligibleStops.map(s => {
         const lat = parseFloat(s.latitude);
         const lon = parseFloat(s.longitude);
@@ -842,9 +839,8 @@ function getNearbyRoutes(maxDistanceKm = 1.0, targetCompany = 'ALL') {
         return [];
     }
 
-    // 4. Expand radius automatically to guarantee the nearest stop is always found
     let candidates = stopsWithDist.filter(item => item.dist <= maxDistanceKm);
-    if (candidates.length === 0) candidates = stopsWithDist.slice(0, 3); // Grab closest 3 regardless of distance
+    if (candidates.length === 0) candidates = stopsWithDist.slice(0, 3); 
 
     const seenGroupKeys = new Set();
     const result = [];
@@ -906,7 +902,31 @@ function switchTab(tabId) {
     }
 }
 
-function openRouteDetail(groupKey, autoNearest = false) {
+// Automatically locks the map and UI to the exact stop the user is standing at
+async function autoSelectNearestStop(token) {
+    const stops = getStopsForGroup(detailRouteGroup);
+    if (stops.length === 0) return;
+
+    let pos = lastKnownPos;
+    if (!pos) pos = await refreshGPS(2000);
+
+    if (token !== detailOpenToken) return;
+
+    let bestIdx = 0; // Default to the first stop if GPS mapping is missing
+    if (pos) {
+        let foundIdx = findNearestStopIdx(stops, pos);
+        if (foundIdx !== -1) bestIdx = foundIdx;
+    }
+
+    const nameEl = document.querySelector(`#stop-item-${bestIdx} .stop-name`);
+    if (nameEl && pos && stops[bestIdx].latitude !== '0' && stops[bestIdx].latitude) {
+         nameEl.insertAdjacentHTML('beforeend', `<span class="nearest-tag">Nearest GPS</span>`);
+    }
+
+    await expandStop(bestIdx, true);
+}
+
+function openRouteDetail(groupKey) {
     const group = groupedRoutes.find(g => g.key === groupKey);
     if (!group) return;
     
@@ -923,13 +943,16 @@ function openRouteDetail(groupKey, autoNearest = false) {
     document.getElementById('headerTitle').innerText = `${group.routeNo} To ${group.dest_e}`;
     
     const updateEl = document.getElementById('detailLastUpdated');
-    if (updateEl) updateEl.innerText = 'Loading live times...';
+    if (updateEl) updateEl.innerText = 'Locating you...';
 
     setTimeout(async () => {
         if (token !== detailOpenToken) return;
         if(mapInstance) mapInstance.invalidateSize();
         drawRouteOnMap(group);
         renderStopList();
+        
+        // Triggers the auto-selection, scroll lock, map zoom, and ETA fetch immediately
+        await autoSelectNearestStop(token);
     }, 100);
 }
 
@@ -1174,7 +1197,6 @@ function renderSearchResults() {
             }
         }
 
-        // Dynamically label the closest distance, safely handling fallbacks without GPS
         const firstValid = nearby.find(g => g.nearestDistKm !== undefined && !isNaN(g.nearestDistKm));
         const headerLabel = firstValid ? `${firstValid.nearestStopName} (${firstValid.nearestDistKm.toFixed(1)}km)` : 'Nearby';
 
@@ -1226,7 +1248,7 @@ function renderFavList() {
         const g = groupedRoutes.find(r => r.key === k);
         if(g) {
             html += `
-              <div class="route-list-item" onclick="openRouteDetail('${g.key}', true)">
+              <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
                   <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
                   <div class="route-info-col"><div class="route-dest">To ${g.dest_e}</div><div class="route-sub">${g.company}</div></div>
                   <button class="del-fav-btn" onclick="event.stopPropagation(); removeFavRoute('${g.key}');">🗑️</button>
@@ -1288,8 +1310,8 @@ function renderStopList() {
     listEl.innerHTML = html;
 }
 
-async function expandStop(idx) {
-    if (detailExpandedStopIdx === idx) {
+async function expandStop(idx, forceOpen = false) {
+    if (detailExpandedStopIdx === idx && !forceOpen) {
         document.getElementById(`detail-eta-expanded-${idx}`).classList.remove('active');
         document.getElementById(`stop-item-${idx}`).classList.remove('active-stop');
         const normalIcon = L.divIcon({ className: 'custom-stop-icon', html: '<div style="width:14px;height:14px;background:white;border:3px solid #333;border-radius:50%;"></div>', iconSize: [14, 14] });
@@ -1318,13 +1340,23 @@ async function expandStop(idx) {
     const activeIcon = L.divIcon({ className: 'custom-active-stop-icon', html: '<div style="width:20px;height:20px;background:white;border:6px solid var(--kmb-red);border-radius:50%;"></div>', iconSize: [20, 20] });
     if(mapMarkers[idx]) mapMarkers[idx].setIcon(activeIcon);
     
+    // Automatically lock map viewport to this specific stop
+    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (mapInstance && mapMarkers[idx]) {
+        mapInstance.setView(mapMarkers[idx].getLatLng(), 16, { animate: true });
+    }
+    
     const stops = getStopsForGroup(detailRouteGroup);
     const targetStop = stops[idx];
     
-    const arrs = await fetchEtaRaw(detailRouteGroup, targetStop.stopKey);
-    if (detailExpandedStopIdx !== idx) return; 
-    expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
-    updateDetailTimestamp();
+    try {
+        const arrs = await fetchEtaRaw(detailRouteGroup, targetStop.stopKey);
+        if (detailExpandedStopIdx !== idx) return; 
+        expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
+        updateDetailTimestamp();
+    } catch (e) {
+        expandContainer.innerHTML = '<div style="color:var(--kmb-red); text-align:center; padding: 20px;">Network Failed</div>';
+    }
 }
 
 function startTimer() {
@@ -1350,7 +1382,7 @@ function startTimer() {
               if(expandContainer) expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
               updateDetailTimestamp();
               isSyncing = false;
-          });
+          }).catch(() => { isSyncing = false; });
       } else if (currentView === 'map' && sheetExpandedGroupKey) {
           const group = groupedRoutes.find(g => g.key === sheetExpandedGroupKey);
           if(group && currentNearestStopKey) {
@@ -1358,7 +1390,7 @@ function startTimer() {
                  const expandContainer = document.getElementById(`sheet-eta-expanded-${sheetExpandedGroupKey}`);
                  if (expandContainer) expandContainer.innerHTML = generateExpandedETAsHtml(arrs, group, currentNearestStopKey);
                  isSyncing = false;
-              });
+              }).catch(() => { isSyncing = false; });
           } else { isSyncing = false; }
       } else { isSyncing = false; }
     } else {
