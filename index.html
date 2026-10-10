@@ -1004,7 +1004,18 @@ function buildAllStopsList() {
 function getStopsForGroup(group) {
   const uniqueMap = new Map();
   if (!group || !group.routeIds || group.routeIds.length === 0) return [];
-  const primaryRouteId = group.routeIds[0]; 
+  
+  // Find the route variant with the most stops to ensure we display the complete path
+  let primaryRouteId = group.routeIds[0];
+  let maxStops = -1;
+  group.routeIds.forEach(id => {
+      const stops = routeStopsCache[id] || [];
+      if (stops.length > maxStops) {
+          maxStops = stops.length;
+          primaryRouteId = id;
+      }
+  });
+
   let seq = 1;
   (routeStopsCache[primaryRouteId] || []).forEach(s => {
      const key = getGlobalStopKey(s);
@@ -1364,7 +1375,9 @@ async function toggleMainEta(groupKey) {
 }
 
 function generateExpandedETAsHtml(arrs, group, stopKey) {
-    if (arrs.length === 0) return '<div style="color:var(--text-sub); text-align:center; padding: 20px;">No departures scheduled.</div>';
+    if (arrs.length === 0) return '<div style="color:var(--text-sub); text-align:center; padding: 20px;">Service ended for the night</div>';
+    
+    // ... existing logic
     
     const stops = getStopsForGroup(group);
     const stopIdx = stops.findIndex(s => s.stopKey === stopKey);
@@ -1491,25 +1504,48 @@ function renderSearchResults() {
         return;
     }
 
-    let matches = groupedRoutes;
-    if (activeRegionFilter !== 'ALL') matches = matches.filter(g => g.company === activeRegionFilter);
-    matches = matches.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
-    
-    if(matches.length === 0) {
-        listEl.innerHTML = '<div class="text-center" style="padding-top:60px; font-size:4rem; opacity:0.2;">🚌</div><div class="text-center">No routes found</div>';
-        return;
-    }
-    
-    let html = '';
-    matches.slice(0, 100).forEach(g => {
-        html += `
-          <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
-              <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
-              <div class="route-info-col"><div class="route-dest">To ${g.dest_e}</div><div class="route-sub">${g.company}</div></div>
-          </div>
-        `;
-    });
-    listEl.innerHTML = html;
+   let matches = groupedRoutes;
+  if (activeRegionFilter !== 'ALL') matches = matches.filter(g => g.company === activeRegionFilter);
+  matches = matches.filter(g => g.routeNo.toLowerCase().includes(query) || g.dest_e.toLowerCase().includes(query));
+  
+  if(matches.length === 0) {
+      listEl.innerHTML = '<div class="text-center" style="padding-top:60px; font-size:4rem; opacity:0.2;">🚌</div><div class="text-center">No routes found</div>';
+      return;
+  }
+  
+  // Add GPS Distance Sorting
+  if (lastKnownPos) {
+      matches.forEach(g => {
+          let minDist = Infinity;
+          const stops = getStopsForGroup(g);
+          stops.forEach(s => {
+              const lat = parseFloat(s.latitude);
+              const lon = parseFloat(s.longitude);
+              if (lat && lon && lat !== 0) {
+                  const d = calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, lat, lon);
+                  if (d < minDist) minDist = d;
+              }
+          });
+          g.tempDist = minDist;
+      });
+      matches.sort((a, b) => a.tempDist - b.tempDist);
+  }
+
+  let html = '';
+  matches.slice(0, 100).forEach(g => {
+      // Append distance visualizer
+      let distHtml = '';
+      if (g.tempDist && g.tempDist !== Infinity) {
+          distHtml = `<span style="font-size:0.75rem; color:var(--accent-blue); margin-left:8px;">${g.tempDist.toFixed(1)}km</span>`;
+      }
+      html += `
+        <div class="route-list-item" onclick="openRouteDetail('${g.key}')">
+            <div class="route-no-col" style="color:var(--kmb-red);">${g.routeNo}</div>
+            <div class="route-info-col"><div class="route-dest">To ${g.dest_e}${distHtml}</div><div class="route-sub">${g.company}</div></div>
+        </div>
+      `;
+  });
+  listEl.innerHTML = html;
 }
 
 function renderFavList() {
