@@ -13,7 +13,6 @@ function formatStopName(name) {
   return name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
 }
 
-// Catches all 404s, 503s, and JSON parse errors so the build NEVER crashes
 async function safeFetch(url) {
     try {
         const res = await fetch(url);
@@ -32,7 +31,7 @@ async function build() {
   // 1. NLB
   console.log('Processing NLB...');
   const nlbRes = await safeFetch(`${NLB_API_BASE}/route.php?action=list`);
-  if (nlbRes && nlbRes.routes) {
+  if (nlbRes && Array.isArray(nlbRes.routes)) {
       nlbRes.routes.forEach(r => {
         const dest_e = r.routeName_e ? r.routeName_e.split('>').pop().trim() : '';
         const cleanDest = cleanStopName(dest_e);
@@ -48,7 +47,7 @@ async function build() {
         const chunk = nlbRes.routes.slice(i, i + chunkSize);
         await Promise.all(chunk.map(async (r) => {
             const res = await safeFetch(`${NLB_API_BASE}/stop.php?action=list&routeId=${r.routeId}`);
-            if (res && res.stops) {
+            if (res && Array.isArray(res.stops)) {
                 routeStopsCache[`NLB_${r.routeId}`] = res.stops.map(s => ({...s, stopName_e: cleanStopName(s.stopName_e)}));
             }
         }));
@@ -65,16 +64,16 @@ async function build() {
   
   if (kmbRoutesRes && kmbStopsRes && kmbRouteStopsRes) {
       const allKmbStops = {};
-      if (kmbStopsRes.data) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
+      if (Array.isArray(kmbStopsRes.data)) kmbStopsRes.data.forEach(s => { allKmbStops[s.stop] = s; });
       const kmbRouteStopsMap = {};
-      if (kmbRouteStopsRes.data) {
+      if (Array.isArray(kmbRouteStopsRes.data)) {
         kmbRouteStopsRes.data.forEach(rs => {
           const key = `KMB_${rs.route}_${rs.bound}_${rs.service_type}`;
           if (!kmbRouteStopsMap[key]) kmbRouteStopsMap[key] = [];
           kmbRouteStopsMap[key].push(rs);
         });
       }
-      if (kmbRoutesRes.data) {
+      if (Array.isArray(kmbRoutesRes.data)) {
         kmbRoutesRes.data.forEach(r => {
           const rId = `KMB_${r.route}_${r.bound}_${r.service_type}`;
           const rsData = kmbRouteStopsMap[rId];
@@ -99,11 +98,12 @@ async function build() {
   // 3. CITYBUS (CTB)
   console.log("Processing Citybus (CTB)...");
   const ctbRoutes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/route/CTB');
-  if (ctbRoutes && ctbRoutes.data) {
+  if (ctbRoutes && Array.isArray(ctbRoutes.data)) {
       for (const route of ctbRoutes.data) {
+          if(!route || !route.route) continue;
           const dirString = route.bound === 'I' ? 'inbound' : 'outbound';
           const stopsData = await safeFetch(`https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/${route.route}/${dirString}`);
-          if (stopsData && stopsData.data) {
+          if (stopsData && Array.isArray(stopsData.data)) {
               const rId = `CTB_${route.route}_${route.bound}`;
               routeStopsCache[rId] = stopsData.data.map(rs => {
                   return { stopId: rs.stop, stopName_e: 'CTB Stop', latitude: '0', longitude: '0', seq: rs.seq };
@@ -123,21 +123,23 @@ async function build() {
   // 4. GREEN MINIBUS (GMB)
   console.log("Processing Green Minibus (GMB)...");
   const gmbData = await safeFetch('https://data.etagmb.gov.hk/route');
-  if (gmbData && gmbData.data && gmbData.data.routes) {
-      const gmbRoutes = gmbData.data.routes;
+  if (gmbData && gmbData.data) {
+      const gmbRoutes = gmbData.data.routes || gmbData.data; 
       const allRouteCodes = [
-          ...(gmbRoutes.HKI || []).map(c => ({code: c, reg: 'HKI'})),
-          ...(gmbRoutes.KLN || []).map(c => ({code: c, reg: 'KLN'})),
-          ...(gmbRoutes.NT || []).map(c => ({code: c, reg: 'NT'}))
+          ...(Array.isArray(gmbRoutes.HKI) ? gmbRoutes.HKI : []).map(c => ({code: c, reg: 'HKI'})),
+          ...(Array.isArray(gmbRoutes.KLN) ? gmbRoutes.KLN : []).map(c => ({code: c, reg: 'KLN'})),
+          ...(Array.isArray(gmbRoutes.NT) ? gmbRoutes.NT : []).map(c => ({code: c, reg: 'NT'}))
       ];
       for (const r of allRouteCodes) {
           const detailData = await safeFetch(`https://data.etagmb.gov.hk/route/${r.reg}/${r.code}`);
-          if (detailData && detailData.data) {
+          if (detailData && Array.isArray(detailData.data)) {
               for (const variant of detailData.data) {
+                  if(!variant || !variant.route_id) continue;
                   const routeId = variant.route_id;
-                  const routeSeq = variant.route_seq || 1; // Safely catches specific route directions
+                  const routeSeq = variant.route_seq || 1;
                   const stopsData = await safeFetch(`https://data.etagmb.gov.hk/route-stop/${routeId}/${routeSeq}`);
-                  if (stopsData && stopsData.data && stopsData.data.route_stops) {
+                  
+                  if (stopsData && stopsData.data && Array.isArray(stopsData.data.route_stops)) {
                       const rId = `GMB_${routeId}`;
                       routeStopsCache[rId] = stopsData.data.route_stops.map(rs => {
                           return { stopId: rs.stop_id, stopName_e: cleanStopName(rs.name_en), latitude: '0', longitude: '0', seq: rs.stop_seq };
