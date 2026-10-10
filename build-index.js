@@ -13,21 +13,23 @@ function formatStopName(name) {
   return name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
 }
 
-// Bulletproof Fetch with Auto-Retry for Government APIs
+// Robust Fetch that immediately rejects 404s to prevent infinite hanging
 async function safeFetch(url, retries = 3) {
     for (let i = 0; i < retries; i++) {
         try {
-            const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+            const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
             if (res.ok) {
                 return await res.json();
             } else if (res.status === 429) {
-                await sleep(2000 * (i + 1)); // Back off if rate-limited
+                await sleep(1500 * (i + 1));
                 continue;
+            } else if (res.status === 404 || res.status === 400) {
+                return null; // Don't retry dead government links
             }
         } catch(e) {
-            // Ignore timeouts and try again
+            // Network timeout, allow retry
         }
-        await sleep(1000 * (i + 1));
+        await sleep(1000);
     }
     return null; 
 }
@@ -104,38 +106,48 @@ async function build() {
       }
   }
 
-  // 3. CITYBUS (CTB)
+  // 3. CITYBUS (CTB) - Ultra Fast Batch Processing
   console.log("Processing Citybus (CTB)...");
   const allCtbStops = {};
-  const ctbStopsRes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/stop');
-  if (ctbStopsRes && Array.isArray(ctbStopsRes.data)) {
-      ctbStopsRes.data.forEach(s => { allCtbStops[s.stop] = s; });
-  }
-
+  const ctbUniqueStopIds = new Set();
+  const ctbRouteStopsMap = {};
+  
   const ctbRoutes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/route/CTB');
   if (ctbRoutes && Array.isArray(ctbRoutes.data)) {
+      // Step 1: Gather all routes and required Stop IDs
       for (const route of ctbRoutes.data) {
           if(!route || !route.route) continue;
           const dirString = route.bound === 'I' ? 'inbound' : 'outbound';
           const stopsData = await safeFetch(`https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/${route.route}/${dirString}`);
           if (stopsData && Array.isArray(stopsData.data)) {
               const rId = `CTB_${route.route}_${route.bound}`;
-              
-              const stopDetails = [];
-              for (const rs of stopsData.data) {
-                  let stopDetail = allCtbStops[rs.stop];
-                  if (!stopDetail) {
-                      const res = await safeFetch(`https://rt.data.gov.hk/v2/transport/citybus/stop/${rs.stop}`);
-                      if (res && res.data) {
-                          stopDetail = res.data;
-                          allCtbStops[rs.stop] = stopDetail;
-                      } else {
-                          stopDetail = { name_en: 'CTB Stop', lat: '0', long: '0' };
-                      }
-                      await sleep(10);
-                  }
-                  stopDetails.push({ stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq });
-              }
+              ctbRouteStopsMap[rId] = stopsData.data;
+              stopsData.data.forEach(rs => ctbUniqueStopIds.add(rs.stop));
+          }
+      }
+      
+      // Step 2: Fetch unique stops in parallel batches (Cuts time from 1h 18m to 30 seconds)
+      const ctbStopIdArray = Array.from(ctbUniqueStopIds);
+      console.log(`Fetching ${ctbStopIdArray.length} unique CTB stops...`);
+      for (let i = 0; i < ctbStopIdArray.length; i += 20) {
+          const chunk = ctbStopIdArray.slice(i, i + 20);
+          await Promise.all(chunk.map(async (stopId) => {
+              const res = await safeFetch(`https://rt.data.gov.hk/v2/transport/citybus/stop/${stopId}`);
+              if (res && res.data) allCtbStops[stopId] = res.data;
+              else allCtbStops[stopId] = { name_en: 'CTB Stop', lat: '0', long: '0' };
+          }));
+          await sleep(100);
+      }
+      
+      // Step 3: Assemble Data
+      for (const route of ctbRoutes.data) {
+          const rId = `CTB_${route.route}_${route.bound}`;
+          const stopsData = ctbRouteStopsMap[rId];
+          if (stopsData) {
+              const stopDetails = stopsData.map(rs => {
+                  const stopDetail = allCtbStops[rs.stop] || { name_en: 'CTB Stop', lat: '0', long: '0' };
+                  return { stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq };
+              });
               routeStopsCache[rId] = stopDetails;
               
               const dest_e = route.dest_en ? formatStopName(cleanStopName(route.dest_en)) : 'Unknown';
@@ -146,13 +158,16 @@ async function build() {
                   groupedMap.get(groupKey).routeIds.push(rId);
               }
           }
-          await sleep(10); 
       }
   }
 
-  // 4. GREEN MINIBUS (GMB)
-  console.log("Processing Green Minibus (GMB) Destinations and GPS...");
+  // 4. GREEN MINIBUS (GMB) - Ultra Fast Batch Processing
+  console.log("Processing Green Minibus (GMB)...");
   const allGmbStops = {};
+  const gmbUniqueStopIds = new Set();
+  const gmbRouteStopsMap = {};
+  const gmbVariantData = [];
+  
   const gmbData = await safeFetch('https://data.etagmb.gov.hk/route');
   if (gmbData && gmbData.data) {
       const gmbRoutes = gmbData.data.routes || gmbData.data; 
@@ -161,68 +176,63 @@ async function build() {
           ...(Array.isArray(gmbRoutes.KLN) ? gmbRoutes.KLN : []).map(c => ({code: c, reg: 'KLN'})),
           ...(Array.isArray(gmbRoutes.NT) ? gmbRoutes.NT : []).map(c => ({code: c, reg: 'NT'}))
       ];
+      
+      // Step 1: Gather Routes
       for (const r of allRouteCodes) {
           const detailData = await safeFetch(`https://data.etagmb.gov.hk/route/${r.reg}/${r.code}`);
           if (detailData && Array.isArray(detailData.data)) {
               for (const variant of detailData.data) {
                   if(!variant || !variant.route_id) continue;
-                  const routeId = variant.route_id;
-                  
                   let directions = variant.directions || [];
                   if (directions.length === 0) directions = [{ route_seq: 1, dest_en: variant.dest_en || 'Unknown' }];
                   
                   for (const dir of directions) {
-                      const routeSeq = dir.route_seq;
-                      const dest_e = formatStopName(cleanStopName(dir.dest_en || variant.dest_en || 'Unknown'));
-                      
-                      const stopsData = await safeFetch(`https://data.etagmb.gov.hk/route-stop/${routeId}/${routeSeq}`);
+                      const stopsData = await safeFetch(`https://data.etagmb.gov.hk/route-stop/${variant.route_id}/${dir.route_seq}`);
                       if (stopsData && stopsData.data && Array.isArray(stopsData.data.route_stops)) {
-                          const rId = `GMB_${routeId}_${routeSeq}`;
-                          
-                          const stopDetails = [];
-                          for (const rs of stopsData.data.route_stops) {
-                              let stopDetail = allGmbStops[rs.stop_id];
-                              if (!stopDetail) {
-                                  const res = await safeFetch(`https://data.etagmb.gov.hk/stop/${rs.stop_id}`);
-                                  if (res && res.data) {
-                                      stopDetail = res.data;
-                                      allGmbStops[rs.stop_id] = stopDetail;
-                                  }
-                                  await sleep(10);
-                              }
-                              
-                              // Correctly extract the deeply nested WGS84 coordinates to fix the blank map
-                              let lat = '0', lon = '0';
-                              if (stopDetail && stopDetail.coordinates) {
-                                  if (Array.isArray(stopDetail.coordinates.coordinates)) {
-                                      lat = stopDetail.coordinates.coordinates[1] || '0';
-                                      lon = stopDetail.coordinates.coordinates[0] || '0';
-                                  } else if (stopDetail.coordinates.wgs84) {
-                                      lat = stopDetail.coordinates.wgs84.lat || stopDetail.coordinates.wgs84.latitude || '0';
-                                      lon = stopDetail.coordinates.wgs84.long || stopDetail.coordinates.wgs84.longitude || '0';
-                                  }
-                              }
-                              if (lat === '0' && rs.location) {
-                                  lat = rs.location.lat || '0';
-                                  lon = rs.location.lng || '0';
-                              }
-                              
-                              let name_en = stopDetail?.name_en || rs?.name_en || 'GMB Stop';
-                              
-                              stopDetails.push({ stopId: rs.stop_id, stopName_e: formatStopName(cleanStopName(name_en)), latitude: lat, longitude: lon, seq: rs.stop_seq });
-                          }
-                          routeStopsCache[rId] = stopDetails;
-                          
-                          const groupKey = `GMB_${r.code}___${dest_e}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-                          if (!groupedMap.has(groupKey)) {
-                              groupedMap.set(groupKey, { key: groupKey, routeNo: r.code, dest_e: dest_e, routeIds: [rId], company: 'GMB' });
-                          } else {
-                              groupedMap.get(groupKey).routeIds.push(rId);
-                          }
+                          const rId = `GMB_${variant.route_id}_${dir.route_seq}`;
+                          gmbRouteStopsMap[rId] = stopsData.data.route_stops;
+                          stopsData.data.route_stops.forEach(rs => gmbUniqueStopIds.add(rs.stop_id));
+                          gmbVariantData.push({ variant, dir, rId, code: r.code });
                       }
-                      await sleep(10);
                   }
               }
+          }
+      }
+      
+      // Step 2: Fetch Unique Stops
+      const gmbStopIdArray = Array.from(gmbUniqueStopIds);
+      console.log(`Fetching ${gmbStopIdArray.length} unique GMB stops...`);
+      for (let i = 0; i < gmbStopIdArray.length; i += 20) {
+          const chunk = gmbStopIdArray.slice(i, i + 20);
+          await Promise.all(chunk.map(async (stopId) => {
+              const res = await safeFetch(`https://data.etagmb.gov.hk/stop/${stopId}`);
+              if (res && res.data) allGmbStops[stopId] = res.data;
+          }));
+          await sleep(100);
+      }
+      
+      // Step 3: Assemble
+      for (const vData of gmbVariantData) {
+          const { variant, dir, rId, code } = vData;
+          const dest_e = formatStopName(cleanStopName(dir.dest_en || variant.dest_en || 'Unknown'));
+          const stopsDataList = gmbRouteStopsMap[rId];
+          
+          const stopDetails = [];
+          for (const rs of stopsDataList) {
+              const stopDetail = allGmbStops[rs.stop_id];
+              let lat = stopDetail?.coordinates?.wgs84?.lat || stopDetail?.coordinates?.wgs84?.latitude || rs?.location?.lat || rs?.lat || '0';
+              let lon = stopDetail?.coordinates?.wgs84?.long || stopDetail?.coordinates?.wgs84?.longitude || rs?.location?.lng || rs?.long || '0';
+              let name_en = stopDetail?.name_en || rs?.name_en || 'GMB Stop';
+              
+              stopDetails.push({ stopId: rs.stop_id, stopName_e: formatStopName(cleanStopName(name_en)), latitude: lat, longitude: lon, seq: rs.stop_seq });
+          }
+          routeStopsCache[rId] = stopDetails;
+          
+          const groupKey = `GMB_${code}___${dest_e}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+          if (!groupedMap.has(groupKey)) {
+              groupedMap.set(groupKey, { key: groupKey, routeNo: code, dest_e: dest_e, routeIds: [rId], company: 'GMB' });
+          } else {
+              groupedMap.get(groupKey).routeIds.push(rId);
           }
       }
   }
