@@ -83,6 +83,15 @@
   .location-text { font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
   .refresh-timer { font-size: 1.05rem; color: var(--kmb-red); font-weight: 800; font-variant-numeric: tabular-nums; }
 
+  .detail-live-bar {
+    background: var(--bg-white); padding: 8px 16px; border-bottom: 1px solid var(--border-color);
+    display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;
+    color: var(--text-sub); font-weight: 700; flex-shrink: 0;
+  }
+  .live-dot-pulse {
+    color: var(--accent-green); display: inline-flex; align-items: center; gap: 6px; font-weight: 800;
+  }
+
   .route-list-item {
     display: flex; padding: 18px 16px; border-bottom: 1px solid var(--border-color);
     align-items: center; gap: 16px; cursor: pointer; background: var(--bg-light); transition: background 0.2s;
@@ -148,7 +157,7 @@
   .progress-bar { width: 85%; height: 8px; background: #333; margin: 24px auto; border-radius: 4px; overflow: hidden; }
   .progress-fill { height: 100%; background: var(--kmb-red); width: 0%; transition: 0.3s; }
   
-  .occ-pill { padding: 6px 14px; border-radius: 12px; font-size: 0.95rem; font-weight: 800; color: white; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 90px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .occ-pill { padding: 6px 14px; border-radius: 12px; font-size: 0.85rem; font-weight: 800; color: white; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 95px; text-transform: uppercase; letter-spacing: 0.5px; }
   .occ-seating { background: rgba(48, 209, 88, 0.2); color: var(--accent-green); border: 1px solid rgba(48, 209, 88, 0.4); }
   .occ-standing { background: rgba(255, 159, 10, 0.2); color: var(--accent-orange); border: 1px solid rgba(255, 159, 10, 0.4); }
   .occ-full { background: rgba(227, 24, 55, 0.2); color: var(--kmb-red); border: 1px solid rgba(227, 24, 55, 0.4); }
@@ -232,6 +241,10 @@
 <!-- Route Detail View -->
 <main id="view-detail" class="view-container">
   <div id="map-container"></div>
+  <div class="detail-live-bar" id="detailLiveBar">
+    <span class="live-dot-pulse">● LIVE</span>
+    <span id="detailLastUpdated">Loading live times...</span>
+  </div>
   <div id="stop-list-container"></div>
 </main>
 
@@ -380,7 +393,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
         else if (hour >= 16 && hour < 20) timeOfDay = 'pm_peak';
         else if (hour >= 20 || hour < 6) timeOfDay = 'night';
 
-        let baseLoad = 30;
+        let baseLoad = 35;
         let spatialCurve = 1.0;
 
         if (rNo === 'E36') {
@@ -392,7 +405,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     else if (timeOfDay === 'midday') baseLoad = 35;
                     else baseLoad = 20;
                 } else {
-                    if (timeOfDay === 'am_peak') baseLoad = 75;
+                    if (timeOfDay === 'am_peak') baseLoad = 80;
                     else if (timeOfDay === 'pm_peak') baseLoad = 50;
                     else if (timeOfDay === 'midday') baseLoad = 65;
                     else baseLoad = 25;
@@ -405,7 +418,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     else baseLoad = 50;
                 } else {
                     if (timeOfDay === 'am_peak') baseLoad = 35;
-                    else if (timeOfDay === 'pm_peak') baseLoad = 80;
+                    else if (timeOfDay === 'pm_peak') baseLoad = 85;
                     else if (timeOfDay === 'midday') baseLoad = 60;
                     else baseLoad = 40;
                 }
@@ -423,28 +436,31 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
                     else baseLoad = 40;
                 } else {
                     if (timeOfDay === 'am_peak') baseLoad = 70;
-                    else if (timeOfDay === 'pm_peak') baseLoad = 55;
+                    else if (timeOfDay === 'pm_peak') baseLoad = 60;
                     else baseLoad = 40;
                 }
                 spatialCurve = 1.0 - Math.pow(progress, 3);
             } else { 
+                // Heading to Tung Chung
                 if (dayType === 'holiday' || dayType === 'saturday') {
-                    if (timeOfDay === 'pm_peak') baseLoad = 98;
+                    if (timeOfDay === 'am_peak') baseLoad = 92; 
+                    else if (timeOfDay === 'pm_peak') baseLoad = 98;
                     else if (timeOfDay === 'midday') baseLoad = 75;
-                    else baseLoad = 35;
+                    else baseLoad = 40;
                 } else {
-                    if (timeOfDay === 'am_peak') baseLoad = 80;
+                    if (timeOfDay === 'am_peak') baseLoad = 88;
                     else if (timeOfDay === 'pm_peak') baseLoad = 60;
                     else baseLoad = 40;
                 }
-                spatialCurve = Math.sqrt(progress);
+                // Passengers accumulate from South Lantau villages crossing the mountain pass
+                spatialCurve = Math.min(1.0, 0.45 + (Math.sqrt(progress) * 0.55));
             }
 
         } else if (rNo === '1') {
             const isToTaiO = destUpper.includes('TAI O');
             if (isToTaiO) {
                 if (dayType === 'holiday' || dayType === 'saturday') {
-                    if (timeOfDay === 'am_peak') baseLoad = 90;
+                    if (timeOfDay === 'am_peak') baseLoad = 92;
                     else if (timeOfDay === 'midday') baseLoad = 95;
                     else baseLoad = 40;
                 } else {
@@ -485,7 +501,7 @@ function calculateOccupancy(routeNo, destName, currentStopIndex, totalStops, cur
             }
         }
 
-        const noise = (date.getMinutes() % 11) - 5;
+        const noise = (date.getMinutes() % 7) - 3;
         let finalLoad = Math.round(baseLoad * spatialCurve) + noise;
         return Math.min(100, Math.max(0, finalLoad));
     }
@@ -547,8 +563,11 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
         }
     }));
     
-    return combined.filter(arr => new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime() > now - 60000)
-                   .sort((a,b) => a.estimatedArrivalTime.localeCompare(b.estimatedArrivalTime));
+    // Purge arrivals older than 15 seconds to prevent ghost departures
+    return combined.filter(arr => {
+        const arrTime = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
+        return !isNaN(arrTime) && arrTime > (now - 15000);
+    }).sort((a,b) => a.estimatedArrivalTime.localeCompare(b.estimatedArrivalTime));
 }
 
 // ==========================================
@@ -626,12 +645,12 @@ function locateNearestStopPromise() {
 function initDetailMap() {
     mapInstance = L.map('map-container', { zoomControl: false }).setView([22.3, 114.16], 11);
     
-    // 1. The Base Map (Roads & Buildings)
+    // 1. HK GeoData Store Base Map
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles', attribution: '&copy; Hong Kong GeoData Store'
     }).addTo(mapInstance);
     
-    // 2. The Labels (Street Names & Landmarks - English)
+    // 2. HK GeoData Store Labels
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles'
     }).addTo(mapInstance);
@@ -642,12 +661,12 @@ function initDetailMap() {
 function initGlobalMap() {
     globalMapInstance = L.map('global-map-container', { zoomControl: false }).setView([22.3, 114.16], 15);
     
-    // 1. The Base Map
+    // 1. HK GeoData Store Base Map
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/basemap/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles', attribution: '&copy; Hong Kong GeoData Store'
     }).addTo(globalMapInstance);
     
-    // 2. The Labels
+    // 2. HK GeoData Store Labels
     L.tileLayer('https://mapapi.geodata.gov.hk/gs/api/v1.0.0/xyz/label/hk/en/wgs84/{z}/{x}/{y}.png', {
         className: 'dark-tiles'
     }).addTo(globalMapInstance);
@@ -714,7 +733,6 @@ async function initApp() {
   try {
     setLoadProgress(50, "Loading bus network...");
     
-    // Fetch the pre-compiled file instantly from Cloudflare
     const indexResponse = await fetch('bus_index.min.json', { cache: 'default' });
     if (!indexResponse.ok) throw new Error('Failed to load network index');
     
@@ -830,6 +848,15 @@ async function autoSelectNearestStop(token) {
 // ==========================================
 // ZONE 6: DOM MANIPULATION & UI RENDERING
 // ==========================================
+function updateDetailTimestamp() {
+    const el = document.getElementById('detailLastUpdated');
+    if (el) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        el.innerText = `Updated ${timeStr}`;
+    }
+}
+
 function setLoadProgress(pct, text) {
   const fill = document.getElementById('loadBar');
   const txt = document.getElementById('loadText');
@@ -894,6 +921,9 @@ function openRouteDetail(groupKey, autoNearest = false) {
     document.getElementById('backBtn').style.display = 'flex';
     document.getElementById('headerTitle').innerText = `${group.routeNo} To ${group.dest_e}`;
     
+    const updateEl = document.getElementById('detailLastUpdated');
+    if (updateEl) updateEl.innerText = 'Loading live times...';
+
     setTimeout(async () => {
         if (token !== detailOpenToken) return;
         if(mapInstance) mapInstance.invalidateSize();
@@ -945,7 +975,8 @@ function openMapSheet(stopObj) {
             let firstEtaMins = Infinity;
             if (arrs.length > 0) {
                 const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
-                firstEtaMins = Math.max(0, Math.floor((targetMs - Date.now())/60000));
+                const diffMs = targetMs - Date.now();
+                firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
             }
             return { group: g, arrs, firstEtaMins };
         } catch(e) {
@@ -1049,7 +1080,8 @@ async function renderMainNearby(isSilentRefresh = false) {
             let firstEtaMins = Infinity;
             if (arrs.length > 0) {
                 const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
-                firstEtaMins = Math.max(0, Math.floor((targetMs - Date.now())/60000));
+                const diffMs = targetMs - Date.now();
+                firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
             }
             return { group: g, arrs, firstEtaMins };
         } catch(e) {
@@ -1143,17 +1175,19 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     for(let i = 0; i < Math.min(3, arrs.length); i++) {
         const arr = arrs[i];
         const targetMs = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
-        let mins = Math.max(0, Math.floor((targetMs - Date.now())/60000));
+        const diffMs = targetMs - Date.now();
+        let mins = Math.floor(diffMs / 60000);
         let isScheduled = (arr.noGPS === 1 || arr.noGPS === '1');
         
-        let timeStr = mins === 0 ? 'Due' : `${mins} <span style="font-size:1.2rem; font-weight:700;">m</span>`;
+        // Clamp to Due whenever difference is 45 seconds or less
+        let timeStr = (diffMs <= 45000) ? 'Due' : `${Math.max(1, mins)} <span style="font-size:1.2rem; font-weight:700;">m</span>`;
         let color = isScheduled ? 'var(--accent-orange)' : 'var(--accent-green)'; 
         
         let occBadge = '';
         if (i === 0 && mins <= 20) {
             const occPct = calculateOccupancy(group.routeNo, group.dest_e, Math.max(0, stopIdx), stops.length, Date.now());
-            let occClass = occPct > 80 ? 'occ-full' : (occPct > 50 ? 'occ-standing' : 'occ-seating');
-            let occText = occPct > 80 ? 'Full' : (occPct > 50 ? 'Standing' : 'Seating');
+            let occClass = occPct > 75 ? 'occ-full' : (occPct > 45 ? 'occ-standing' : 'occ-seating');
+            let occText = occPct > 75 ? 'Est. Full' : (occPct > 45 ? 'Est. Stand' : 'Est. Seats');
             occBadge = `<span class="occ-pill ${occClass}">${occText}</span>`;
         }
         
@@ -1406,6 +1440,7 @@ async function expandStop(idx) {
         const arrs = await fetchEtaRaw(detailRouteGroup, targetStop.stopKey);
         if (detailExpandedStopIdx !== idx) return; 
         expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
+        updateDetailTimestamp();
     } catch(e) {
         expandContainer.innerHTML = '<div style="color:var(--kmb-red); padding:20px; text-align:center;">Failed to fetch ETAs.</div>';
     }
@@ -1433,6 +1468,7 @@ function startTimer() {
           fetchEtaRaw(detailRouteGroup, targetStop.stopKey).then(arrs => {
               const expandContainer = document.getElementById(`detail-eta-expanded-${detailExpandedStopIdx}`);
               if(expandContainer) expandContainer.innerHTML = generateExpandedETAsHtml(arrs, detailRouteGroup, targetStop.stopKey);
+              updateDetailTimestamp();
               isSyncing = false;
           }).catch(() => { isSyncing = false; });
       } else if (currentView === 'map' && sheetExpandedGroupKey) {
