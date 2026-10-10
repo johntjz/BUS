@@ -158,6 +158,7 @@
   .occ-pill { padding: 6px 14px; border-radius: 12px; font-size: 0.85rem; font-weight: 800; color: white; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 95px; text-transform: uppercase; letter-spacing: 0.5px; }
   .occ-seating { background: rgba(48, 209, 88, 0.2); color: var(--accent-green); border: 1px solid rgba(48, 209, 88, 0.4); }
   .occ-standing { background: rgba(255, 159, 10, 0.2); color: var(--accent-orange); border: 1px solid rgba(255, 159, 10, 0.4); }
+  .occ-crowded { background: rgba(255, 69, 58, 0.2); color: #ff453a; border: 1px solid rgba(255, 69, 58, 0.4); }
   .occ-full { background: rgba(227, 24, 55, 0.2); color: var(--kmb-red); border: 1px solid rgba(227, 24, 55, 0.4); }
 
   .add-fav-btn { margin: 24px; padding: 20px; background: var(--bg-white); border: 2px dashed var(--border-color); border-radius: 16px; text-align: center; color: var(--accent-blue); font-size: 1.25rem; font-weight: 800; cursor: pointer; transition: background 0.2s; }
@@ -538,7 +539,7 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
             
             const targets = [];
             if (stops[tIndex]) targets.push({ stop: stops[tIndex], isLeft: false });
-            // Fetch next stop to infer if a bus has just left within the last 3 minutes
+            // Fetch next stop to infer if a bus has just left
             if (tIndex < stops.length - 1 && stops[tIndex + 1]) targets.push({ stop: stops[tIndex + 1], isLeft: true });
             
             await Promise.all(targets.map(async ({ stop, isLeft }) => {
@@ -610,14 +611,13 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
         return !isNaN(arrTime) && arrTime > (now - 15000);
     });
 
-    // Smart logic to infer if a bus has left
+    // Smart logic to infer if a bus has left (Upgraded to 8 minutes for Highway routes)
     nextETAs.forEach(nextEta => {
         const nextTime = new Date(nextEta.estimatedArrivalTime.replace(/-/g, '/')).getTime();
         if (isNaN(nextTime) || nextTime <= now - 15000) return;
         
         const diffMins = (nextTime - now) / 60000;
-        // If the bus is arriving at the NEXT stop in under 3 mins, it just passed us
-        if (diffMins <= 3) {
+        if (diffMins <= 8) {
             // Guarantee we aren't showing a bus that hasn't actually arrived at our stop yet
             const hasCurrentETA = combined.some(currEta => {
                 const currTime = new Date(currEta.estimatedArrivalTime.replace(/-/g, '/')).getTime();
@@ -1203,10 +1203,25 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
             color = 'var(--text-sub)';
         }
         
-        if (!arr.isLeft && !occBadgeAssigned && mins <= 20) {
+        if (!arr.isLeft && !occBadgeAssigned && mins <= 25) {
             const occPct = calculateOccupancy(group.routeNo, group.dest_e, Math.max(0, stopIdx), stops.length, Date.now());
-            let occClass = occPct > 75 ? 'occ-full' : (occPct > 45 ? 'occ-standing' : 'occ-seating');
-            let occText = occPct > 75 ? 'Full' : (occPct > 45 ? 'Stand' : 'Seats');
+            let occClass = '';
+            let occText = '';
+            
+            if (occPct >= 90) {
+                occClass = 'occ-full';
+                occText = 'FULL';
+            } else if (occPct >= 70) {
+                occClass = 'occ-crowded';
+                occText = 'CROWDED';
+            } else if (occPct >= 45) {
+                occClass = 'occ-standing';
+                occText = 'STAND';
+            } else {
+                occClass = 'occ-seating';
+                occText = 'SEATS';
+            }
+            
             occBadge = `<span class="occ-pill ${occClass}">${occText}</span>`;
             occBadgeAssigned = true;
         }
