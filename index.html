@@ -205,10 +205,12 @@
 <!-- Route (Search) View -->
 <main id="view-search" class="view-container">
   <div class="search-box-container">
-    <div class="region-filters">
+   <div class="region-filters">
         <button class="region-btn active" id="filter-ALL" onclick="setRegionFilter('ALL')">All</button>
         <button class="region-btn" id="filter-KMB" onclick="setRegionFilter('KMB')">KMB</button>
+        <button class="region-btn" id="filter-LWB" onclick="setRegionFilter('LWB')">LWB</button>
         <button class="region-btn" id="filter-CTB" onclick="setRegionFilter('CTB')">CTB</button>
+        <button class="region-btn" id="filter-NLB" onclick="setRegionFilter('NLB')">NLB</button>
         <button class="region-btn" id="filter-GMB" onclick="setRegionFilter('GMB')">GMB</button>
     </div>
     <input type="text" id="searchInput" class="search-input" placeholder="Enter Route Number" oninput="renderSearchResults()" autocomplete="off">
