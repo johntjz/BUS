@@ -1159,7 +1159,6 @@ function renderSearchResults() {
     const listEl = document.getElementById('searchResults');
     
     if (!query) {
-        // Pass the active filter so the radius expansion targets the right company
         let nearby = getNearbyRoutes(1.0, activeRegionFilter);
         
         if (!lastKnownPos && nearby.length === 0) {
@@ -1175,8 +1174,8 @@ function renderSearchResults() {
             }
         }
 
-        // Dynamically label the closest distance
-        const firstValid = nearby.find(g => g.nearestDistKm !== undefined);
+        // Dynamically label the closest distance, safely handling fallbacks without GPS
+        const firstValid = nearby.find(g => g.nearestDistKm !== undefined && !isNaN(g.nearestDistKm));
         const headerLabel = firstValid ? `${firstValid.nearestStopName} (${firstValid.nearestDistKm.toFixed(1)}km)` : 'Nearby';
 
         let html = `
