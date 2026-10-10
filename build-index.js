@@ -139,11 +139,14 @@ async function build() {
           await sleep(100);
       }
       
-      // Step 3: Assemble Data
+   // Step 3: Assemble Data
       for (const route of ctbRoutes.data) {
           const rId = `CTB_${route.route}_${route.bound}`;
-          const stopsData = ctbRouteStopsMap[rId];
+          let stopsData = ctbRouteStopsMap[rId]; // Changed const to let
           if (stopsData) {
+              // Add this sorting line
+              stopsData.sort((a, b) => parseInt(a.seq) - parseInt(b.seq));
+              
               const stopDetails = stopsData.map(rs => {
                   const stopDetail = allCtbStops[rs.stop] || { name_en: 'CTB Stop', lat: '0', long: '0' };
                   return { stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq };
@@ -211,11 +214,14 @@ async function build() {
           await sleep(100);
       }
       
-      // Step 3: Assemble
+     // Step 3: Assemble
       for (const vData of gmbVariantData) {
           const { variant, dir, rId, code } = vData;
           const dest_e = formatStopName(cleanStopName(dir.dest_en || variant.dest_en || 'Unknown'));
-          const stopsDataList = gmbRouteStopsMap[rId];
+          let stopsDataList = gmbRouteStopsMap[rId];
+          
+          // Add this sorting line
+          stopsDataList.sort((a, b) => parseInt(a.stop_seq) - parseInt(b.stop_seq));
           
           const stopDetails = [];
           for (const rs of stopsDataList) {
