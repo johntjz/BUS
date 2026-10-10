@@ -558,16 +558,27 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
                 }
             } else if (rId.startsWith('CTB_')) {
                 const parts = rId.split('_');
-                const routeNo = parts[1], dir = parts[2]; 
-                const res = await fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${targetStop.stopId}/${routeNo}`);
-                if(res && res.data && Array.isArray(res.data)) {
-                    res.data.filter(e => e.dir === dir && e.eta).forEach(e => {
-                        combined.push({
-                            estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
-                            noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                const routeNo = parts[1];
+                const dir = parts[2]; 
+                
+                // Aggressive Dual-Company Fetch to solve the NWFB routing ghost bug
+                const [resCTB, resNWFB] = await Promise.all([
+                    fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${targetStop.stopId}/${routeNo}`),
+                    fetchJSON(`https://rt.data.gov.hk/v2/transport/citybus/eta/NWFB/${targetStop.stopId}/${routeNo}`)
+                ]);
+                
+                [resCTB, resNWFB].forEach(res => {
+                    if(res && res.data && Array.isArray(res.data)) {
+                        res.data.forEach(e => {
+                            if (e.eta && (!e.dir || e.dir.toUpperCase() === dir.toUpperCase() || e.dir === '')) {
+                                combined.push({
+                                    estimatedArrivalTime: e.eta.replace('T', ' ').substring(0, 19),
+                                    noGPS: (e.rmk_en && e.rmk_en.toLowerCase().includes('scheduled')) ? 1 : 0
+                                });
+                            }
                         });
-                    });
-                }
+                    }
+                });
             } else if (rId.startsWith('GMB_')) {
                 const parts = rId.split('_');
                 const routeId = parts[1];
