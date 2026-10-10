@@ -809,18 +809,42 @@ function getStopsForGroup(group) {
   return Array.from(uniqueMap.values());
 }
 
-function getNearbyRoutes(maxDistanceKm = 1.0) {
+function getNearbyRoutes(maxDistanceKm = 1.0, targetCompany = 'ALL') {
     if (!lastKnownPos || allStops.length === 0) return [];
-    const stopsWithDist = allStops.map(s => {
+
+    // 1. Filter stops that actually serve the target company
+    let eligibleStops = allStops;
+    if (targetCompany !== 'ALL') {
+        eligibleStops = allStops.filter(s => {
+            return Array.from(s.routes).some(rk => {
+                const g = groupedRoutes.find(r => r.key === rk);
+                return g && g.company === targetCompany;
+            });
+        });
+    }
+
+    // 2. Safe fallback if company data is updating
+    if (eligibleStops.length === 0) {
+        if (targetCompany !== 'ALL') return groupedRoutes.filter(g => g.company === targetCompany).slice(0, 15);
+        return [];
+    }
+
+    // 3. Calculate distance only for eligible stops
+    const stopsWithDist = eligibleStops.map(s => {
         const lat = parseFloat(s.latitude);
         const lon = parseFloat(s.longitude);
         const dist = (isNaN(lat) || isNaN(lon) || lat === 0) ? Infinity : calculateDistanceKm(lastKnownPos.lat, lastKnownPos.lon, lat, lon);
         return { stop: s, dist };
     }).filter(item => item.dist !== Infinity).sort((a, b) => a.dist - b.dist);
 
-    if (stopsWithDist.length === 0) return [];
+    if (stopsWithDist.length === 0) {
+        if (targetCompany !== 'ALL') return groupedRoutes.filter(g => g.company === targetCompany).slice(0, 15);
+        return [];
+    }
+
+    // 4. Expand radius automatically to guarantee the nearest stop is always found
     let candidates = stopsWithDist.filter(item => item.dist <= maxDistanceKm);
-    if (candidates.length === 0) candidates = stopsWithDist.slice(0, 5);
+    if (candidates.length === 0) candidates = stopsWithDist.slice(0, 3); // Grab closest 3 regardless of distance
 
     const seenGroupKeys = new Set();
     const result = [];
@@ -829,7 +853,9 @@ function getNearbyRoutes(maxDistanceKm = 1.0) {
             if (!seenGroupKeys.has(rk)) {
                 seenGroupKeys.add(rk);
                 const g = groupedRoutes.find(r => r.key === rk);
-                if (g) result.push(g);
+                if (g && (targetCompany === 'ALL' || g.company === targetCompany)) {
+                    result.push({ ...g, nearestDistKm: item.dist, nearestStopName: item.stop.stopName_e });
+                }
             }
         });
     });
