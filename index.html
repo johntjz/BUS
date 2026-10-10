@@ -321,7 +321,7 @@ let globalMarkers = [];
 let userMarkerDetail = null;
 let userMarkerGlobal = null;
 
-// Timers
+// Timers & Trackers
 let countdown = REFRESH_INTERVAL;
 let timerInterval = null;
 let isSyncing = false;
@@ -747,7 +747,7 @@ function locateNearestStopPromise() {
                 document.getElementById('mainRouteList').innerHTML = '';
             }
             
-            startGPSTracking(); // Start continuous tracking so the dot follows the user seamlessly
+            startGPSTracking(); 
             resolve(true);
         }, () => {
             document.getElementById('mainLocationText').innerText = 'Location Access Denied';
@@ -785,7 +785,6 @@ L.Control.Recenter = L.Control.extend({
         container.style.boxShadow = '0 1px 5px rgba(0,0,0,0.65)';
         container.style.borderRadius = '4px';
         
-        // Classic Google Maps Crosshair SVG
         container.innerHTML = `<svg style="width:20px;height:20px;fill:var(--accent-blue);" viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>`;
         
         L.DomEvent.disableClickPropagation(container);
@@ -1340,7 +1339,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
 
             occBadge = `<span style="font-size:1.6rem; font-weight:900; color:var(--text-sub);">${leftStr}</span>`;
             mainTimeStr = `<span style="opacity:0;">--</span>`; 
-            subTimeStr = `Official (+${arr.offset} stop): ${apiStr}`;
+            subTimeStr = `Live Tracker (+${arr.offset} stop): ${apiStr}`;
             color = 'var(--text-sub)';
         } else {
             const apiDiffMs = Math.max(0, arr.targetMs - Date.now());
@@ -1352,7 +1351,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
             color = isScheduled ? 'var(--accent-orange)' : 'var(--accent-green)'; 
             
             mainTimeStr = (apiM === 0 && apiS <= 45) ? 'Due' : `${Math.max(1, apiM)} <span style="font-size:1.2rem; font-weight:700;">m</span>`;
-            subTimeStr = `Official (Stop): ${apiStr}`;
+            subTimeStr = `Live Tracker (Stop): ${apiStr}`;
             
             if (!occBadgeAssigned && apiM <= 25) {
                 const occPct = calculateOccupancy(group.routeNo, group.dest_e, Math.max(0, stopIdx), stops.length, Date.now());
@@ -1619,9 +1618,16 @@ function startTimer() {
   }, 1000);
 }
 
+// Ensure GPS never freezes by re-triggering the watcher when app is un-minimized
 document.addEventListener("visibilitychange", () => {
-    if (document.hidden) clearInterval(timerInterval);
-    else if (groupedRoutes.length > 0) startTimer();
+    if (document.hidden) {
+        clearInterval(timerInterval);
+        if (gpsWatcherId) { navigator.geolocation.clearWatch(gpsWatcherId); gpsWatcherId = null; }
+    } else {
+        if (groupedRoutes.length > 0) startTimer();
+        startGPSTracking();
+        refreshGPS(2000);
+    }
 });
 
 window.onload = initApp;
