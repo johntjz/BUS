@@ -26,6 +26,9 @@
   
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
   
+  html { font-size: 16px; }
+  html.text-sm { font-size: 13.5px; } /* Scales down all rem-based fonts proportionally */
+
   body {
     background-color: var(--bg-light);
     color: var(--text-main);
@@ -54,6 +57,11 @@
     position: absolute; left: 4px; top: 0; bottom: 0; width: 44px; display: none;
     align-items: center; justify-content: center; background: none; border: none;
     color: white; font-size: 2.2rem; font-weight: bold; cursor: pointer; padding: 0; z-index: 2; line-height: 1;
+  }
+  .text-size-btn {
+    position: absolute; right: 4px; top: 0; bottom: 0; width: 44px; display: flex;
+    align-items: center; justify-content: center; background: none; border: none;
+    color: white; font-size: 1.05rem; font-weight: 800; cursor: pointer; padding: 0; z-index: 2;
   }
   .view-container {
     flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;
@@ -184,6 +192,7 @@
 <header class="header">
   <button class="back-btn" id="backBtn" onclick="navigateBack()">‹</button>
   <h1 id="headerTitle">Bus HK</h1>
+  <button class="text-size-btn" onclick="toggleTextSize()">aA</button>
 </header>
 
 <!-- Nearby View -->
@@ -311,6 +320,10 @@ let countdown = REFRESH_INTERVAL;
 let timerInterval = null;
 let isSyncing = false;
 
+// Apply saved text size immediately
+let isSmallText = localStorage.getItem('bus_hk_text_size') === 'true';
+if (isSmallText) document.documentElement.classList.add('text-sm');
+
 // ==========================================
 // ZONE 2: PURE ALGORITHMS & UTILITIES
 // ==========================================
@@ -340,6 +353,22 @@ function findNearestStopIdx(stops, pos) {
         if (d < bestD) { bestD = d; best = i; }
     });
     return best;
+}
+
+function sortGroupsWithEtas(list) {
+    list.sort((a, b) => {
+        if (a.firstEtaMins !== Infinity && b.firstEtaMins !== Infinity) {
+            return a.firstEtaMins - b.firstEtaMins;
+        } else if (a.firstEtaMins === Infinity && b.firstEtaMins === Infinity) {
+            const numA = parseInt(a.group.routeNo.replace(/[^0-9]/g, '')) || 999;
+            const numB = parseInt(b.group.routeNo.replace(/[^0-9]/g, '')) || 999;
+            if (numA === numB) return a.group.routeNo.localeCompare(b.group.routeNo);
+            return numA - numB;
+        } else {
+            return a.firstEtaMins === Infinity ? 1 : -1;
+        }
+    });
+    return list;
 }
 
 const HK_PUBLIC_HOLIDAYS = ["01-01", "02-17", "02-18", "02-19", "04-03", "04-04", "04-06", "04-07", "05-01", "05-24", "06-19", "07-01", "10-01", "10-07", "10-29", "12-25", "12-26"];
@@ -520,7 +549,6 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
             const tIndex = stops.findIndex(s => getGlobalStopKey(s) === stopKeyToMatch);
             if (tIndex === -1) return;
             
-            // Build target list: Current stop + next 4 stops for accurate mathematical inference
             const targets = [];
             for(let i=0; i<=4; i++){
                 if (tIndex + i < stops.length && stops[tIndex + i]) {
@@ -597,14 +625,12 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
         }
     });
 
-    // Smart logic to infer if a bus has mathematically left based on future stop ETAs
     let leftBuses = [];
     futureETAs.forEach(fEta => {
         const diffMins = (fEta.targetMs - now) / 60000;
-        const assumedTravelTime = fEta.offset * 2.5; // Average 2.5 minutes of travel time per stop in HK
+        const assumedTravelTime = fEta.offset * 2.5; 
         
         if (diffMins <= assumedTravelTime + 1.5) { 
-            // Cross-reference to ensure we don't accidentally label a bus "Left" if it's still physically approaching us
             const isStillComing = currETAs.some(cEta => {
                 return cEta.targetMs < fEta.targetMs + 60000 && cEta.targetMs > fEta.targetMs - (fEta.offset * 5 * 60000);
             });
@@ -625,12 +651,11 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
 
     leftBuses.sort((a,b) => a.minsAgo - b.minsAgo);
     let uniqueLeft = [];
-    if (leftBuses.length > 0) uniqueLeft.push(leftBuses[0]); // Only pick the single most recently departed bus
+    if (leftBuses.length > 0) uniqueLeft.push(leftBuses[0]);
 
     currETAs.forEach(e => { e.sortTime = e.targetMs; e.isLeft = false; });
     let combined = [...uniqueLeft, ...currETAs];
 
-    // Deduplicate ETAs
     let uniqueCombined = [];
     let seenMins = new Set();
     combined.sort((a,b) => a.sortTime - b.sortTime).forEach(arr => {
@@ -791,6 +816,19 @@ function renderGlobalMapStops() {
 // ==========================================
 // ZONE 5: CORE APP LOGIC & STATE MUTATION
 // ==========================================
+
+function toggleTextSize() {
+    isSmallText = !isSmallText;
+    localStorage.setItem('bus_hk_text_size', isSmallText);
+    if (isSmallText) {
+        document.documentElement.classList.add('text-sm');
+    } else {
+        document.documentElement.classList.remove('text-sm');
+    }
+    if (mapInstance) mapInstance.invalidateSize();
+    if (globalMapInstance) globalMapInstance.invalidateSize();
+}
+
 function updateDetailTimestamp() {
     const el = document.getElementById('detailLastUpdated');
     if (el) {
@@ -1214,7 +1252,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     
     let occBadgeAssigned = false;
     
-    // Exactly 4 buses maximum
+    // Limits the list strictly to a maximum of 4 buses
     for(let i = 0; i < Math.min(4, arrs.length); i++) {
         const arr = arrs[i];
         
