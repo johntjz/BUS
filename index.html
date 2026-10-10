@@ -529,7 +529,6 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
     let combined = [];
     const now = Date.now();
     
-    // Aggressive Try/Catch added to prevent CTB/GMB broken responses from freezing the UI
     await Promise.all(group.routeIds.map(async (rId) => {
         try {
             const stops = routeStopsCache[rId] || [];
@@ -570,10 +569,12 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
                     });
                 }
             } else if (rId.startsWith('GMB_')) {
-                const routeId = rId.replace('GMB_', '');
+                const parts = rId.split('_');
+                const routeId = parts[1];
+                const routeSeq = parts[2];
                 const res = await fetchJSON(`https://data.etagmb.gov.hk/eta/stop/${targetStop.stopId}`);
                 if(res && res.data && Array.isArray(res.data)) {
-                    const targetData = res.data.find(d => String(d.route_id) === routeId);
+                    const targetData = res.data.find(d => String(d.route_id) === routeId && String(d.route_seq) === routeSeq);
                     if (targetData && targetData.eta && Array.isArray(targetData.eta)) {
                         targetData.eta.forEach(e => {
                             if(e.timestamp) {
@@ -586,9 +587,7 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
                     }
                 }
             }
-        } catch(e) {
-            console.error("ETA Fetch Ignored:", e); // Silent fail to prevent UI lockup
-        }
+        } catch(e) { console.error("ETA Fetch Ignored:", e); }
     }));
     
     return combined.filter(arr => {
@@ -912,7 +911,7 @@ async function autoSelectNearestStop(token) {
 
     if (token !== detailOpenToken) return;
 
-    let bestIdx = 0; // Default to the first stop if GPS mapping is missing
+    let bestIdx = 0; 
     if (pos) {
         let foundIdx = findNearestStopIdx(stops, pos);
         if (foundIdx !== -1) bestIdx = foundIdx;
@@ -1340,7 +1339,6 @@ async function expandStop(idx, forceOpen = false) {
     const activeIcon = L.divIcon({ className: 'custom-active-stop-icon', html: '<div style="width:20px;height:20px;background:white;border:6px solid var(--kmb-red);border-radius:50%;"></div>', iconSize: [20, 20] });
     if(mapMarkers[idx]) mapMarkers[idx].setIcon(activeIcon);
     
-    // Automatically lock map viewport to this specific stop
     item.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (mapInstance && mapMarkers[idx]) {
         mapInstance.setView(mapMarkers[idx].getLatLng(), 16, { animate: true });
