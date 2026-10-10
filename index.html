@@ -593,7 +593,9 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
                     if(res && res.data && Array.isArray(res.data)) {
                         const targetData = res.data.find(d => String(d.route_id) === routeId && String(d.route_seq) === routeSeq);
                         if (targetData && targetData.eta && Array.isArray(targetData.eta)) {
-                            targetData.eta.forEach(e => { if(e.timestamp) addEta(e.timestamp, 0); });
+                            targetData.eta.forEach(e => {
+                                if(e.timestamp) addEta(e.timestamp, 0);
+                            });
                         }
                     }
                 }
@@ -1053,7 +1055,12 @@ function openMapSheet(stopObj) {
                 let colorClass = isScheduled ? 'color: var(--accent-orange)' : 'color: var(--accent-green)';
                 summaryHtml = `<div class="eta-time" style="${colorClass}">${timeHtml}</div>`;
             } else if (leftBuses.length > 0) {
-                summaryHtml = `<div class="eta-time" style="color:var(--text-sub); font-size:1.4rem;">Left</div>`;
+                const targetMs = new Date(leftBuses[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
+                const diffMs = Math.max(0, targetMs - Date.now());
+                const m = Math.floor(diffMs / 60000);
+                const s = Math.floor((diffMs % 60000) / 1000);
+                const timeText = m > 0 ? `${m}m ${s}s` : `${s}s`;
+                summaryHtml = `<div class="eta-time" style="color:var(--text-sub); display:flex; flex-direction:column; align-items:flex-end; line-height:1.1;"><span style="font-size:1.4rem;">Left</span><span style="font-size:0.75rem; font-weight:700; margin-top:4px;">Next: ${timeText}</span></div>`;
                 itemClass = 'inactive-route';
             } else {
                 summaryHtml = `<div class="eta-time" style="color:var(--text-sub)">--</div>`;
@@ -1155,7 +1162,12 @@ async function renderMainNearby(isSilentRefresh = false) {
             let colorClass = isScheduled ? 'color: var(--accent-orange)' : 'color: var(--accent-green)';
             summaryHtml = `<div class="eta-time" style="${colorClass}">${timeHtml}</div>`;
         } else if (leftBuses.length > 0) {
-            summaryHtml = `<div class="eta-time" style="color:var(--text-sub); font-size:1.4rem;">Left</div>`;
+            const targetMs = new Date(leftBuses[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
+            const diffMs = Math.max(0, targetMs - Date.now());
+            const m = Math.floor(diffMs / 60000);
+            const s = Math.floor((diffMs % 60000) / 1000);
+            const timeText = m > 0 ? `${m}m ${s}s` : `${s}s`;
+            summaryHtml = `<div class="eta-time" style="color:var(--text-sub); display:flex; flex-direction:column; align-items:flex-end; line-height:1.1;"><span style="font-size:1.4rem;">Left</span><span style="font-size:0.75rem; font-weight:700; margin-top:4px;">Next: ${timeText}</span></div>`;
             itemClass = 'inactive-route';
         } else {
             summaryHtml = `<div class="eta-time" style="color:var(--text-sub)">--</div>`;
@@ -1217,8 +1229,9 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     for(let i = 0; i < Math.min(4, arrs.length); i++) {
         const arr = arrs[i];
         const targetMs = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
-        const diffMs = targetMs - Date.now();
+        const diffMs = Math.max(0, targetMs - Date.now());
         let mins = Math.floor(diffMs / 60000);
+        let secs = Math.floor((diffMs % 60000) / 1000);
         let isScheduled = (arr.noGPS === 1 || arr.noGPS === '1');
         
         let timeStr = (diffMs <= 45000) ? 'Due' : `${Math.max(1, mins)} <span style="font-size:1.2rem; font-weight:700;">m</span>`;
@@ -1226,7 +1239,8 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
         let occBadge = '';
         
         if (arr.isLeft) {
-            timeStr = 'Left';
+            const timeText = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+            timeStr = `<div style="display:flex; flex-direction:column; align-items:flex-end; line-height:1.1;"><span style="font-size:1.6rem;">Left</span><span style="font-size:0.85rem; font-weight:700; margin-top:4px;">Next: ${timeText}</span></div>`;
             color = 'var(--text-sub)';
         }
         
