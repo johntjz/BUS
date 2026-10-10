@@ -141,7 +141,11 @@
   .region-btn { flex: 0 0 auto; padding: 14px 20px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--bg-light); color: var(--text-sub); font-size: 1rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
   .region-btn.active { background: var(--kmb-red); color: white; border-color: var(--kmb-red); }
 
-  #map-container { height: 35vh; width: 100%; background: #111; flex-shrink: 0; border-bottom: 1px solid var(--border-color); }
+  #map-container { 
+      height: 35vh; width: 100%; background: #111; flex-shrink: 0; 
+      border-bottom: 1px solid var(--border-color); 
+      transition: height 0.35s cubic-bezier(0.25, 0.8, 0.25, 1); 
+  }
   #stop-list-container { flex: 1; overflow-y: auto; position: relative; background: var(--bg-light); }
   
   .stop-item { position: relative; padding: 24px 16px 24px 50px; border-bottom: 1px solid var(--border-color); cursor: pointer; }
@@ -753,6 +757,18 @@ function initDetailMap() {
         className: 'dark-tiles'
     }).addTo(mapInstance);
     L.control.zoom({ position: 'bottomright' }).addTo(mapInstance);
+
+    // Expand map dynamically on double-tap
+    mapInstance.on('dblclick', function(e) {
+        const mapEl = document.getElementById('map-container');
+        const isExpanded = mapEl.style.height === '70vh';
+        mapEl.style.height = isExpanded ? '35vh' : '70vh';
+        
+        setTimeout(() => {
+            mapInstance.invalidateSize();
+            mapInstance.panTo(e.latlng, { animate: true });
+        }, 350);
+    });
 }
 
 function initGlobalMap() {
@@ -1563,4 +1579,3 @@ window.onload = initApp;
 </script>
 </body>
 </html>
-
