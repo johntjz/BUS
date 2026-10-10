@@ -98,6 +98,11 @@ async function build() {
   // 3. CITYBUS (CTB)
   console.log("Processing Citybus (CTB) GPS Coordinates...");
   const allCtbStops = {};
+  const ctbStopsRes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/stop');
+  if (ctbStopsRes && Array.isArray(ctbStopsRes.data)) {
+      ctbStopsRes.data.forEach(s => { allCtbStops[s.stop] = s; });
+  }
+
   const ctbRoutes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/route/CTB');
   if (ctbRoutes && Array.isArray(ctbRoutes.data)) {
       for (const route of ctbRoutes.data) {
@@ -110,16 +115,8 @@ async function build() {
               const stopDetails = [];
               for (const rs of stopsData.data) {
                   let stopDetail = allCtbStops[rs.stop];
-                  if (!stopDetail) {
-                      const res = await safeFetch(`https://rt.data.gov.hk/v2/transport/citybus/stop/${rs.stop}`);
-                      if (res && res.data) {
-                          stopDetail = res.data;
-                          allCtbStops[rs.stop] = stopDetail;
-                      } else {
-                          stopDetail = { name_en: 'CTB Stop', lat: '0', long: '0' };
-                      }
-                      await sleep(10);
-                  }
+                  if (!stopDetail) stopDetail = { name_en: 'CTB Stop', lat: '0', long: '0' };
+                  
                   stopDetails.push({ stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq });
               }
               routeStopsCache[rId] = stopDetails;
@@ -132,7 +129,7 @@ async function build() {
                   groupedMap.get(groupKey).routeIds.push(rId);
               }
           }
-          await sleep(10); 
+          await sleep(5); 
       }
   }
 
@@ -154,7 +151,6 @@ async function build() {
                   if(!variant || !variant.route_id) continue;
                   const routeId = variant.route_id;
                   
-                  // Extract correct GMB Destinations
                   let directions = variant.directions || [];
                   if (directions.length === 0) directions = [{ route_seq: 1, dest_en: variant.dest_en || 'Unknown' }];
                   
@@ -175,12 +171,12 @@ async function build() {
                                       stopDetail = res.data;
                                       allGmbStops[rs.stop_id] = stopDetail;
                                   }
-                                  await sleep(10);
+                                  await sleep(5);
                               }
                               
-                              // Bulletproof GPS extraction using Optional Chaining to prevent crashes
-                              let lat = stopDetail?.coordinates?.coordinates?.[1] || rs?.location?.lat || rs?.lat || '0';
-                              let lon = stopDetail?.coordinates?.coordinates?.[0] || rs?.location?.lng || rs?.long || '0';
+                              // Correctly dive into the nested WGS84 structure specific to the Hong Kong Transport API
+                              let lat = stopDetail?.coordinates?.wgs84?.lat || stopDetail?.coordinates?.wgs84?.latitude || rs?.location?.lat || rs?.lat || '0';
+                              let lon = stopDetail?.coordinates?.wgs84?.long || stopDetail?.coordinates?.wgs84?.longitude || rs?.location?.lng || rs?.long || '0';
                               
                               let name_en = stopDetail?.name_en || rs?.name_en || 'GMB Stop';
                               
@@ -195,7 +191,7 @@ async function build() {
                               groupedMap.get(groupKey).routeIds.push(rId);
                           }
                       }
-                      await sleep(10);
+                      await sleep(5);
                   }
               }
           }
