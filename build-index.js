@@ -13,14 +13,23 @@ function formatStopName(name) {
   return name ? name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : '';
 }
 
-async function safeFetch(url) {
-    try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        return await res.json();
-    } catch(e) {
-        return null; 
+// Bulletproof Fetch with Auto-Retry for Government APIs
+async function safeFetch(url, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+            if (res.ok) {
+                return await res.json();
+            } else if (res.status === 429) {
+                await sleep(2000 * (i + 1)); // Back off if rate-limited
+                continue;
+            }
+        } catch(e) {
+            // Ignore timeouts and try again
+        }
+        await sleep(1000 * (i + 1));
     }
+    return null; 
 }
 
 async function build() {
@@ -96,7 +105,7 @@ async function build() {
   }
 
   // 3. CITYBUS (CTB)
-  console.log("Processing Citybus (CTB) GPS Coordinates...");
+  console.log("Processing Citybus (CTB)...");
   const allCtbStops = {};
   const ctbStopsRes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/stop');
   if (ctbStopsRes && Array.isArray(ctbStopsRes.data)) {
@@ -115,8 +124,16 @@ async function build() {
               const stopDetails = [];
               for (const rs of stopsData.data) {
                   let stopDetail = allCtbStops[rs.stop];
-                  if (!stopDetail) stopDetail = { name_en: 'CTB Stop', lat: '0', long: '0' };
-                  
+                  if (!stopDetail) {
+                      const res = await safeFetch(`https://rt.data.gov.hk/v2/transport/citybus/stop/${rs.stop}`);
+                      if (res && res.data) {
+                          stopDetail = res.data;
+                          allCtbStops[rs.stop] = stopDetail;
+                      } else {
+                          stopDetail = { name_en: 'CTB Stop', lat: '0', long: '0' };
+                      }
+                      await sleep(10);
+                  }
                   stopDetails.push({ stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq });
               }
               routeStopsCache[rId] = stopDetails;
@@ -129,7 +146,7 @@ async function build() {
                   groupedMap.get(groupKey).routeIds.push(rId);
               }
           }
-          await sleep(5); 
+          await sleep(10); 
       }
   }
 
@@ -171,12 +188,24 @@ async function build() {
                                       stopDetail = res.data;
                                       allGmbStops[rs.stop_id] = stopDetail;
                                   }
-                                  await sleep(5);
+                                  await sleep(10);
                               }
                               
-                              // Correctly dive into the nested WGS84 structure specific to the Hong Kong Transport API
-                              let lat = stopDetail?.coordinates?.wgs84?.lat || stopDetail?.coordinates?.wgs84?.latitude || rs?.location?.lat || rs?.lat || '0';
-                              let lon = stopDetail?.coordinates?.wgs84?.long || stopDetail?.coordinates?.wgs84?.longitude || rs?.location?.lng || rs?.long || '0';
+                              // Correctly extract the deeply nested WGS84 coordinates to fix the blank map
+                              let lat = '0', lon = '0';
+                              if (stopDetail && stopDetail.coordinates) {
+                                  if (Array.isArray(stopDetail.coordinates.coordinates)) {
+                                      lat = stopDetail.coordinates.coordinates[1] || '0';
+                                      lon = stopDetail.coordinates.coordinates[0] || '0';
+                                  } else if (stopDetail.coordinates.wgs84) {
+                                      lat = stopDetail.coordinates.wgs84.lat || stopDetail.coordinates.wgs84.latitude || '0';
+                                      lon = stopDetail.coordinates.wgs84.long || stopDetail.coordinates.wgs84.longitude || '0';
+                                  }
+                              }
+                              if (lat === '0' && rs.location) {
+                                  lat = rs.location.lat || '0';
+                                  lon = rs.location.lng || '0';
+                              }
                               
                               let name_en = stopDetail?.name_en || rs?.name_en || 'GMB Stop';
                               
@@ -191,7 +220,7 @@ async function build() {
                               groupedMap.get(groupKey).routeIds.push(rId);
                           }
                       }
-                      await sleep(5);
+                      await sleep(10);
                   }
               }
           }
