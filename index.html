@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
-<title>Bus HK - Dark Mode</title>
+<title>Pulse HK - Dark Mode</title>
 
 <!-- Local Leaflet CSS for Map -->
 <link rel="stylesheet" href="leaflet.css">
@@ -233,7 +233,7 @@
 
 <header class="header">
   <button class="back-btn" id="backBtn" onclick="navigateBack()">‹</button>
-  <h1 id="headerTitle">Bus HK</h1>
+  <h1 id="headerTitle">Pulse HK</h1>
   <button class="text-size-btn" onclick="toggleTextSize()">aA</button>
 </header>
 
@@ -1089,7 +1089,7 @@ function switchTab(tabId) {
     document.getElementById(`view-${tabId}`).classList.add('active');
     document.getElementById(`tab-${tabId}`).classList.add('active');
     document.getElementById('backBtn').style.display = 'none';
-    document.getElementById('headerTitle').innerText = 'Bus HK';
+    document.getElementById('headerTitle').innerText = 'Pulse HK';
     
     if (tabId === 'search') {
         renderSearchResults();
