@@ -83,7 +83,8 @@ async function build() {
             const stopDetail = allKmbStops[rs.stop] || { name_en: 'Unknown', lat: '0', long: '0' };
             return { stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq };
           });
-          const company = (r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S')) ? 'LWB' : 'KMB';
+          // Properly flag LWB routes
+          const company = (r.route.startsWith('E') || r.route.startsWith('A') || r.route.startsWith('NA') || r.route.startsWith('S') || r.route.startsWith('R')) ? 'LWB' : 'KMB';
           const cleanDestE = formatStopName(cleanStopName(r.dest_en));
           const groupKey = `KMB_${r.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
           if (!groupedMap.has(groupKey)) {
@@ -97,6 +98,12 @@ async function build() {
 
   // 3. CITYBUS (CTB)
   console.log("Processing Citybus (CTB)...");
+  const ctbStopsRes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/stop');
+  const allCtbStops = {};
+  if (ctbStopsRes && Array.isArray(ctbStopsRes.data)) {
+      ctbStopsRes.data.forEach(s => { allCtbStops[s.stop] = s; });
+  }
+
   const ctbRoutes = await safeFetch('https://rt.data.gov.hk/v2/transport/citybus/route/CTB');
   if (ctbRoutes && Array.isArray(ctbRoutes.data)) {
       for (const route of ctbRoutes.data) {
@@ -106,7 +113,8 @@ async function build() {
           if (stopsData && Array.isArray(stopsData.data)) {
               const rId = `CTB_${route.route}_${route.bound}`;
               routeStopsCache[rId] = stopsData.data.map(rs => {
-                  return { stopId: rs.stop, stopName_e: 'CTB Stop', latitude: '0', longitude: '0', seq: rs.seq };
+                  const stopDetail = allCtbStops[rs.stop] || { name_en: 'CTB Stop', lat: '0', long: '0' };
+                  return { stopId: rs.stop, stopName_e: formatStopName(cleanStopName(stopDetail.name_en)), latitude: stopDetail.lat, longitude: stopDetail.long, seq: rs.seq };
               });
               const cleanDestE = formatStopName(cleanStopName(route.dest_en));
               const groupKey = `CTB_${route.route}___${cleanDestE}`.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -142,7 +150,10 @@ async function build() {
                   if (stopsData && stopsData.data && Array.isArray(stopsData.data.route_stops)) {
                       const rId = `GMB_${routeId}`;
                       routeStopsCache[rId] = stopsData.data.route_stops.map(rs => {
-                          return { stopId: rs.stop_id, stopName_e: cleanStopName(rs.name_en), latitude: '0', longitude: '0', seq: rs.stop_seq };
+                          // Attempt to safely extract GPS data if the GMB API provides it
+                          const lat = rs.coordinates ? rs.coordinates.coordinates[1] : (rs.location ? rs.location.lat : (rs.lat || '0'));
+                          const lon = rs.coordinates ? rs.coordinates.coordinates[0] : (rs.location ? rs.location.lng : (rs.long || '0'));
+                          return { stopId: rs.stop_id, stopName_e: cleanStopName(rs.name_en), latitude: lat, longitude: lon, seq: rs.stop_seq };
                       });
                       const dest_e = variant.dest_en || 'Unknown';
                       const groupKey = `GMB_${r.code}___${cleanStopName(dest_e)}`.replace(/[^a-zA-Z0-9_-]/g, '_');
