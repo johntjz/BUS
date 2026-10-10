@@ -539,7 +539,7 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
             
             const targets = [];
             if (stops[tIndex]) targets.push({ stop: stops[tIndex], isLeft: false });
-            // Fetch next stop to infer if a bus has just left
+            // Fetch next stop to mathematically infer if a bus has just left our physical location
             if (tIndex < stops.length - 1 && stops[tIndex + 1]) targets.push({ stop: stops[tIndex + 1], isLeft: true });
             
             await Promise.all(targets.map(async ({ stop, isLeft }) => {
@@ -569,9 +569,7 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
                     const rawNlbId = rId.replace('NLB_', '');
                     const res = await fetchJSON(`${NLB_API_BASE}/stop.php?action=estimatedArrivals&routeId=${rawNlbId}&stopId=${stop.stopId}&language=en`);
                     if(res && res.estimatedArrivals && Array.isArray(res.estimatedArrivals)) {
-                        res.estimatedArrivals.forEach(arr => {
-                            addEta(arr.estimatedArrivalTime, arr.noGPS);
-                        });
+                        res.estimatedArrivals.forEach(arr => addEta(arr.estimatedArrivalTime, arr.noGPS));
                     }
                 } else if (rId.startsWith('CTB_')) {
                     const parts = rId.split('_');
@@ -595,9 +593,7 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
                     if(res && res.data && Array.isArray(res.data)) {
                         const targetData = res.data.find(d => String(d.route_id) === routeId && String(d.route_seq) === routeSeq);
                         if (targetData && targetData.eta && Array.isArray(targetData.eta)) {
-                            targetData.eta.forEach(e => {
-                                if(e.timestamp) addEta(e.timestamp, 0);
-                            });
+                            targetData.eta.forEach(e => { if(e.timestamp) addEta(e.timestamp, 0); });
                         }
                     }
                 }
@@ -605,32 +601,51 @@ async function fetchEtaRaw(group, stopKeyToMatch) {
         } catch(e) { console.error("ETA Fetch Ignored:", e); }
     }));
     
-    // Purge outdated ETAs
-    let combined = currETAs.filter(arr => {
+    // 1. Purge organically outdated ETAs from the current stop
+    let validCurr = currETAs.filter(arr => {
         const arrTime = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
         return !isNaN(arrTime) && arrTime > (now - 15000);
     });
 
-    // Smart logic to infer if a bus has left (Upgraded to 8 minutes for Highway routes)
+    // 2. Smart logic to infer if a bus has left. 
+    // Set to 8 minutes to safely cover sparse highway routes (like Lantau) without skipping
+    let leftBuses = [];
     nextETAs.forEach(nextEta => {
         const nextTime = new Date(nextEta.estimatedArrivalTime.replace(/-/g, '/')).getTime();
         if (isNaN(nextTime) || nextTime <= now - 15000) return;
         
         const diffMins = (nextTime - now) / 60000;
         if (diffMins <= 8) {
-            // Guarantee we aren't showing a bus that hasn't actually arrived at our stop yet
-            const hasCurrentETA = combined.some(currEta => {
+            // Strictly guarantee we aren't falsly labeling an approaching bus as "Left".
+            // If the current stop shows an ETA within the bounds of this physical bus, ignore it.
+            const hasMatchingCurr = validCurr.some(currEta => {
                 const currTime = new Date(currEta.estimatedArrivalTime.replace(/-/g, '/')).getTime();
-                return currTime < nextTime + 120000;
+                return currTime <= nextTime + 120000 && currTime >= nextTime - (30 * 60000);
             });
             
-            if (!hasCurrentETA) {
-                combined.push(nextEta);
-            }
+            if (!hasMatchingCurr) leftBuses.push(nextEta);
         }
     });
     
-    return combined.sort((a,b) => a.estimatedArrivalTime.localeCompare(b.estimatedArrivalTime));
+    leftBuses.sort((a,b) => a.estimatedArrivalTime.localeCompare(b.estimatedArrivalTime));
+    if (leftBuses.length > 1) leftBuses = [leftBuses[0]]; // Prevent multiple phantom "Left" buses
+    
+    let combined = [...leftBuses, ...validCurr];
+
+    // 3. Deduplicate exact same minute ETAs to fix the NLB API data glitches
+    let uniqueCombined = [];
+    let seenMins = new Set();
+    combined.forEach(arr => {
+         const targetMs = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
+         const m = Math.floor(targetMs / 60000);
+         const key = `${m}_${arr.isLeft}`;
+         if (!seenMins.has(key)) {
+             seenMins.add(key);
+             uniqueCombined.push(arr);
+         }
+    });
+    
+    return uniqueCombined.sort((a,b) => a.estimatedArrivalTime.localeCompare(b.estimatedArrivalTime));
 }
 
 // ==========================================
@@ -1010,10 +1025,13 @@ function openMapSheet(stopObj) {
     Promise.all(relevantGroups.map(async g => {
         const arrs = await fetchEtaRaw(g, stopObj.stopKey);
         let firstEtaMins = Infinity;
-        if (arrs.length > 0) {
-            const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
+        let upcoming = arrs.filter(a => !a.isLeft);
+        if (upcoming.length > 0) {
+            const targetMs = new Date(upcoming[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
             const diffMs = targetMs - Date.now();
             firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
+        } else if (arrs.length > 0 && arrs[0].isLeft) {
+            firstEtaMins = 999; 
         }
         return { group: g, arrs, firstEtaMins };
     })).then(groupsWithEtas => {
@@ -1026,15 +1044,17 @@ function openMapSheet(stopObj) {
             let summaryHtml = '';
             let itemClass = '';
             
-            if (mins !== Infinity) {
-                if (arrs[0] && arrs[0].isLeft) {
-                    summaryHtml = `<div class="eta-time" style="color:var(--text-sub); font-size:1.4rem;">Left</div>`;
-                } else {
-                    let timeHtml = mins === 0 ? 'Due' : `${mins}<span style="font-size:1.1rem; margin-left:2px;">m</span>`;
-                    let isScheduled = (arrs[0].noGPS === 1 || arrs[0].noGPS === '1');
-                    let colorClass = isScheduled ? 'color: var(--accent-orange)' : 'color: var(--accent-green)';
-                    summaryHtml = `<div class="eta-time" style="${colorClass}">${timeHtml}</div>`;
-                }
+            let upcoming = arrs.filter(a => !a.isLeft);
+            let leftBuses = arrs.filter(a => a.isLeft);
+            
+            if (upcoming.length > 0) {
+                let timeHtml = mins === 0 ? 'Due' : `${mins}<span style="font-size:1.1rem; margin-left:2px;">m</span>`;
+                let isScheduled = (upcoming[0].noGPS === 1 || upcoming[0].noGPS === '1');
+                let colorClass = isScheduled ? 'color: var(--accent-orange)' : 'color: var(--accent-green)';
+                summaryHtml = `<div class="eta-time" style="${colorClass}">${timeHtml}</div>`;
+            } else if (leftBuses.length > 0) {
+                summaryHtml = `<div class="eta-time" style="color:var(--text-sub); font-size:1.4rem;">Left</div>`;
+                itemClass = 'inactive-route';
             } else {
                 summaryHtml = `<div class="eta-time" style="color:var(--text-sub)">--</div>`;
                 itemClass = 'inactive-route';
@@ -1106,10 +1126,13 @@ async function renderMainNearby(isSilentRefresh = false) {
     let groupsWithEtas = await Promise.all(relevantGroups.map(async g => {
         const arrs = await fetchEtaRaw(g, currentNearestStopKey);
         let firstEtaMins = Infinity;
-        if (arrs.length > 0) {
-            const targetMs = new Date(arrs[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
+        let upcoming = arrs.filter(a => !a.isLeft);
+        if (upcoming.length > 0) {
+            const targetMs = new Date(upcoming[0].estimatedArrivalTime.replace(/-/g, '/')).getTime();
             const diffMs = targetMs - Date.now();
             firstEtaMins = diffMs <= 45000 ? 0 : Math.max(1, Math.floor(diffMs / 60000));
+        } else if (arrs.length > 0 && arrs[0].isLeft) {
+            firstEtaMins = 999; // Sort completely passed buses at the bottom
         }
         return { group: g, arrs, firstEtaMins };
     }));
@@ -1123,15 +1146,17 @@ async function renderMainNearby(isSilentRefresh = false) {
         let summaryHtml = '';
         let itemClass = '';
         
-        if (mins !== Infinity) {
-            if (arrs[0] && arrs[0].isLeft) {
-                summaryHtml = `<div class="eta-time" style="color:var(--text-sub); font-size:1.4rem;">Left</div>`;
-            } else {
-                let timeHtml = mins === 0 ? 'Due' : `${mins}<span style="font-size:1.1rem; margin-left:2px;">m</span>`;
-                let isScheduled = (arrs[0].noGPS === 1 || arrs[0].noGPS === '1');
-                let colorClass = isScheduled ? 'color: var(--accent-orange)' : 'color: var(--accent-green)';
-                summaryHtml = `<div class="eta-time" style="${colorClass}">${timeHtml}</div>`;
-            }
+        let upcoming = arrs.filter(a => !a.isLeft);
+        let leftBuses = arrs.filter(a => a.isLeft);
+        
+        if (upcoming.length > 0) {
+            let timeHtml = mins === 0 ? 'Due' : `${mins}<span style="font-size:1.1rem; margin-left:2px;">m</span>`;
+            let isScheduled = (upcoming[0].noGPS === 1 || upcoming[0].noGPS === '1');
+            let colorClass = isScheduled ? 'color: var(--accent-orange)' : 'color: var(--accent-green)';
+            summaryHtml = `<div class="eta-time" style="${colorClass}">${timeHtml}</div>`;
+        } else if (leftBuses.length > 0) {
+            summaryHtml = `<div class="eta-time" style="color:var(--text-sub); font-size:1.4rem;">Left</div>`;
+            itemClass = 'inactive-route';
         } else {
             summaryHtml = `<div class="eta-time" style="color:var(--text-sub)">--</div>`;
             itemClass = 'inactive-route';
@@ -1187,7 +1212,9 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
     let html = '';
     
     let occBadgeAssigned = false;
-    for(let i = 0; i < Math.min(3, arrs.length); i++) {
+    
+    // Limits the list strictly to a maximum of 4 buses
+    for(let i = 0; i < Math.min(4, arrs.length); i++) {
         const arr = arrs[i];
         const targetMs = new Date(arr.estimatedArrivalTime.replace(/-/g, '/')).getTime();
         const diffMs = targetMs - Date.now();
@@ -1203,6 +1230,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
             color = 'var(--text-sub)';
         }
         
+        // Limits occupancy solely to the first *upcoming* bus, preventing it from showing on buses 40 mins away
         if (!arr.isLeft && !occBadgeAssigned && mins <= 25) {
             const occPct = calculateOccupancy(group.routeNo, group.dest_e, Math.max(0, stopIdx), stops.length, Date.now());
             let occClass = '';
@@ -1223,7 +1251,7 @@ function generateExpandedETAsHtml(arrs, group, stopKey) {
             }
             
             occBadge = `<span class="occ-pill ${occClass}">${occText}</span>`;
-            occBadgeAssigned = true;
+            occBadgeAssigned = true; // Prevents 2nd and 3rd buses from getting a badge
         }
         
         html += `
@@ -1473,3 +1501,4 @@ window.onload = initApp;
 </script>
 </body>
 </html>
+
